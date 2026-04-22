@@ -1,0 +1,12 @@
+<div class="watermark">{{ status_watermark }}</div>
+<div class="header">
+  <div class="logo">BGCC</div>
+  <div>{{ generated_date }}</div>
+</div>
+<h1 style="margin-top: 40px; text-align: center;">SUBCONTRACT AGREEMENT</h1>
+<div style="margin-top: 50px;">
+  <p><strong>Reference Number:</strong> {{ agreement.reference_number }}</p>
+  <p><strong>Project Name:</strong> {{ project.project_name }}</p>
+  <p><strong>Subcontractor Name:</strong> {{ subcontractor.company_name }}</p>
+  <p><strong>Status:</strong> {{ agreement.current_status.value }}</p>
+</div>

@@ -1,0 +1,24 @@
+<div class="watermark">{{ status_watermark }}</div>
+<div class="header">
+  <div class="logo">BGCC</div>
+  <div>Appendix to the Subcontract Agreement</div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Item Description</th>
+      <th>Clause No.</th>
+      <th>Information and Data</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in appendix_rows %}
+    <tr>
+      <td>{{ row.item_description }}</td>
+      <td>{{ row.clause_no }}</td>
+      <td>{{ row.information }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

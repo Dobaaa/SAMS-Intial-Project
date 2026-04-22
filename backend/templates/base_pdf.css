@@ -1,0 +1,56 @@
+@page {
+  size: A4;
+  margin: 2cm;
+  @bottom-center {
+    content: "Page " counter(page) " of " counter(pages);
+    font-size: 10px;
+    color: #555;
+  }
+}
+
+body {
+  font-family: Arial, sans-serif;
+  color: #111;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.header {
+  border-bottom: 1px solid #d4d4d4;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.watermark {
+  position: fixed;
+  top: 40%;
+  left: 22%;
+  font-size: 64px;
+  color: rgba(200, 0, 0, 0.12);
+  transform: rotate(-30deg);
+  z-index: -1;
+}
+
+.page-break {
+  page-break-before: always;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border: 1px solid #cfcfcf;
+  padding: 6px;
+  vertical-align: top;
+}

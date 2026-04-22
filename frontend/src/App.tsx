@@ -1,14 +1,20 @@
-import { useState } from "react";
-
 import "./App.css";
+import Dashboard from "./pages/Dashboard";
+import MasterTemplates from "./pages/MasterTemplates";
+import UserManagement from "./pages/UserManagement";
 
 function App() {
-  const [count, setCount] = useState(0);
+  const view = new URLSearchParams(window.location.search).get("view") || "dashboard";
 
   return (
-    <>
-      <h1 className="text-red-600">Heloo</h1>
-    </>
+    <div>
+      <nav className="flex gap-2 border-b p-3">
+        <a className="rounded border px-3 py-1" href="/?view=dashboard">Dashboard</a>
+        <a className="rounded border px-3 py-1" href="/?view=users">Users</a>
+        <a className="rounded border px-3 py-1" href="/?view=masters">Masters</a>
+      </nav>
+      {view === "users" ? <UserManagement /> : view === "masters" ? <MasterTemplates /> : <Dashboard />}
+    </div>
   );
 }
 

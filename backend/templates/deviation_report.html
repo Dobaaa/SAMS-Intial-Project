@@ -1,0 +1,38 @@
+<div class="header">
+  <div class="logo">BGCC</div>
+  <div>Deviation Report - {{ generated_date }}</div>
+</div>
+
+<h2>Deviation Report</h2>
+<p><strong>Agreement Reference:</strong> {{ agreement.reference_number }}</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Clause Number</th>
+      <th>Clause Title</th>
+      <th>Master Default Value</th>
+      <th>Entered Value</th>
+      <th>Change Type</th>
+      <th>Risk</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td>{{ row.clause_number }}</td>
+      <td>{{ row.clause_title }}</td>
+      <td>{{ row.default_value }}</td>
+      <td>{{ row.entered_value }}</td>
+      <td>{{ row.change_type }}</td>
+      <td>{{ row.risk }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p style="margin-top: 12px;">
+  {{ summary.modified }} clauses modified from default.
+  {{ summary.filled }} blank fields filled.
+  {{ summary.unchanged }} fields unchanged.
+</p>
