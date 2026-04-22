@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError
 from pydantic import EmailStr
