@@ -112,9 +112,9 @@ export default function AgreementCreate() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4">
-      <h1 className="text-2xl font-semibold">Agreement Creation Wizard</h1>
-      <p className="text-sm text-gray-600">Step {step} / 5</p>
+    <div className="mx-auto max-w-5xl space-y-5 p-5">
+      <h1 className="text-3xl font-bold text-sky-900">Agreement Creation Wizard</h1>
+      <p className="text-sm text-sky-700">Step {step} / 5</p>
       {fieldLoadWarning && (
         <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800">
           {fieldLoadWarning}
@@ -122,29 +122,29 @@ export default function AgreementCreate() {
       )}
 
       {step === 1 && (
-        <div className="space-y-3 rounded border p-4">
+        <div className="space-y-3 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
           <h2 className="font-semibold">Step 1: Project + Subcontractor</h2>
           <div className="grid grid-cols-2 gap-2">
-            <input className="rounded border p-2" placeholder="Project name" value={project.project_name} onChange={(e) => setProject({ ...project, project_name: e.target.value })} />
-            <input className="rounded border p-2" placeholder="Project code" value={project.project_code} onChange={(e) => setProject({ ...project, project_code: e.target.value })} />
-            <input className="rounded border p-2" placeholder="Location" value={project.project_location} onChange={(e) => setProject({ ...project, project_location: e.target.value })} />
-            <input className="rounded border p-2" placeholder="Employer" value={project.employer_name} onChange={(e) => setProject({ ...project, employer_name: e.target.value })} />
-            <input className="rounded border p-2" placeholder="Engineer" value={project.engineer_name} onChange={(e) => setProject({ ...project, engineer_name: e.target.value })} />
-            <input className="rounded border p-2" placeholder="Reference override (optional)" value={reference} onChange={(e) => setReference(e.target.value)} />
-            <input className="rounded border p-2" placeholder="Company name" value={subcontractor.company_name} onChange={(e) => setSubcontractor({ ...subcontractor, company_name: e.target.value })} />
-            <input className="rounded border p-2" placeholder="PO Box" value={subcontractor.po_box} onChange={(e) => setSubcontractor({ ...subcontractor, po_box: e.target.value })} />
-            <input className="rounded border p-2" placeholder="Trade licence no" value={subcontractor.trade_licence_no} onChange={(e) => setSubcontractor({ ...subcontractor, trade_licence_no: e.target.value })} />
-            <input className="rounded border p-2" placeholder="Contact person" value={subcontractor.contact_person} onChange={(e) => setSubcontractor({ ...subcontractor, contact_person: e.target.value })} />
-            <input className="rounded border p-2" placeholder="Email" value={subcontractor.email} onChange={(e) => setSubcontractor({ ...subcontractor, email: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Project name" value={project.project_name} onChange={(e) => setProject({ ...project, project_name: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Project code" value={project.project_code} onChange={(e) => setProject({ ...project, project_code: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Location" value={project.project_location} onChange={(e) => setProject({ ...project, project_location: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Employer" value={project.employer_name} onChange={(e) => setProject({ ...project, employer_name: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Engineer" value={project.engineer_name} onChange={(e) => setProject({ ...project, engineer_name: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Reference override (optional)" value={reference} onChange={(e) => setReference(e.target.value)} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Company name" value={subcontractor.company_name} onChange={(e) => setSubcontractor({ ...subcontractor, company_name: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="PO Box" value={subcontractor.po_box} onChange={(e) => setSubcontractor({ ...subcontractor, po_box: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Trade licence no" value={subcontractor.trade_licence_no} onChange={(e) => setSubcontractor({ ...subcontractor, trade_licence_no: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Contact person" value={subcontractor.contact_person} onChange={(e) => setSubcontractor({ ...subcontractor, contact_person: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Email" value={subcontractor.email} onChange={(e) => setSubcontractor({ ...subcontractor, email: e.target.value })} />
           </div>
-          <button className="rounded bg-black px-3 py-2 text-white" onClick={createDraft}>
+          <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={createDraft}>
             Create Draft
           </button>
         </div>
       )}
 
       {step === 2 && (
-        <div className="space-y-2 rounded border p-4">
+        <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
           <h2 className="font-semibold">Step 2: Form Fields (F01-F08)</h2>
           {formFields.map((field) => (
             <div key={field.id}>
@@ -152,14 +152,14 @@ export default function AgreementCreate() {
               <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
             </div>
           ))}
-          <button className="rounded bg-black px-3 py-2 text-white" onClick={async () => { await saveFields(); setStep(3); }}>
+          <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { await saveFields(); setStep(3); }}>
             Next
           </button>
         </div>
       )}
 
       {step === 3 && (
-        <div className="space-y-2 rounded border p-4">
+        <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
           <h2 className="font-semibold">Step 3: Conditions Fields (C01-C13)</h2>
           {conditionFields.map((field) => (
             <div key={field.id}>
@@ -167,42 +167,42 @@ export default function AgreementCreate() {
               <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
             </div>
           ))}
-          <button className="rounded bg-black px-3 py-2 text-white" onClick={async () => { await saveFields(); setStep(4); }}>
+          <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { await saveFields(); setStep(4); }}>
             Next
           </button>
         </div>
       )}
 
       {step === 4 && (
-        <div className="space-y-2 rounded border p-4">
+        <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
           <h2 className="font-semibold">Step 4: Appendix Builder</h2>
           {appendixFields.map((field) => (
-            <div key={field.id} className="rounded border p-2">
+            <div key={field.id} className="rounded-lg border border-sky-100 p-2">
               <div className="font-medium">{field.field_id} - {field.field_label}</div>
               <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
             </div>
           ))}
-          <button className="rounded bg-black px-3 py-2 text-white" onClick={async () => { await saveFields(); setStep(5); }}>
+          <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { await saveFields(); setStep(5); }}>
             Next
           </button>
         </div>
       )}
 
       {step === 5 && (
-        <div className="space-y-2 rounded border p-4">
+        <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
           <h2 className="font-semibold">Step 5: Review</h2>
-          <div className="rounded border p-2">Reference Number: {reference || "Auto-generated after draft creation"}</div>
+          <div className="rounded-lg border border-sky-100 bg-sky-50/50 p-2">Reference Number: {reference || "Auto-generated after draft creation"}</div>
           {fields
             .sort((a, b) => a.sort_order - b.sort_order)
             .map((field) => {
               const changed = (values[field.field_id] ?? "") !== (field.default_value ?? "");
               return (
-                <div key={field.id} className={`rounded border p-2 ${changed ? "bg-amber-100" : ""}`}>
+                <div key={field.id} className={`rounded-lg border border-sky-100 p-2 ${changed ? "bg-amber-100" : ""}`}>
                   <strong>{field.field_id}</strong> - {field.field_label}: {values[field.field_id] ?? ""}
                 </div>
               );
             })}
-          <button className="rounded bg-green-700 px-3 py-2 text-white" onClick={submitForReview}>
+          <button className="rounded-lg bg-emerald-600 px-3 py-2 text-white hover:bg-emerald-700" onClick={submitForReview}>
             Submit for Review
           </button>
         </div>

@@ -67,17 +67,17 @@ export default function UserManagement() {
   };
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-5 p-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">User Management</h1>
-        <button className="rounded bg-black px-3 py-2 text-white" onClick={() => setShowAdd(true)}>
+        <h1 className="text-3xl font-bold text-sky-900">User Management</h1>
+        <button className="rounded-lg bg-sky-600 px-3 py-2 text-white transition hover:bg-sky-700" onClick={() => setShowAdd(true)}>
           Add User
         </button>
       </div>
 
-      <table className="w-full border-collapse border">
+      <table className="w-full border-collapse overflow-hidden rounded-xl border border-sky-100 bg-white shadow-sm">
         <thead>
-          <tr className="bg-gray-100">
+          <tr className="bg-sky-50 text-sky-900">
             <th className="border p-2">Name</th>
             <th className="border p-2">Email</th>
             <th className="border p-2">Role</th>
@@ -89,19 +89,19 @@ export default function UserManagement() {
         <tbody>
           {users.map((user) => (
             <tr key={user.id}>
-              <td className="border p-2">{user.name}</td>
-              <td className="border p-2">{user.email}</td>
-              <td className="border p-2">
+              <td className="border border-sky-100 p-2">{user.name}</td>
+              <td className="border border-sky-100 p-2">{user.email}</td>
+              <td className="border border-sky-100 p-2">
                 <span className={`rounded px-2 py-1 text-xs ${roleBadge[user.role]}`}>{user.role}</span>
               </td>
-              <td className="border p-2">{user.is_active ? "active" : "inactive"}</td>
-              <td className="border p-2">{user.last_login ? new Date(user.last_login).toLocaleString() : "-"}</td>
-              <td className="border p-2">
+              <td className="border border-sky-100 p-2">{user.is_active ? "active" : "inactive"}</td>
+              <td className="border border-sky-100 p-2">{user.last_login ? new Date(user.last_login).toLocaleString() : "-"}</td>
+              <td className="border border-sky-100 p-2">
                 <div className="flex gap-2">
-                  <button className="rounded border px-2 py-1" onClick={() => setEditing(user)}>
+                  <button className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50" onClick={() => setEditing(user)}>
                     Edit
                   </button>
-                  <button className="rounded border px-2 py-1" onClick={() => toggleActive(user)}>
+                  <button className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50" onClick={() => toggleActive(user)}>
                     {user.is_active ? "Deactivate" : "Activate"}
                   </button>
                 </div>
@@ -112,25 +112,25 @@ export default function UserManagement() {
       </table>
 
       {showAdd && (
-        <div className="rounded border p-3">
+        <div className="rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
           <h2 className="mb-2 text-lg font-semibold">Add User</h2>
           <div className="grid grid-cols-2 gap-2">
-            <input className="rounded border p-2" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <input className="rounded border p-2" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            <select className="rounded border p-2" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <select className="rounded-lg border border-sky-200 p-2" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               <option value="admin">admin</option>
               <option value="project_director">project_director</option>
               <option value="accounts">accounts</option>
               <option value="operation_manager">operation_manager</option>
               <option value="gm">gm</option>
             </select>
-            <input className="rounded border p-2" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           </div>
           <div className="mt-2 flex gap-2">
-            <button className="rounded bg-black px-3 py-2 text-white" onClick={createUser}>
+            <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={createUser}>
               Save
             </button>
-            <button className="rounded border px-3 py-2" onClick={() => setForm({ ...form, password: generateTempPassword() })}>
+            <button className="rounded-lg border border-sky-200 px-3 py-2 text-sky-700 hover:bg-sky-50" onClick={() => setForm({ ...form, password: generateTempPassword() })}>
               Regenerate Temp Password
             </button>
           </div>
@@ -138,12 +138,12 @@ export default function UserManagement() {
       )}
 
       {editing && (
-        <div className="rounded border p-3">
+        <div className="rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
           <h2 className="mb-2 text-lg font-semibold">Edit User</h2>
           <div className="grid grid-cols-2 gap-2">
-            <input className="rounded border p-2" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-            <input className="rounded border p-2" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
-            <select className="rounded border p-2" value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value as UserRow["role"] })}>
+            <input className="rounded-lg border border-sky-200 p-2" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+            <input className="rounded-lg border border-sky-200 p-2" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
+            <select className="rounded-lg border border-sky-200 p-2" value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value as UserRow["role"] })}>
               <option value="admin">admin</option>
               <option value="project_director">project_director</option>
               <option value="accounts">accounts</option>
@@ -152,10 +152,10 @@ export default function UserManagement() {
             </select>
           </div>
           <div className="mt-2 flex gap-2">
-            <button className="rounded bg-black px-3 py-2 text-white" onClick={saveEdit}>
+            <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={saveEdit}>
               Save Changes
             </button>
-            <button className="rounded border px-3 py-2" onClick={() => setEditing(null)}>
+            <button className="rounded-lg border border-sky-200 px-3 py-2 text-sky-700 hover:bg-sky-50" onClick={() => setEditing(null)}>
               Cancel
             </button>
           </div>
