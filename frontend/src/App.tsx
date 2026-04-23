@@ -1,4 +1,5 @@
 import "./App.css";
+import AgreementCreate from "./pages/AgreementCreate";
 import Dashboard from "./pages/Dashboard";
 import MasterTemplates from "./pages/MasterTemplates";
 import UserManagement from "./pages/UserManagement";
@@ -11,9 +12,18 @@ function App() {
       <nav className="flex gap-2 border-b p-3">
         <a className="rounded border px-3 py-1" href="/?view=dashboard">Dashboard</a>
         <a className="rounded border px-3 py-1" href="/?view=users">Users</a>
+        <a className="rounded border px-3 py-1" href="/?view=agreements">Agreements</a>
         <a className="rounded border px-3 py-1" href="/?view=masters">Masters</a>
       </nav>
-      {view === "users" ? <UserManagement /> : view === "masters" ? <MasterTemplates /> : <Dashboard />}
+      {view === "users" ? (
+        <UserManagement />
+      ) : view === "masters" ? (
+        <MasterTemplates />
+      ) : view === "agreements" ? (
+        <AgreementCreate />
+      ) : (
+        <Dashboard />
+      )}
     </div>
   );
 }

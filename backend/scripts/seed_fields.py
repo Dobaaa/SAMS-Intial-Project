@@ -47,13 +47,30 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.conditions, "C11", "6.2", "Rate of Liquidated Damages (AED/day)", InputTypeEnum.number, is_required=True, sort_order=11),
     FieldSeed(TemplateTypeEnum.conditions, "C12", "10.1", "Insurance submission deadline (days)", InputTypeEnum.number, sort_order=12),
     FieldSeed(TemplateTypeEnum.conditions, "C13", "13.3", "Dispute Resolution Jurisdiction", InputTypeEnum.text, is_required=True, sort_order=13),
-    # Appendix (A01-A06) to complete 27 initial insert fields
+    # Appendix (A01-A23)
     FieldSeed(TemplateTypeEnum.appendix, "A01", "1.1", "The Subcontractor", InputTypeEnum.text, auto_source_field_id="F02", appendix_row_label="The Subcontractor", appendix_clause_ref="1.1", sort_order=1),
     FieldSeed(TemplateTypeEnum.appendix, "A02", "1.1", "The Employer", InputTypeEnum.text, auto_source_field_id="F05", appendix_row_label="The Employer", appendix_clause_ref="1.1", sort_order=2),
     FieldSeed(TemplateTypeEnum.appendix, "A03", "1.1", "Engineer/Consultant/Subconsultant", InputTypeEnum.text, appendix_row_label="The Engineer/Consultant/Subconsultant", appendix_clause_ref="1.1", sort_order=3),
     FieldSeed(TemplateTypeEnum.appendix, "A04", "1.1", "The Project", InputTypeEnum.textarea, auto_source_field_id="F06", appendix_row_label="The Project", appendix_clause_ref="1.1", sort_order=4),
     FieldSeed(TemplateTypeEnum.appendix, "A05", "1.6", "Main Contractor communications address", InputTypeEnum.multifield, appendix_row_label="Main Contractor Address", appendix_clause_ref="1.6", sort_order=5),
     FieldSeed(TemplateTypeEnum.appendix, "A06", "1.6", "Subcontractor communications address", InputTypeEnum.multifield, auto_source_field_id="F03", appendix_row_label="Subcontractor Address", appendix_clause_ref="1.6", sort_order=6),
+    FieldSeed(TemplateTypeEnum.appendix, "A07", "3.1", "Subcontract Price (AED)", InputTypeEnum.number, auto_source_field_id="F08", appendix_row_label="The Subcontract Price", appendix_clause_ref="3.1", sort_order=7),
+    FieldSeed(TemplateTypeEnum.appendix, "A08", "3.3", "Subcontract Quantities Type", InputTypeEnum.dropdown, auto_source_field_id="C02", appendix_row_label="The Subcontract Quantities (Lump Sum or Re-measurable)", appendix_clause_ref="3.3", sort_order=8),
+    FieldSeed(TemplateTypeEnum.appendix, "A09", "3.4.1", "Advance Payment Amount (AED)", InputTypeEnum.number, auto_source_field_id="C03", appendix_row_label="Advance Payment Amount", appendix_clause_ref="3.4.1", sort_order=9),
+    FieldSeed(TemplateTypeEnum.appendix, "A10", "3.4.2", "Performance Security (%)", InputTypeEnum.number, default_value="10", appendix_row_label="Performance Security", appendix_clause_ref="3.4.2", sort_order=10),
+    FieldSeed(TemplateTypeEnum.appendix, "A11", "3.4.1", "Advance Payment release condition", InputTypeEnum.text, auto_source_field_id="C04", appendix_row_label="Advance Payment to be released by the Main Contractor", appendix_clause_ref="3.4.1", sort_order=11),
+    FieldSeed(TemplateTypeEnum.appendix, "A12", "3.4.6", "Interim Payment days", InputTypeEnum.number, auto_source_field_id="C05", appendix_row_label="Interim Payment to be paid by the Main Contractor", appendix_clause_ref="3.4.6", sort_order=12),
+    FieldSeed(TemplateTypeEnum.appendix, "A13", "3.4.7", "1st Half Retention release", InputTypeEnum.text, auto_source_field_id="C06", appendix_row_label="1st Half of retention Money to be released by the Main Contractor", appendix_clause_ref="3.4.7", sort_order=13),
+    FieldSeed(TemplateTypeEnum.appendix, "A14", "3.4.7", "2nd Half Retention release", InputTypeEnum.text, auto_source_field_id="C07", appendix_row_label="2nd Half of retention Money to be released by the Main Contractor", appendix_clause_ref="3.4.7", sort_order=14),
+    FieldSeed(TemplateTypeEnum.appendix, "A15", "4.1", "Commencement Date", InputTypeEnum.date, appendix_row_label="Commencement Date", appendix_clause_ref="4.1", sort_order=15),
+    FieldSeed(TemplateTypeEnum.appendix, "A16", "4.3(a)", "Time for Completion - Project", InputTypeEnum.text, auto_source_field_id="C08", appendix_row_label="Time for Completion of the Project", appendix_clause_ref="4.3(a)", sort_order=16),
+    FieldSeed(TemplateTypeEnum.appendix, "A17", "4.3(a)", "Time for Completion - Subcontract Works", InputTypeEnum.text, appendix_row_label="Time for Completion of the Subcontract Works", appendix_clause_ref="4.3(a)", sort_order=17),
+    FieldSeed(TemplateTypeEnum.appendix, "A18", "4.3(b)", "Milestones", InputTypeEnum.table, auto_source_field_id="C09", appendix_row_label="Time for Completion of the Sections (Milestones)", appendix_clause_ref="4.3(b)", sort_order=18),
+    FieldSeed(TemplateTypeEnum.appendix, "A19", "5", "Defects Liability Period", InputTypeEnum.number, auto_source_field_id="C10", appendix_row_label="Defects Liability Period", appendix_clause_ref="5", sort_order=19),
+    FieldSeed(TemplateTypeEnum.appendix, "A20", "6.2", "Rate of Liquidated Damages (AED/day)", InputTypeEnum.number, auto_source_field_id="C11", appendix_row_label="Rate Of Liquidated Damages", appendix_clause_ref="6.2", sort_order=20),
+    FieldSeed(TemplateTypeEnum.appendix, "A21", "6.2", "Maximum Liquidated Damages (%)", InputTypeEnum.number, default_value="10", appendix_row_label="Maximum Liquidated Damages", appendix_clause_ref="6.2", sort_order=21),
+    FieldSeed(TemplateTypeEnum.appendix, "A22", "10.1", "Insurance submission deadline (days)", InputTypeEnum.number, auto_source_field_id="C12", appendix_row_label="Time to submit the Copies of the required Insurance Policies", appendix_clause_ref="10.1", sort_order=22),
+    FieldSeed(TemplateTypeEnum.appendix, "A23", "13.3", "Dispute Resolution Jurisdiction", InputTypeEnum.text, auto_source_field_id="C13", appendix_row_label="Dispute Resolution (Jurisdiction)", appendix_clause_ref="13.3", sort_order=23),
 ]
 
 

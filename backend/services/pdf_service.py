@@ -26,7 +26,7 @@ jinja_env = Environment(
 
 
 def _render_master_with_values(content_html: str, values: dict[str, str]) -> str:
-    replacements = {
+    explicit_replacements = {
         "[Insert Name]": values.get("F02", ""),
         "[Insert PO]": values.get("F03", ""),
         "[TL Nr.]": values.get("F04", ""),
@@ -39,9 +39,47 @@ def _render_master_with_values(content_html: str, values: dict[str, str]) -> str
         "(……Insert…..) UAE Dirhams": values.get("C03", ""),
         "within (……Insert…..)": f"within {values.get('C04', '')}",
     }
+
+    # Generic token map for common Insert placeholders across templates.
+    generic_insert_map = {
+        "[Insert Name]": "F02",
+        "[Insert PO]": "F03",
+        "[TL Nr.]": "F04",
+        "[Insert Employer Name]": "F05",
+        "[Insert Project Name / Details]": "F06",
+        "[Insert Project Location]": "F07",
+        "[Insert Amount]": "F08",
+    }
+
     rendered = content_html
-    for src, dst in replacements.items():
+    for src, dst in explicit_replacements.items():
         rendered = rendered.replace(src, str(dst))
+
+    for token, field_id in generic_insert_map.items():
+        rendered = rendered.replace(token, str(values.get(field_id, "")))
+
+    # Fallback: replace unresolved generic placeholders in sequence from known dynamic fields.
+    generic_tokens = ["(……Insert…..)", "(......Insert.....)"]
+    sequential_values = [
+        values.get("C01", ""),
+        values.get("C02", ""),
+        values.get("C03", ""),
+        values.get("C04", ""),
+        values.get("C05", ""),
+        values.get("C06", ""),
+        values.get("C07", ""),
+        values.get("C08", ""),
+        values.get("C09", ""),
+        values.get("C10", ""),
+        values.get("C11", ""),
+        values.get("C12", ""),
+        values.get("C13", ""),
+    ]
+    for token in generic_tokens:
+        while token in rendered and sequential_values:
+            next_value = sequential_values.pop(0) or ""
+            rendered = rendered.replace(token, str(next_value), 1)
+
     return rendered
 
 

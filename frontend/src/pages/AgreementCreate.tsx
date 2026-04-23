@@ -16,6 +16,17 @@ type MasterField = {
 
 const api = axios.create({ baseURL: "/api" });
 
+const fallbackFields: MasterField[] = [
+  { id: "F01", template_id: "fallback", field_id: "F01", field_label: "Day of signing", input_type: "date", is_required: true, show_in_appendix: false, sort_order: 1 },
+  { id: "F02", template_id: "fallback", field_id: "F02", field_label: "Subcontractor company name", input_type: "text", is_required: true, show_in_appendix: false, sort_order: 2 },
+  { id: "F03", template_id: "fallback", field_id: "F03", field_label: "Subcontractor PO Box", input_type: "text", is_required: false, show_in_appendix: false, sort_order: 3 },
+  { id: "F04", template_id: "fallback", field_id: "F04", field_label: "Trade Licence Number", input_type: "text", is_required: false, show_in_appendix: false, sort_order: 4 },
+  { id: "F05", template_id: "fallback", field_id: "F05", field_label: "Employer Name", input_type: "text", is_required: true, show_in_appendix: false, sort_order: 5 },
+  { id: "F06", template_id: "fallback", field_id: "F06", field_label: "Project Name / Details", input_type: "textarea", is_required: true, show_in_appendix: false, sort_order: 6 },
+  { id: "F07", template_id: "fallback", field_id: "F07", field_label: "Project Location", input_type: "text", is_required: true, show_in_appendix: false, sort_order: 7 },
+  { id: "F08", template_id: "fallback", field_id: "F08", field_label: "Subcontract Price (AED)", input_type: "number", is_required: true, show_in_appendix: false, sort_order: 8 },
+];
+
 export default function AgreementCreate() {
   const [step, setStep] = useState(1);
   const [agreementId, setAgreementId] = useState<string>("");
@@ -38,6 +49,7 @@ export default function AgreementCreate() {
     phone: "",
     address: "",
   });
+  const [fieldLoadWarning, setFieldLoadWarning] = useState("");
 
   const formFields = useMemo(() => fields.filter((f) => /^F\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
   const conditionFields = useMemo(() => fields.filter((f) => /^C\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
@@ -55,14 +67,28 @@ export default function AgreementCreate() {
   };
 
   const loadTemplateFields = async () => {
-    const { data } = await api.get("/masters/");
-    const active = [data.form?.[0], data.conditions?.[0], data.appendix?.[0]].filter(Boolean);
-    const allFields: MasterField[] = [];
-    for (const tpl of active) {
-      const fieldsResp = await api.get(`/masters/fields/${tpl.id}`);
-      allFields.push(...fieldsResp.data);
+    try {
+      const { data } = await api.get("/masters/");
+      const active = [data.form?.[0], data.conditions?.[0], data.appendix?.[0]].filter(Boolean);
+      const allFields: MasterField[] = [];
+      for (const tpl of active) {
+        const fieldsResp = await api.get(`/masters/fields/${tpl.id}`);
+        if (Array.isArray(fieldsResp.data)) {
+          allFields.push(...fieldsResp.data);
+        }
+      }
+      if (allFields.length === 0) {
+        setFields(fallbackFields);
+        setFieldLoadWarning("No active master fields found. Showing fallback Form inputs (F01-F08).");
+      } else {
+        setFields(allFields);
+        setFieldLoadWarning("");
+      }
+    } catch (error) {
+      console.error("Failed to load master fields", error);
+      setFields(fallbackFields);
+      setFieldLoadWarning("Failed to load master fields from backend. Showing fallback Form inputs (F01-F08).");
     }
-    setFields(allFields);
   };
 
   const createDraft = async () => {
@@ -89,6 +115,11 @@ export default function AgreementCreate() {
     <div className="mx-auto max-w-5xl space-y-4 p-4">
       <h1 className="text-2xl font-semibold">Agreement Creation Wizard</h1>
       <p className="text-sm text-gray-600">Step {step} / 5</p>
+      {fieldLoadWarning && (
+        <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800">
+          {fieldLoadWarning}
+        </div>
+      )}
 
       {step === 1 && (
         <div className="space-y-3 rounded border p-4">

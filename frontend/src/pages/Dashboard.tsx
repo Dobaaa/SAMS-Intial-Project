@@ -48,21 +48,39 @@ export default function Dashboard() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [auditAction, setAuditAction] = useState("");
+  const [loadError, setLoadError] = useState<string>("");
 
   const loadAll = async () => {
-    const [sum, agr, aud, ver] = await Promise.all([
-      api.get("/reports/dashboard/summary"),
-      api.get("/reports/dashboard/agreements", {
-        params: { status: status || undefined, reference_number: reference || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined },
-      }),
-      api.get("/reports/audit-log", { params: { page: auditPage, page_size: 10, action: auditAction || undefined } }),
-      api.get("/reports/masters/active-versions"),
-    ]);
-    setSummary(sum.data);
-    setAgreements(agr.data);
-    setAudit(aud.data.items);
-    setAuditTotal(aud.data.total);
-    setVersions(ver.data);
+    try {
+      setLoadError("");
+      const [sum, agr, aud, ver] = await Promise.all([
+        api.get("/reports/dashboard/summary"),
+        api.get("/reports/dashboard/agreements", {
+          params: {
+            status: status || undefined,
+            reference_number: reference || undefined,
+            date_from: dateFrom || undefined,
+            date_to: dateTo || undefined,
+          },
+        }),
+        api.get("/reports/audit-log", {
+          params: { page: auditPage, page_size: 10, action: auditAction || undefined },
+        }),
+        api.get("/reports/masters/active-versions"),
+      ]);
+      setSummary(sum.data);
+      setAgreements(Array.isArray(agr.data) ? agr.data : []);
+      setAudit(Array.isArray(aud.data?.items) ? aud.data.items : []);
+      setAuditTotal(typeof aud.data?.total === "number" ? aud.data.total : 0);
+      setVersions(Array.isArray(ver.data) ? ver.data : []);
+    } catch (error) {
+      console.error("Failed to load dashboard data", error);
+      setAgreements([]);
+      setAudit([]);
+      setVersions([]);
+      setAuditTotal(0);
+      setLoadError("Failed to load dashboard data. Please check backend API responses.");
+    }
   };
 
   useEffect(() => {
@@ -72,6 +90,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-4 p-4">
       <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
+      {loadError && <div className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700">{loadError}</div>}
 
       {summary && (
         <div className="grid grid-cols-4 gap-3">
