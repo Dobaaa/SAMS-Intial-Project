@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../lib/api";
+import { downloadPdf, viewPdf } from "../lib/pdf";
 
 type Summary = {
   total_agreements: number;
@@ -48,6 +49,8 @@ export default function Dashboard() {
   const [dateTo, setDateTo] = useState("");
   const [auditAction, setAuditAction] = useState("");
   const [loadError, setLoadError] = useState<string>("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const loadAll = async () => {
     try {
@@ -86,10 +89,73 @@ export default function Dashboard() {
     void loadAll();
   }, [auditPage]);
 
+  const flash = (message: string) => {
+    setActionMessage(message);
+    setTimeout(() => setActionMessage(null), 4000);
+  };
+
+  const generatePdf = async (agreement: AgreementRow) => {
+    setBusyId(agreement.id);
+    try {
+      await api.post(`/pdf/${agreement.id}/generate`);
+      flash(`Generated PDF for ${agreement.reference_number}.`);
+    } catch (err) {
+      console.error(err);
+      flash(`Failed to generate PDF for ${agreement.reference_number}.`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const previewPdf = async (agreement: AgreementRow) => {
+    setBusyId(agreement.id);
+    try {
+      await viewPdf(`/pdf/${agreement.id}/preview`);
+    } catch (err: unknown) {
+      console.error(err);
+      const status =
+        typeof err === "object" && err && "response" in err
+          ? (err as { response?: { status?: number } }).response?.status
+          : undefined;
+      flash(
+        status === 404
+          ? `No PDF found for ${agreement.reference_number}. Click Generate first.`
+          : `Failed to open PDF for ${agreement.reference_number}.`
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const downloadAgreementPdf = async (agreement: AgreementRow) => {
+    setBusyId(agreement.id);
+    try {
+      await downloadPdf(`/pdf/${agreement.id}/preview`, `${agreement.reference_number}.pdf`);
+    } catch (err: unknown) {
+      console.error(err);
+      const status =
+        typeof err === "object" && err && "response" in err
+          ? (err as { response?: { status?: number } }).response?.status
+          : undefined;
+      flash(
+        status === 404
+          ? `No PDF found for ${agreement.reference_number}. Click Generate first.`
+          : `Failed to download PDF for ${agreement.reference_number}.`
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="space-y-5 p-5">
       <h1 className="text-3xl font-bold text-sky-900">Admin Dashboard</h1>
       {loadError && <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-700">{loadError}</div>}
+      {actionMessage && (
+        <div className="rounded-xl border border-sky-300 bg-sky-50 p-3 text-sm text-sky-800">
+          {actionMessage}
+        </div>
+      )}
 
       {summary && (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -139,10 +205,31 @@ export default function Dashboard() {
                 <td className="border border-sky-100 p-2">{a.status_label}</td>
                 <td className="border border-sky-100 p-2">{a.status_updated_on ? new Date(a.status_updated_on).toLocaleString() : "-"}</td>
                 <td className="border border-sky-100 p-2">
-                  <div className="flex gap-2">
-                    <a className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50" href={`/api/archive/agreements/${a.id}`} target="_blank" rel="noreferrer">View</a>
-                    <button className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50" onClick={() => api.post(`/pdf/${a.id}/generate`)}>Generate PDF</button>
-                    <a className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50" href={`/api/archive/agreements/${a.id}/download`} target="_blank" rel="noreferrer">Download</a>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50 disabled:opacity-50"
+                      disabled={busyId === a.id}
+                      onClick={() => void previewPdf(a)}
+                      title="Open the latest generated PDF in a new tab"
+                    >
+                      View
+                    </button>
+                    <button
+                      className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50 disabled:opacity-50"
+                      disabled={busyId === a.id}
+                      onClick={() => void generatePdf(a)}
+                      title="Render Cover + Form + Conditions + Appendix into a fresh PDF"
+                    >
+                      {busyId === a.id ? "Working…" : "Generate PDF"}
+                    </button>
+                    <button
+                      className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50 disabled:opacity-50"
+                      disabled={busyId === a.id}
+                      onClick={() => void downloadAgreementPdf(a)}
+                      title="Download the latest generated PDF"
+                    >
+                      Download
+                    </button>
                   </div>
                 </td>
               </tr>
