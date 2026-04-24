@@ -56,8 +56,11 @@ export default function Login() {
         </p>
 
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-sky-900">Email</label>
+          <label htmlFor="login-email" className="block text-sm font-medium text-sky-900">
+            Email
+          </label>
           <input
+            id="login-email"
             type="email"
             required
             value={email}
@@ -68,8 +71,11 @@ export default function Login() {
         </div>
 
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-sky-900">Password</label>
+          <label htmlFor="login-password" className="block text-sm font-medium text-sky-900">
+            Password
+          </label>
           <input
+            id="login-password"
             type="password"
             required
             value={password}
