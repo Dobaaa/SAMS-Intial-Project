@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -7,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db_session
 from middleware.rbac import require_role
-from models.agreement import Agreement
+from models.agreement import Agreement, AgreementStatusEnum
 from models.user import RoleEnum, User
 from services.agreement_service import create_draft_agreement, submit_for_review, update_agreement_fields
 from services.resolution_service import create_resolution_sheet, record_subcontractor_response
@@ -145,6 +146,45 @@ async def record_response(
         "status": "success",
         "agreement_status": agreement.current_status.value,
         "is_executed": agreement.is_executed,
+    }
+
+
+@router.post("/{agreement_id}/send-to-subcontractor", dependencies=[Depends(require_role(RoleEnum.admin))])
+async def send_to_subcontractor(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Transition the agreement to the appropriate subcontractor-facing status.
+
+    Called by Admin after:
+      - The main approval chain has completed (GM approved) -- moves to
+        draft_forwarded_to_subcontractor for the first time.
+      - The resolution chain has completed (OM + GM approved revisions) --
+        moves to under_subcontractor_signature for signature.
+    """
+    res = await db.execute(select(Agreement).where(Agreement.id == agreement_id))
+    agreement = res.scalar_one_or_none()
+    if not agreement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+
+    if agreement.current_status == AgreementStatusEnum.under_internal_review:
+        agreement.current_status = AgreementStatusEnum.draft_forwarded_to_subcontractor
+    elif agreement.current_status == AgreementStatusEnum.under_bgcc_revision:
+        agreement.current_status = AgreementStatusEnum.under_subcontractor_signature
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Agreement is not in a status that can be forwarded to the subcontractor "
+                f"(current: {agreement.current_status.value})."
+            ),
+        )
+
+    agreement.status_updated_on = datetime.now(UTC)
+    await db.commit()
+    return {
+        "status": "success",
+        "agreement_status": agreement.current_status.value,
     }
 
 

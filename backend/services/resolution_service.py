@@ -52,7 +52,9 @@ async def create_resolution_sheet(
     for row in created:
         await db.refresh(row)
 
-    # Prefill AI suggestions (Task 10 function 4).
+    # Prefill AI suggestions (Task 10 function 4). Best-effort: the rows
+    # already exist from the commit above, so if OpenAI/Redis is down the
+    # sheet is still usable -- the Admin can edit/write suggestions manually.
     try:
         ai_result = await suggest_responses(db, str(agreement.id))
         mapped = {
@@ -65,11 +67,9 @@ async def create_resolution_sheet(
                 row.ai_suggested_response = str(mapped[str(row.id)])
         await db.commit()
     except Exception:
-        # Keep sheet creation resilient even if AI call fails.
+        # Discard any partial in-session updates from the failed AI pass.
+        # The previously-committed row inserts are NOT affected.
         await db.rollback()
-        for row in created:
-            db.add(row)
-        await db.commit()
 
     return created
 
