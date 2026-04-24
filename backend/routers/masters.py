@@ -150,6 +150,35 @@ async def add_field(
     return _field_to_dict(field)
 
 
+@router.put("/fields/reorder", dependencies=[Depends(require_role(RoleEnum.admin))])
+async def reorder_fields(
+    payload: MasterFieldReorderPayload,
+    request: Request,
+    current_user: User = Depends(require_role(RoleEnum.admin)),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    # Declared before /fields/{field_id} so FastAPI's UUID validation on
+    # field_id doesn't reject the literal path "reorder" with a 422.
+    for item in payload.items:
+        result = await db.execute(select(MasterField).where(MasterField.id == item.id))
+        field = result.scalar_one_or_none()
+        if field:
+            field.sort_order = item.sort_order
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action="master_fields_reordered",
+            entity_type="master_field",
+            entity_id=None,
+            old_value_json=None,
+            new_value_json={"items": [i.model_dump(mode="json") for i in payload.items]},
+            ip_address=request.client.host if request.client else None,
+        )
+    )
+    await db.commit()
+    return {"status": "success"}
+
+
 @router.put("/fields/{field_id}", dependencies=[Depends(require_role(RoleEnum.admin))])
 async def update_field(
     field_id: uuid.UUID,
@@ -207,30 +236,3 @@ async def delete_field(
     )
     await db.commit()
     return {"status": "deleted"}
-
-
-@router.put("/fields/reorder", dependencies=[Depends(require_role(RoleEnum.admin))])
-async def reorder_fields(
-    payload: MasterFieldReorderPayload,
-    request: Request,
-    current_user: User = Depends(require_role(RoleEnum.admin)),
-    db: AsyncSession = Depends(get_db_session),
-) -> dict:
-    for item in payload.items:
-        result = await db.execute(select(MasterField).where(MasterField.id == item.id))
-        field = result.scalar_one_or_none()
-        if field:
-            field.sort_order = item.sort_order
-    db.add(
-        AuditLog(
-            user_id=current_user.id,
-            action="master_fields_reordered",
-            entity_type="master_field",
-            entity_id=None,
-            old_value_json=None,
-            new_value_json={"items": [i.model_dump(mode="json") for i in payload.items]},
-            ip_address=request.client.host if request.client else None,
-        )
-    )
-    await db.commit()
-    return {"status": "success"}
