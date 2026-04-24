@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import DeviationReport from "../components/DeviationReport";
 import WorkflowTimeline from "../components/WorkflowTimeline";
 import { api } from "../lib/api";
 
@@ -88,10 +89,6 @@ export default function WorkflowReview() {
     await loadPending();
   };
 
-  const deviationReportUrl = details
-    ? `/api/agreements/${details.agreement.id}/deviation-report`
-    : "#";
-
   return (
     <div className="grid grid-cols-12 gap-4 p-4">
       <aside className="col-span-4 rounded border p-3">
@@ -119,10 +116,9 @@ export default function WorkflowReview() {
               <h2 className="text-lg font-semibold">Agreement Summary</h2>
               <p>Reference: {details.agreement.reference_number}</p>
               <p>Status: {details.agreement.current_status}</p>
-              <a className="text-blue-600 underline" href={deviationReportUrl} target="_blank" rel="noreferrer">
-                Open Deviation Report
-              </a>
             </div>
+
+            <DeviationReport agreementId={details.agreement.id} />
 
             <div className="rounded border p-3">
               <h3 className="mb-2 text-lg font-semibold">AI Summary (Placeholder)</h3>
