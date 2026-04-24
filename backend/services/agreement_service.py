@@ -37,6 +37,21 @@ async def _build_reference_number(db: AsyncSession, project_code: str) -> str:
     return f"{prefix}{seq:03d}"
 
 
+def _advance_payment_from_price(f08_value: str | None) -> str | None:
+    """Return 10% of the subcontract price (F08) formatted for a currency field.
+
+    Returns None if F08 can't be parsed as a number -- callers should leave
+    C03 alone in that case rather than storing a junk string.
+    """
+    if f08_value is None:
+        return None
+    try:
+        amount = float(str(f08_value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+    return f"{amount * 0.10:.2f}"
+
+
 async def create_draft_agreement(
     db: AsyncSession,
     user: User,
@@ -124,14 +139,21 @@ async def update_agreement_fields(db: AsyncSession, agreement: Agreement, user: 
         row.is_modified_from_default = (entered or "") != (default_value or "")
         row.entered_by = user.id
 
-    # Required auto-population rules
-    if "F02" in values:
+    # Required auto-population rules.
+    # Only cascade into a dependent field if the client did NOT send it
+    # explicitly in the same payload -- this lets Admin override A01/A02/A07/C03
+    # from the Appendix Builder without the override getting clobbered.
+    if "F02" in values and "A01" not in values:
         values["A01"] = values["F02"]
-    if "F05" in values:
+    if "F05" in values and "A02" not in values:
         values["A02"] = values["F05"]
     if "F08" in values:
-        values["A07"] = values["F08"]
-        values["C03"] = values["F08"]
+        if "A07" not in values:
+            values["A07"] = values["F08"]
+        if "C03" not in values:
+            advance = _advance_payment_from_price(values.get("F08"))
+            if advance is not None:
+                values["C03"] = advance
 
     for auto_key in ("A01", "A02", "A07", "C03"):
         if auto_key in values:

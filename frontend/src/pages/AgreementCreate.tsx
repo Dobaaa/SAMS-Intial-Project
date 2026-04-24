@@ -14,6 +14,12 @@ type MasterField = {
   sort_order: number;
 };
 
+function tenPercentOf(value: string): string {
+  const n = parseFloat(value.replace(/,/g, "").trim());
+  if (!Number.isFinite(n)) return "";
+  return (n * 0.1).toFixed(2);
+}
+
 const fallbackFields: MasterField[] = [
   { id: "F01", template_id: "fallback", field_id: "F01", field_label: "Day of signing", input_type: "date", is_required: true, show_in_appendix: false, sort_order: 1 },
   { id: "F02", template_id: "fallback", field_id: "F02", field_label: "Subcontractor company name", input_type: "text", is_required: true, show_in_appendix: false, sort_order: 2 },
@@ -55,11 +61,28 @@ export default function AgreementCreate() {
 
   const onChangeValue = (fieldId: string, value: string) => {
     const next = { ...values, [fieldId]: value };
-    if (fieldId === "F02") next.A01 = value;
-    if (fieldId === "F05") next.A02 = value;
+    // Auto-populate dependent fields only if they currently hold their
+    // cascaded value (or are empty). If the Admin has explicitly overridden
+    // A01/A02/A07/C03 in the Appendix Builder, editing the source field
+    // should NOT wipe out that override.
+    const isAutoFollow = (target: string, previousSource: string) =>
+      (values[target] ?? "") === "" || (values[target] ?? "") === previousSource;
+
+    if (fieldId === "F02" && isAutoFollow("A01", values.F02 ?? "")) {
+      next.A01 = value;
+    }
+    if (fieldId === "F05" && isAutoFollow("A02", values.F05 ?? "")) {
+      next.A02 = value;
+    }
     if (fieldId === "F08") {
-      next.A07 = value;
-      next.C03 = value;
+      if (isAutoFollow("A07", values.F08 ?? "")) {
+        next.A07 = value;
+      }
+      const pct = tenPercentOf(value);
+      const prevPct = tenPercentOf(values.F08 ?? "");
+      if ((values.C03 ?? "") === "" || values.C03 === prevPct) {
+        next.C03 = pct;
+      }
     }
     setValues(next);
   };
