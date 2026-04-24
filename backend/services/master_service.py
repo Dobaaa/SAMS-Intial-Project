@@ -4,9 +4,9 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.audit import AuditLog
 from models.master import InputTypeEnum, MasterField, MasterTemplate, TemplateTypeEnum
 from models.user import User
+from services.audit_service import record_audit
 
 
 async def list_templates_grouped(db: AsyncSession) -> dict[str, list[MasterTemplate]]:
@@ -51,21 +51,19 @@ async def create_template_version(
     db.add(template)
     await db.flush()
 
-    db.add(
-        AuditLog(
-            user_id=actor.id,
-            action="master_template_created",
-            entity_type="master_template",
-            entity_id=template.id,
-            old_value_json=None,
-            new_value_json={
-                "type": template.type.value,
-                "version_number": template.version_number,
-                "version_date": str(template.version_date),
-                "is_active": template.is_active,
-            },
-            ip_address=ip_address,
-        )
+    await record_audit(
+        db,
+        actor_id=actor.id,
+        action="master_template_created",
+        entity_type="master_template",
+        entity_id=template.id,
+        new_value={
+            "type": template.type.value,
+            "version_number": template.version_number,
+            "version_date": str(template.version_date),
+            "is_active": template.is_active,
+        },
+        ip_address=ip_address,
     )
     await db.commit()
     await db.refresh(template)

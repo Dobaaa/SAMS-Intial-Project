@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db_session
 from middleware.rbac import require_role
-from models.audit import AuditLog
 from models.user import RoleEnum, User
+from services.audit_service import record_audit
 from services.auth_service import hash_password
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -45,16 +45,15 @@ async def _log_user_action(
     new_value: dict | None,
     ip_address: str | None,
 ) -> None:
-    db.add(
-        AuditLog(
-            user_id=actor_id,
-            action=action,
-            entity_type="user",
-            entity_id=target_id,
-            old_value_json=old_value,
-            new_value_json=new_value,
-            ip_address=ip_address,
-        )
+    await record_audit(
+        db,
+        actor_id=actor_id,
+        action=action,
+        entity_type="user",
+        entity_id=target_id,
+        old_value=old_value,
+        new_value=new_value,
+        ip_address=ip_address,
     )
 
 

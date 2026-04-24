@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db_session
 from middleware.rbac import require_role
-from models.audit import AuditLog
 from models.master import InputTypeEnum, MasterField, MasterTemplate, TemplateTypeEnum
 from models.user import RoleEnum, User
+from services.audit_service import record_audit
 from services.master_service import (
     create_template_version,
     get_template_or_404,
@@ -134,16 +134,14 @@ async def add_field(
     field = MasterField(**payload.model_dump())
     db.add(field)
     await db.flush()
-    db.add(
-        AuditLog(
-            user_id=current_user.id,
-            action="master_field_created",
-            entity_type="master_field",
-            entity_id=field.id,
-            old_value_json=None,
-            new_value_json=_field_to_dict(field),
-            ip_address=request.client.host if request.client else None,
-        )
+    await record_audit(
+        db,
+        actor_id=current_user.id,
+        action="master_field_created",
+        entity_type="master_field",
+        entity_id=field.id,
+        new_value=_field_to_dict(field),
+        ip_address=request.client.host if request.client else None,
     )
     await db.commit()
     await db.refresh(field)
@@ -164,16 +162,13 @@ async def reorder_fields(
         field = result.scalar_one_or_none()
         if field:
             field.sort_order = item.sort_order
-    db.add(
-        AuditLog(
-            user_id=current_user.id,
-            action="master_fields_reordered",
-            entity_type="master_field",
-            entity_id=None,
-            old_value_json=None,
-            new_value_json={"items": [i.model_dump(mode="json") for i in payload.items]},
-            ip_address=request.client.host if request.client else None,
-        )
+    await record_audit(
+        db,
+        actor_id=current_user.id,
+        action="master_fields_reordered",
+        entity_type="master_field",
+        new_value={"items": [i.model_dump(mode="json") for i in payload.items]},
+        ip_address=request.client.host if request.client else None,
     )
     await db.commit()
     return {"status": "success"}
@@ -194,16 +189,15 @@ async def update_field(
     old_value = _field_to_dict(field)
     for key, value in payload.model_dump().items():
         setattr(field, key, value)
-    db.add(
-        AuditLog(
-            user_id=current_user.id,
-            action="master_field_updated",
-            entity_type="master_field",
-            entity_id=field.id,
-            old_value_json=old_value,
-            new_value_json=_field_to_dict(field),
-            ip_address=request.client.host if request.client else None,
-        )
+    await record_audit(
+        db,
+        actor_id=current_user.id,
+        action="master_field_updated",
+        entity_type="master_field",
+        entity_id=field.id,
+        old_value=old_value,
+        new_value=_field_to_dict(field),
+        ip_address=request.client.host if request.client else None,
     )
     await db.commit()
     await db.refresh(field)
@@ -223,16 +217,14 @@ async def delete_field(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
     old_value = _field_to_dict(field)
     await db.delete(field)
-    db.add(
-        AuditLog(
-            user_id=current_user.id,
-            action="master_field_deleted",
-            entity_type="master_field",
-            entity_id=field_id,
-            old_value_json=old_value,
-            new_value_json=None,
-            ip_address=request.client.host if request.client else None,
-        )
+    await record_audit(
+        db,
+        actor_id=current_user.id,
+        action="master_field_deleted",
+        entity_type="master_field",
+        entity_id=field_id,
+        old_value=old_value,
+        ip_address=request.client.host if request.client else None,
     )
     await db.commit()
     return {"status": "deleted"}
