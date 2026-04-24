@@ -107,7 +107,11 @@ export default function Dashboard() {
             <option value="">All statuses</option>
             <option value="under_drafting">Under Drafting</option>
             <option value="under_internal_review">Under Internal Review</option>
+            <option value="draft_forwarded_to_subcontractor">Draft Forwarded to Subcontractor</option>
+            <option value="under_subcontractor_review">Under Subcontractor Review</option>
+            <option value="under_subcontractor_signature">Under Subcontractor Signature</option>
             <option value="under_bgcc_revision">Under BGCC Revision</option>
+            <option value="under_gm_signature">Under GM Signature</option>
             <option value="completed">Completed</option>
           </select>
           <input className="rounded-lg border border-sky-200 p-2" placeholder="Reference search" value={reference} onChange={(e) => setReference(e.target.value)} />

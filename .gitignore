@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+
+# Logs
+logs/
+*.log
+
+# Local environment
+backend/.env.local
+backend/.env.*.local
+frontend/.env.local
+frontend/.env.*.local
+
+# Generated artefacts
+uploads/
+backups/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

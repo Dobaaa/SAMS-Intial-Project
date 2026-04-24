@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, desc, func, select
@@ -12,6 +12,8 @@ from models.agreement import Agreement, AgreementStatusEnum
 from models.audit import AuditLog
 from models.master import MasterTemplate
 from models.user import RoleEnum, User
+
+MAX_AUDIT_PAGE_SIZE = 200
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -32,7 +34,7 @@ def _status_label(value: str) -> str:
 
 @router.get("/dashboard/summary", dependencies=[Depends(require_role(RoleEnum.admin))])
 async def dashboard_summary(db: AsyncSession = Depends(get_db_session)) -> dict:
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     total = (await db.execute(select(func.count(Agreement.id)))).scalar_one() or 0
@@ -123,8 +125,8 @@ async def audit_log(
     action: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=MAX_AUDIT_PAGE_SIZE),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     query = select(AuditLog).options(selectinload(AuditLog.user)).order_by(desc(AuditLog.created_at))
