@@ -1,5 +1,6 @@
-import axios from "axios";
 import { useState } from "react";
+
+import { api } from "../lib/api";
 
 type ResolutionRow = {
   id: string;
@@ -12,8 +13,6 @@ type ResolutionRow = {
   final_response?: string | null;
   is_resolved: boolean;
 };
-
-const api = axios.create({ baseURL: "/api" });
 
 export default function CommentsResolution() {
   const [agreementId, setAgreementId] = useState("");

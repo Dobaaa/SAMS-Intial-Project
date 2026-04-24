@@ -1,5 +1,6 @@
-import axios from "axios";
 import { useEffect, useState } from "react";
+
+import { api } from "../lib/api";
 
 type Summary = {
   total_agreements: number;
@@ -33,8 +34,6 @@ type MasterVersion = {
   version_number: string;
   version_date: string;
 };
-
-const api = axios.create({ baseURL: "/api" });
 
 export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);

@@ -1,5 +1,6 @@
-import axios from "axios";
 import { useMemo, useState } from "react";
+
+import { api } from "../lib/api";
 
 type EditHistory = {
   id: string;
@@ -25,8 +26,6 @@ type Props = {
   comments: CommentItem[];
   onUpdated?: (comment: CommentItem) => void;
 };
-
-const api = axios.create({ baseURL: "/api" });
 
 const badgeClasses: Record<string, string> = {
   open: "bg-yellow-100 text-yellow-700",

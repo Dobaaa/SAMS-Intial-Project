@@ -1,7 +1,7 @@
-import axios from "axios";
 import { useEffect, useState } from "react";
 
 import WorkflowTimeline from "../components/WorkflowTimeline";
+import { api } from "../lib/api";
 
 type PendingItem = {
   step: {
@@ -43,8 +43,6 @@ type WorkflowAgreementDetails = {
     created_at?: string | null;
   }>;
 };
-
-const api = axios.create({ baseURL: "/api" });
 
 export default function WorkflowReview() {
   const [pending, setPending] = useState<PendingItem[]>([]);

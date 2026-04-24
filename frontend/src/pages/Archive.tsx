@@ -1,5 +1,6 @@
-import axios from "axios";
 import { useMemo, useState } from "react";
+
+import { api } from "../lib/api";
 
 type ArchiveRow = {
   id: string;
@@ -15,8 +16,6 @@ type ArchiveRow = {
   is_executed: boolean;
   created_at?: string | null;
 };
-
-const api = axios.create({ baseURL: "/api" });
 
 const statusBadge: Record<string, string> = {
   completed: "bg-green-100 text-green-700",

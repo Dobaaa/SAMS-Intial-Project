@@ -1,7 +1,7 @@
-import axios from "axios";
 import { useMemo, useState } from "react";
 
 import FieldInput from "../components/FieldInput";
+import { api } from "../lib/api";
 type MasterField = {
   id: string;
   template_id: string;
@@ -13,8 +13,6 @@ type MasterField = {
   show_in_appendix: boolean;
   sort_order: number;
 };
-
-const api = axios.create({ baseURL: "/api" });
 
 const fallbackFields: MasterField[] = [
   { id: "F01", template_id: "fallback", field_id: "F01", field_label: "Day of signing", input_type: "date", is_required: true, show_in_appendix: false, sort_order: 1 },

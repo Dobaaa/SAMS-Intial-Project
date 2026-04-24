@@ -1,5 +1,6 @@
-import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
+
+import { api } from "../lib/api";
 
 type UserRow = {
   id: string;
@@ -9,8 +10,6 @@ type UserRow = {
   is_active: boolean;
   last_login?: string | null;
 };
-
-const api = axios.create({ baseURL: "/api" });
 
 function generateTempPassword(): string {
   const seed = Math.random().toString(36).slice(-8);

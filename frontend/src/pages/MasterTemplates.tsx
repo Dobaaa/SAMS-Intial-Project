@@ -1,10 +1,10 @@
-import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 
 import FieldCatalog, { type MasterField } from "../components/FieldCatalog";
+import { api } from "../lib/api";
 
 type Template = {
   id: string;
@@ -14,8 +14,6 @@ type Template = {
   is_active: boolean;
   notes?: string | null;
 };
-
-const api = axios.create({ baseURL: "/api" });
 
 export default function MasterTemplates() {
   const [grouped, setGrouped] = useState<Record<string, Template[]>>({});
