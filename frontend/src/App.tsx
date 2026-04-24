@@ -1,33 +1,39 @@
-import "./App.css";
+import { Navigate, Route, BrowserRouter, Routes } from "react-router-dom";
+
 import AgreementCreate from "./pages/AgreementCreate";
+import Archive from "./pages/Archive";
+import CommentsResolution from "./pages/CommentsResolution";
 import Dashboard from "./pages/Dashboard";
+import Login from "./pages/Login";
 import MasterTemplates from "./pages/MasterTemplates";
 import UserManagement from "./pages/UserManagement";
+import WorkflowReview from "./pages/WorkflowReview";
+import AppLayout from "./routes/AppLayout";
+import RequireAuth from "./routes/RequireAuth";
 
-function App() {
-  const view = new URLSearchParams(window.location.search).get("view") || "dashboard";
-  const linkClass =
-    "rounded-lg border border-sky-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-sky-800 shadow-sm transition hover:border-sky-300 hover:bg-sky-50";
-
+export default function App() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-50 via-cyan-50 to-white">
-      <nav className="sticky top-0 z-10 flex gap-2 border-b border-sky-100 bg-white/90 p-3 backdrop-blur">
-        <a className={linkClass} href="/?view=dashboard">Dashboard</a>
-        <a className={linkClass} href="/?view=users">Users</a>
-        <a className={linkClass} href="/?view=agreements">Agreements</a>
-        <a className={linkClass} href="/?view=masters">Masters</a>
-      </nav>
-      {view === "users" ? (
-        <UserManagement />
-      ) : view === "masters" ? (
-        <MasterTemplates />
-      ) : view === "agreements" ? (
-        <AgreementCreate />
-      ) : (
-        <Dashboard />
-      )}
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+
+        <Route element={<RequireAuth />}>
+          <Route element={<AppLayout />}>
+            <Route element={<RequireAuth roles={["admin"]} />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/users" element={<UserManagement />} />
+              <Route path="/masters" element={<MasterTemplates />} />
+              <Route path="/agreements/new" element={<AgreementCreate />} />
+            </Route>
+            <Route path="/workflow" element={<WorkflowReview />} />
+            <Route path="/resolution" element={<CommentsResolution />} />
+            <Route path="/archive" element={<Archive />} />
+            <Route index element={<Navigate to="/workflow" replace />} />
+          </Route>
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
-
-export default App;

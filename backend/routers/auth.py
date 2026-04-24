@@ -6,7 +6,9 @@ from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db_session
+from middleware.rbac import get_current_user
 from middleware.security import SanitizedModel, limiter
+from models.user import User
 from services.auth_service import (
     authenticate_user,
     create_access_token,
@@ -90,3 +92,13 @@ async def refresh_token(request: Request, payload: RefreshRequest) -> dict[str, 
 async def logout(request: Request, payload: LogoutRequest) -> dict[str, str]:
     await invalidate_refresh_token(payload.refresh_token)
     return {"status": "success"}
+
+
+@router.get("/me", response_model=UserInfo)
+async def me(current_user: User = Depends(get_current_user)) -> UserInfo:
+    return UserInfo(
+        id=str(current_user.id),
+        name=current_user.name,
+        email=current_user.email,
+        role=current_user.role.value,
+    )
