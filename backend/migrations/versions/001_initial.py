@@ -18,10 +18,24 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-role_enum = sa.Enum("admin", "project_director", "accounts", "operation_manager", "gm", name="role_enum")
-template_type_enum = sa.Enum("form", "conditions", "appendix", name="template_type_enum")
-input_type_enum = sa.Enum("text", "number", "date", "dropdown", "textarea", "multifield", "table", name="input_type_enum")
-agreement_status_enum = sa.Enum(
+# create_type=False so the explicit DO blocks in upgrade() are the single
+# owner of CREATE TYPE -- otherwise the column-level Enum tries to re-issue
+# CREATE TYPE during create_table and fails with "type X already exists".
+# Use the postgresql.ENUM dialect type (rather than sa.Enum) because it
+# honours create_type=False reliably under asyncpg + alembic transactions.
+role_enum = postgresql.ENUM(
+    "admin", "project_director", "accounts", "operation_manager", "gm",
+    name="role_enum", create_type=False,
+)
+template_type_enum = postgresql.ENUM(
+    "form", "conditions", "appendix",
+    name="template_type_enum", create_type=False,
+)
+input_type_enum = postgresql.ENUM(
+    "text", "number", "date", "dropdown", "textarea", "multifield", "table",
+    name="input_type_enum", create_type=False,
+)
+agreement_status_enum = postgresql.ENUM(
     "under_drafting",
     "under_internal_review",
     "draft_forwarded_to_subcontractor",
@@ -31,23 +45,69 @@ agreement_status_enum = sa.Enum(
     "under_gm_signature",
     "completed",
     name="agreement_status_enum",
+    create_type=False,
 )
-workflow_step_status_enum = sa.Enum("pending", "approved", "returned", "skipped", name="workflow_step_status_enum")
-comment_status_enum = sa.Enum("open", "in_discussion", "resolved", name="comment_status_enum")
-review_type_enum = sa.Enum("comparison", "risk", "summary", "response_suggestion", "validation", name="review_type_enum")
-pdf_type_enum = sa.Enum("draft", "final", "executed", name="pdf_type_enum")
+workflow_step_status_enum = postgresql.ENUM(
+    "pending", "approved", "returned", "skipped",
+    name="workflow_step_status_enum", create_type=False,
+)
+comment_status_enum = postgresql.ENUM(
+    "open", "in_discussion", "resolved",
+    name="comment_status_enum", create_type=False,
+)
+review_type_enum = postgresql.ENUM(
+    "comparison", "risk", "summary", "response_suggestion", "validation",
+    name="review_type_enum", create_type=False,
+)
+pdf_type_enum = postgresql.ENUM(
+    "draft", "final", "executed",
+    name="pdf_type_enum", create_type=False,
+)
+
+
+_ENUM_DEFINITIONS: list[tuple[str, list[str]]] = [
+    ("role_enum", ["admin", "project_director", "accounts", "operation_manager", "gm"]),
+    ("template_type_enum", ["form", "conditions", "appendix"]),
+    ("input_type_enum", ["text", "number", "date", "dropdown", "textarea", "multifield", "table"]),
+    (
+        "agreement_status_enum",
+        [
+            "under_drafting",
+            "under_internal_review",
+            "draft_forwarded_to_subcontractor",
+            "under_subcontractor_review",
+            "under_subcontractor_signature",
+            "under_bgcc_revision",
+            "under_gm_signature",
+            "completed",
+        ],
+    ),
+    ("workflow_step_status_enum", ["pending", "approved", "returned", "skipped"]),
+    ("comment_status_enum", ["open", "in_discussion", "resolved"]),
+    ("review_type_enum", ["comparison", "risk", "summary", "response_suggestion", "validation"]),
+    ("pdf_type_enum", ["draft", "final", "executed"]),
+]
+
+
+def _create_enums_idempotent() -> None:
+    """Create every enum via a PL/pgSQL block that swallows duplicate_object,
+    so a partially-applied schema (or a re-run) doesn't crash. The async
+    asyncpg dialect doesn't honour Enum.create(checkfirst=True) reliably
+    inside an alembic transaction, hence the manual approach."""
+    for name, values in _ENUM_DEFINITIONS:
+        values_sql = ", ".join(f"'{v}'" for v in values)
+        op.execute(
+            f"""
+DO $$ BEGIN
+    CREATE TYPE {name} AS ENUM ({values_sql});
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+"""
+        )
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    role_enum.create(bind, checkfirst=True)
-    template_type_enum.create(bind, checkfirst=True)
-    input_type_enum.create(bind, checkfirst=True)
-    agreement_status_enum.create(bind, checkfirst=True)
-    workflow_step_status_enum.create(bind, checkfirst=True)
-    comment_status_enum.create(bind, checkfirst=True)
-    review_type_enum.create(bind, checkfirst=True)
-    pdf_type_enum.create(bind, checkfirst=True)
+    _create_enums_idempotent()
 
     op.create_table(
         "users",

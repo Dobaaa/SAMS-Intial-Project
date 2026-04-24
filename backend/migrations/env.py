@@ -24,6 +24,16 @@ _backend_dir = Path(__file__).resolve().parents[1]
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
+# Load backend/.env so plain `alembic upgrade head` works without the caller
+# having to manually export DATABASE_URL. Tests / CI / Docker can still
+# override by setting DATABASE_URL in the process environment first.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(_backend_dir / ".env")
+except ImportError:
+    pass
+
 from database import Base  # noqa: E402
 import models  # noqa: E402,F401 -- side-effect: registers all ORM classes with Base.metadata
 
