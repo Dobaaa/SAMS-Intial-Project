@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text, event, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -123,4 +123,4 @@ class AppendixConfig(Base):
 @event.listens_for(Agreement.current_status, "set", retval=False)
 def _on_status_change(target: Agreement, value: AgreementStatusEnum, oldvalue: AgreementStatusEnum, initiator):  # type: ignore[no-untyped-def]
     if oldvalue != value:
-        target.status_updated_on = datetime.now()
+        target.status_updated_on = datetime.now(UTC)
