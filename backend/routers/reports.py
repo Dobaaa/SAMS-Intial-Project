@@ -38,9 +38,21 @@ async def dashboard_summary(db: AsyncSession = Depends(get_db_session)) -> dict:
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     total = (await db.execute(select(func.count(Agreement.id)))).scalar_one() or 0
+    # "Under Review" == any status where BGCC is actively working on the
+    # agreement (internal review chain, revision after comments, or awaiting
+    # GM's countersignature). Excludes drafting (not yet submitted) and all
+    # subcontractor-facing statuses.
     under_review = (
         await db.execute(
-            select(func.count(Agreement.id)).where(Agreement.current_status == AgreementStatusEnum.under_internal_review)
+            select(func.count(Agreement.id)).where(
+                Agreement.current_status.in_(
+                    [
+                        AgreementStatusEnum.under_internal_review,
+                        AgreementStatusEnum.under_bgcc_revision,
+                        AgreementStatusEnum.under_gm_signature,
+                    ]
+                )
+            )
         )
     ).scalar_one() or 0
     with_subcontractor = (
