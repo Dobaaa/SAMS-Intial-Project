@@ -71,7 +71,7 @@ async def refresh_token(request: Request, payload: RefreshRequest) -> dict[str, 
 
     if token_payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
-    if is_refresh_token_revoked(token_payload):
+    if await is_refresh_token_revoked(token_payload):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token has been revoked")
 
     exp = token_payload.get("exp")
@@ -88,5 +88,5 @@ async def refresh_token(request: Request, payload: RefreshRequest) -> dict[str, 
 @router.post("/logout")
 @limiter.limit("10/minute")
 async def logout(request: Request, payload: LogoutRequest) -> dict[str, str]:
-    invalidate_refresh_token(payload.refresh_token)
+    await invalidate_refresh_token(payload.refresh_token)
     return {"status": "success"}

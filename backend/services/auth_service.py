@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import redis.asyncio as redis
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
@@ -14,7 +15,13 @@ settings = get_settings()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRES_HOURS = 8
 REFRESH_TOKEN_EXPIRES_DAYS = 30
-_revoked_refresh_jti: set[str] = set()
+REVOKED_REFRESH_KEY_PREFIX = "sams:auth:revoked_refresh:"
+
+redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+def _revoked_refresh_key(jti: str) -> str:
+    return f"{REVOKED_REFRESH_KEY_PREFIX}{jti}"
 
 
 def hash_password(password: str) -> str:
@@ -49,19 +56,32 @@ def decode_token(token: str) -> dict:
     return jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[ALGORITHM])
 
 
-def invalidate_refresh_token(token: str) -> None:
+async def invalidate_refresh_token(token: str) -> None:
     try:
         payload = decode_token(token)
     except JWTError:
         return
     jti = payload.get("jti")
-    if isinstance(jti, str):
-        _revoked_refresh_jti.add(jti)
+    exp = payload.get("exp")
+    if not isinstance(jti, str):
+        return
+
+    # Store the revocation marker in Redis until the token would have
+    # expired on its own; after that the jti can never be reused anyway.
+    if isinstance(exp, int):
+        ttl = exp - int(datetime.now(UTC).timestamp())
+    else:
+        ttl = 0
+    if ttl <= 0:
+        return
+    await redis_client.setex(_revoked_refresh_key(jti), ttl, "1")
 
 
-def is_refresh_token_revoked(payload: dict) -> bool:
+async def is_refresh_token_revoked(payload: dict) -> bool:
     jti = payload.get("jti")
-    return isinstance(jti, str) and jti in _revoked_refresh_jti
+    if not isinstance(jti, str):
+        return False
+    return bool(await redis_client.exists(_revoked_refresh_key(jti)))
 
 
 async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
