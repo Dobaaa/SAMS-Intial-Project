@@ -103,37 +103,147 @@ SAMS_Implementation_Handover_Report.md   what Tasks 01–14 delivered + known ga
 
 ---
 
-## 6. Known gaps and landmines
+## 6. Task 01–14 gap register (2026-04-24 audit)
 
-From the handover report + direct code inspection. Treat each as "needs review before production."
+Legend: 🔴 blocker (functionally broken or spec-violating) · 🟡 should-fix (working but fragile, drifts from spec, or UX-bad) · 🟢 polish (optional hardening).
 
-**Empty files declared as done (re-check intent: implement or delete):**
-- `backend/services/audit_service.py`
-- `frontend/src/pages/AgreementDetail.tsx`
-- `frontend/src/pages/Reports.tsx`
-- `frontend/src/components/AppendixBuilder.tsx`
-- `frontend/src/components/DeviationReport.tsx`
+### Cross-cutting (apply everywhere)
 
-**Functional gaps:**
-- `seed_fields.py` seeds 27 fields — needs the full 44 (F01–F08 + C01–C13 + A01–A23).
-- `Agreement.status_updated_on` event listener uses tz-naive `datetime.now()` — should be tz-aware UTC.
-- Frontend routing is `?view=` in `App.tsx`; wire `react-router-dom` properly.
-- Status transitions scattered across routers/services — needs a central state machine.
-- `routers/pdf.py` may have overlapping paths after a restructure — audit via `/openapi.json`.
-- AI `suggest_responses` signature mixes `sheet_id` and `agreement_id` — unify contract.
-- Resolution approval reuses `workflow_steps` with no `kind` column — consider separating.
-- PDF placeholder replacement is mapping-based; needs a generic field-driven engine so new admin-added fields render automatically.
-- `security.py` middleware sanitizes JSON globally via bleach — no regression coverage; risk of corrupting rich-text payloads.
-- **Zero tests** — no pytest / vitest / e2e anywhere.
-- `requirements.txt` is UTF-16 LE (reads OK for pip but not for most linters/CI).
-- No root `.gitignore`; `logs/error.log` is committed.
+- 🔴 **Frontend has no auth layer.** Every page does `axios.create({ baseURL: "/api" })` with **no `Authorization` header**. Backend requires JWT on almost every endpoint → the whole app 401s as soon as auth is enforced.
+- 🔴 **No login page / auth flow on the frontend.** No way to get a token from the UI.
+- 🔴 **Frontend routing is a `?view=` query-string hack** in `App.tsx`; `react-router-dom` v7 is installed but unused.
+- 🔴 **Empty files declared as done**: `backend/services/audit_service.py` (orphan import), `frontend/src/pages/AgreementDetail.tsx`, `frontend/src/pages/Reports.tsx`, `frontend/src/components/AppendixBuilder.tsx`, `frontend/src/components/DeviationReport.tsx`.
+- 🟡 No root `.gitignore`; `logs/error.log` is committed.
+- 🟡 Zero tests (pytest / vitest / playwright).
+- 🟡 `backend/requirements.txt` is UTF-16 LE with CRLF (pip tolerates, linters/CI often don't).
+- 🟡 No `.env.example` for the backend; real `.env` with placeholders is committed.
+- 🟡 No CI/CD pipeline (spec called for GitHub Actions).
 
-**Infra not executed yet (server-side, not runnable from this workspace):**
-- Certbot HTTPS + cron auto-renew
-- Daily `pg_dump` cron
-- Real 15-user seed
-- Real 3 client master templates seed
-- Load testing (`ab`) against live VPS
+---
+
+### TASK 01 — VPS setup + project scaffolding — **mostly OK**
+- ✅ `main.py` (FastAPI + CORS + `/health` + `/health/db`), `config.py` (pydantic-settings), `database.py` (async SQLAlchemy), `alembic.ini`, `nginx/sams.conf`, `supervisord.conf`, `scripts/setup.sh`.
+- 🟡 `setup.sh` has hardcoded `CHANGE_ME_STRONG_PASSWORD` for the Postgres user (expected, but should read from env).
+- 🟡 `config.py` does not expose `JWT_ALGORITHM` or `UPLOAD_DIR` despite `.env` mentioning them; values are hardcoded in services.
+
+### TASK 02 — Models + migrations + seed — **mostly OK, 1 real bug**
+- ✅ All 10+ tables present in models + migration `001_initial.py`. Matches PDF Section 3 one-for-one.
+- ✅ `seed_fields.py` actually covers **all 44 fields** (F01–F08, C01–C13, A01–A23) — **the handover's "only 27" claim is wrong**.
+- 🔴 `models/agreement.py:123-126` `_on_status_change` event listener uses **naive `datetime.now()`** while column is `DateTime(timezone=True)` — tz-aware vs naive mix will raise or silently corrupt.
+- 🟡 `MasterField.auto_source_field_id` is declared but **not consumed** by the services. Admin adding a new auto-populating field via UI has no effect; `update_agreement_fields` hardcodes F02→A01, F05→A02, F08→A07/C03.
+- 🟡 `create_draft_agreement` creates `AppendixConfig` only for fields whose ID starts with `A`. If Admin adds a non-A field with `show_in_appendix=true`, it won't render in the PDF appendix.
+- 🟡 `C09` (milestones table) input type is `table` but there's no storage model for row data — frontend renders it as a textarea.
+
+### TASK 03 — Auth + user CRUD — **mostly OK, 1 real bug**
+- ✅ Login / refresh / logout, bcrypt, 8h access / 30d refresh, JWT HS256, `get_current_user` + `require_role` deps, audit log on user ops.
+- ✅ Rate limit `10/minute` on auth routes (Task 14 forward).
+- 🔴 Refresh-token revocation uses an **in-memory Python `set`** (`_revoked_refresh_jti` in `auth_service.py`) — **lost on every restart**. Should be Redis.
+- 🟡 Missing `GET /api/auth/me` (practically required by any frontend auth store).
+- 🟡 No password strength validation on create/update; no password-change endpoint.
+
+### TASK 04 — Master template management — **real routing bug + UI gap**
+- ✅ Grouped listing by type, get-with-fields, create new version (auto-switches `is_active`), field CRUD, audit logged.
+- 🔴 `routers/masters.py:212` — `PUT /fields/reorder` is declared **after** `PUT /fields/{field_id}`. FastAPI validates `field_id: uuid.UUID` before dispatching, so `/fields/reorder` → 422 because `"reorder"` is not a UUID. Route order must be swapped.
+- 🟡 `FieldCatalog.tsx` edit mode exposes `field_id/clause_number/label/input_type/sort_order` but **not** `auto_source_field_id`, `appendix_row_label`, `appendix_clause_ref`, `show_in_appendix` — so those can't be changed from the UI.
+- 🟡 No template-delete / archive endpoint; no "Legal Editor" role (spec said optional).
+
+### TASK 05 — Agreement creation wizard — **2 real bugs**
+- ✅ 5-step wizard in `AgreementCreate.tsx`, POST `/agreements/`, PUT `/fields`, POST `/submit`. Reference format `SAG-{CODE}-{YEAR}-{SEQ:03d}` implemented.
+- 🔴 `agreement_service.py:134` sets `values["C03"] = values["F08"]` — copies the full F08 amount to C03. Spec says C03 default is "10% of F08". Should compute numeric 10%.
+- 🔴 `update_agreement_fields` **always re-runs** F→A/C auto-population, so any Admin-set manual override on A01/A02/A07/C03 is **overwritten on the next update** of F02/F05/F08.
+- 🟡 Step 4 ("Appendix Builder") renders appendix fields as inputs — it does **not** expose the "show/hide per row" toggle or the `admin_extra_note` editor that the spec requires (and that `AppendixConfig` supports).
+- 🟡 Step 5 "modified" amber highlight compares raw strings — `"10"` vs number `10` diverges.
+- 🟡 Auto-population rules are duplicated: in `AgreementCreate.tsx` onChange AND `agreement_service.update_agreement_fields`. One source of truth needed.
+- 🟡 `react-hook-form` + `zod` installed but not used (no per-step form validation).
+
+### TASK 06 — PDF generation — **fragile placeholder engine**
+- ✅ WeasyPrint + Jinja2, 5 templates + `base_pdf.css`, 4-doc combined PDF (Cover + Form + Conditions + Appendix), watermark DRAFT/FINAL/EXECUTED, A4 / 2cm margins / page numbers, endpoints `/pdf/{id}/generate` + `/pdf/{id}/preview`.
+- 🔴 `pdf_service._render_master_with_values` is **hardcoded string replacement** tied to the exact phrases in the client's current docs (e.g. `"(……Insert…..) Scope to be detailed here"`). If Admin edits the template, placeholders stop resolving. Spec required a generic field-driven engine.
+- 🔴 Only F02–F08 and C01–C04 get explicit mappings; C05–C13 fall through a sequential "pop-next" fallback that's order-dependent and breaks silently when the HTML reorders.
+- 🟡 `pdf_outputs.pdf_type` is always `draft` — never `final` or `executed` as the spec's 3-value enum expects.
+- 🟡 Upload dir is hardcoded at `BASE_DIR/uploads/agreements/…`; ignores `.env`'s `UPLOAD_DIR`.
+- 🟡 BGCC logo is a blank string (`context["bgcc_logo_url"] = ""`). No RTL support despite stack rationale.
+
+### TASK 07 — Deviation report — **OK-ish**
+- ✅ Full deviation report PDF with Clause / Title / Default / Entered / Change Type / Risk columns, summary line, `/agreements/{id}/deviation-report` + `/regenerate`, stored in `deviation_reports` with `report_data_json`.
+- 🟡 `rows.sort(key=lambda r: (r["clause_number"], r["clause_title"]))` — clause numbers are strings like "3.4.1", sort is lexicographic ("10" < "2").
+- 🟡 `change_type` compares raw strings — numeric default `"10% of F08"` vs numeric entered `"5000"` will always read as "Modified".
+- 🟡 "Risk" column is always `"Pending AI"` — no wiring to `ai_service.detect_risks` output.
+
+### TASK 08 — Approval workflow — **OK**
+- ✅ On submit: 4 `workflow_steps` created (PD/Acc/OM/GM), all `pending`. `approve_step` activates next via role check, `return_step` requires comment, resubmit reactivates the returned step. Email notifications to next reviewer on approve, to Admin on return. GM approval sets `gm_approval_date`.
+- 🟡 GM approval leaves `current_status = under_internal_review` — spec says Admin then sends; no explicit transition to a post-GM status.
+- 🟡 `resubmit_agreement` wipes `acted_by/acted_at` on the returned step — loses audit trail of the prior return.
+- 🟡 `get_pending_for_role` works because previous-step-approved check guards it, but **4 pre-created pending steps visible to no-one** is a bit weird; serial gating is implicit.
+- 🟡 `CommentThread` component exists but isn't wired into `WorkflowReview.tsx` (which renders its own simpler list).
+
+### TASK 09 — Collaborative comments — **OK**
+- ✅ GET all comments with edit-history, PUT /comments/{id} edits with history entry, PATCH status, Admin-only `resolved`, email to original author on edit.
+- 🟡 `PUT /comments/{id}` has no role restriction beyond `get_current_user` — any authenticated user can edit any comment. Matches spec literally but worth noting.
+- 🟡 No validation of `clause_reference` against `master_fields`.
+
+### TASK 10 — AI integration — **2 real bugs**
+- ✅ 5 functions matching spec (`compare_clauses`, `detect_risks`, `generate_summary(role)`, `suggest_responses`, `validate_revision`), Redis cache key `sams:ai:{agreement_id}:{review_type}[:{suffix}]` with 24h TTL, results persisted to `ai_reviews`, GPT-4o model, confirm-button UI.
+- 🔴 `ai_service.validate_revision` queries `CommentsResolutionSheet.agreement_id == sheet_id` — the parameter is named `sheet_id` but matched on `agreement_id`. Either rename or fix the query; currently the only way it works is if callers pass an agreement_id.
+- 🔴 `suggest_responses` accepts `sheet_id` but OR-matches on both `agreement_id` and `row.id`. The one caller (`resolution_service.create_resolution_sheet`) always passes `agreement.id`, so "sheet_id" is a misnomer. Contract should be cleaned up.
+- 🟡 `_chat_json` doesn't request OpenAI `response_format={"type":"json_object"}`; relies on prompt wording + a fallback regex extractor.
+- 🟡 No try/except for OpenAI client errors (rate limits, timeouts). Module-level `openai_client = AsyncOpenAI(...)` creation will raise at import if `OPENAI_API_KEY` is missing or malformed.
+- 🟡 `AIReviewPanel` is not wired into any page (`WorkflowReview` has a placeholder div).
+
+### TASK 11 — Resolution cycle — **2 real bugs + workflow gap**
+- ✅ `record_subcontractor_response` handles signed vs comments, sheet CRUD, AI prefill, submit-for-approval creates 2 steps (OM→GM), frontend `CommentsResolution.tsx` page.
+- 🔴 `resolution_service.create_resolution_sheet` exception handler does `await db.rollback()` **after** `await db.commit()`, then re-adds the already-persisted rows — the rollback is a no-op relative to the prior commit, and the re-adds are incoherent.
+- 🔴 After OM+GM approve the resolution, there's **no code path** to transition the agreement to `under_subcontractor_signature` and re-send. The flow dead-ends at resolution approval.
+- 🟡 `signed_scan_path` is accepted in the payload but never stored (no field on `agreement`, no upload endpoint).
+- 🟡 Resolution steps share `workflow_steps` with the main chain — no `workflow_kind` column, so pending lists for OM/GM mix both.
+- 🟡 Comment wiring `"Remove stale returned/pending resolution steps if any, keep history otherwise"` lies — the code only short-circuits when steps exist; nothing is removed.
+
+### TASK 12 — Archive — **OK, UX issue**
+- ✅ Project-wise + subcontractor-wise lists with filters, detail endpoint, download final/executed PDF, Excel export via openpyxl, 8 status labels, SQLAlchemy event listener on `status_updated_on`.
+- 🔴 Same tz-naive `datetime.now()` bug in the `status_updated_on` event listener (re-flagged from Task 02).
+- 🟡 `Archive.tsx` requires the user to **paste UUIDs** for project/subcontractor IDs — unusable without a picker.
+- 🟡 `download` endpoint only returns `final|executed` PDFs — returns 404 even when a draft PDF exists.
+
+### TASK 13 — Dashboard + user UI + audit viewer — **OK, small bugs**
+- ✅ Dashboard summary cards, filtered agreements table, paginated audit log, active master-versions panel, user management page wired to Task 03 APIs.
+- 🔴 `reports.py:35` uses deprecated `datetime.utcnow()` (Python 3.12+ warnings).
+- 🟡 `under_review` card counts only `under_internal_review`; ignores `under_bgcc_revision` + `under_gm_signature`.
+- 🟡 Status filter dropdown in `Dashboard.tsx` lists only 4 of 8 statuses.
+- 🟡 No `page_size` cap on audit-log endpoint.
+- 🟡 `Reports.tsx` is empty (Dashboard effectively is Reports).
+
+### TASK 14 — Security / monitoring / launch — **critical middleware bug**
+- ✅ `security.py`: slowapi limiter (100/min default), bleach sanitizer, global exception handler logs to file. `nginx/sams.conf`: HTTPS redirect + security headers + `/api/` reverse proxy. `backup.sh`: pg_dump | gzip → `/backups`, 30-day retention, suggested cron. `supervisord.conf`: autorestart + rotated logs.
+- 🔴 **`SanitizationMiddleware` strips ALL HTML tags from ALL JSON payloads globally.** This **destroys** TipTap-generated rich text in `content_html` (Task 04), and any comment/response text containing `<em>`, `<strong>`, `<ul>`, etc. Needs per-route or per-field opt-out.
+- 🔴 Two sanitization paths coexist and fight each other: the middleware (above) **and** the `SanitizedModel` base used by `routers/auth.py` request models. Should be one clean Pydantic validator, not a mutating middleware.
+- 🟡 Server-side items never executed from the workspace (as expected): certbot HTTPS, cron installs, real user seed, real client template seed, `ab` load test.
+- 🟡 No Sentry / external monitoring integration.
+
+---
+
+### Implementation priority (my proposed order)
+
+Bucket 1 — **unblock the app** (nothing else matters until these are green):
+1. Fix `SanitizationMiddleware` so it doesn't shred HTML (Task 14 🔴).
+2. Add auth layer on the frontend — axios interceptor + token store + login page + protected routes + `GET /api/auth/me` (cross-cutting 🔴 + Task 03 🟡).
+3. Move refresh-token revocation to Redis (Task 03 🔴).
+4. Fix tz-naive `datetime.now()` in `agreement.py` event listener (Task 02/12 🔴).
+5. Fix route order in `routers/masters.py` so reorder works (Task 04 🔴).
+
+Bucket 2 — **data-correctness bugs**:
+6. Fix C03 "10% of F08" logic + preserve manual A01/A02/A07/C03 overrides (Task 05 🔴 ×2).
+7. Disambiguate AI service `sheet_id` vs `agreement_id` contract + fix `validate_revision` query (Task 10 🔴 ×2).
+8. Fix resolution-sheet rollback/commit ordering + re-send-to-subcontractor path (Task 11 🔴 ×2).
+
+Bucket 3 — **empty files & routing**:
+9. Fill or delete the 4 empty frontend files + empty `audit_service.py`. Wire `react-router-dom` properly; remove `?view=` hack.
+10. Rewrite `pdf_service._render_master_with_values` as a generic `master_fields`-driven engine (Task 06 🔴).
+11. Wire the Appendix Builder UI (show/hide toggle + extra note) into Step 4 of the wizard (Task 05 🟡).
+
+Bucket 4 — **polish & hardening**:
+12. `.gitignore`, convert `requirements.txt` to UTF-8, add `.env.example`, replace `datetime.utcnow()`, cap audit page_size, fix status filter dropdowns, etc.
+13. Tests (auth flow, agreement lifecycle, workflow return/resubmit, resolution cycle, archive export).
+14. Server-side runbook for Task 14 launch steps (certbot, crons, seeds, `ab`).
 
 ---
 
@@ -195,3 +305,4 @@ git checkout -b feat/<slug> staging       # new feature branch off staging
 > Append one bullet per session after meaningful work. Keep terse.
 
 - **2026-04-24** — Initial project survey completed: read PDF v3 (28 pages, all 14 tasks), handover report, all `ahmed` code (≈5,200 LoC), confirmed spec vs. code drift. Saved memories (`MEMORY.md` index + 6 files). Created `staging` branch off `ahmed` and pushed to `origin`. Added this `CLAUDE.md`. GitHub access: pushes authenticated as `SeifMostafaa` (WRITE confirmed) via `gh`-backed HTTPS credential helper. No features built or bugs fixed yet.
+- **2026-04-24** — Full Task 01–14 static audit. Read every backend service/router/model/migration/template and every frontend page/component. Replaced the placeholder "known gaps" section with a task-by-task gap register (severity-marked) + implementation priority buckets (section 6). Key corrections vs. the handover report: seed script actually covers all **44 fields**, not 27. Key new findings: (1) `SanitizationMiddleware` globally strips HTML from all JSON payloads — will destroy TipTap rich-text; (2) frontend has no auth layer / no login page; (3) refresh-token revocation is in-process set, lost on restart; (4) route order in `masters.py` makes `PUT /fields/reorder` permanently 422; (5) `ai_service.validate_revision` queries by agreement_id but names parameter `sheet_id`; (6) resolution cycle dead-ends after OM/GM approve — no path back to subcontractor-signature. Next session: start Bucket 1 (unblock the app).
