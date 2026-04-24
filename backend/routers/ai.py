@@ -54,14 +54,14 @@ async def get_summary(
     return {"status": "success", "data": result.data, "cached": result.cached}
 
 
-@router.post("/resolution/{sheet_id}/suggest")
+@router.post("/resolution/{agreement_id}/suggest")
 async def suggest_resolution_responses(
-    sheet_id: uuid.UUID,
+    agreement_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
     _: User = Depends(get_current_user),
 ) -> dict:
     try:
-        result = await suggest_responses(db, str(sheet_id))
+        result = await suggest_responses(db, str(agreement_id))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "success", "data": result.data, "cached": result.cached}
@@ -70,7 +70,6 @@ async def suggest_resolution_responses(
 @router.post("/{agreement_id}/validate-revision")
 async def validate_agreement_revision(
     agreement_id: uuid.UUID,
-    sheet_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
     _: User = Depends(get_current_user),
 ) -> dict:
@@ -78,7 +77,7 @@ async def validate_agreement_revision(
     if not agreement:
         raise HTTPException(status_code=404, detail="Agreement not found")
     try:
-        result = await validate_revision(db, str(agreement_id), str(sheet_id))
+        result = await validate_revision(db, str(agreement_id))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "success", "data": result.data, "cached": result.cached}

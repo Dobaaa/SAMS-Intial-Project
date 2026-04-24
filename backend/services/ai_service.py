@@ -187,21 +187,26 @@ async def generate_summary(db: AsyncSession, agreement_id: str, role: str) -> AI
     return AIResult(data=data, cached=False)
 
 
-async def suggest_responses(db: AsyncSession, sheet_id: str) -> AIResult:
-    sheet_rows = await db.execute(
-        select(CommentsResolutionSheet).where(
-            (CommentsResolutionSheet.agreement_id == sheet_id) | (CommentsResolutionSheet.id == sheet_id)
-        )
-    )
-    rows = sheet_rows.scalars().all()
-    if not rows:
-        raise ValueError("No resolution sheet rows found for this agreement")
+async def suggest_responses(db: AsyncSession, agreement_id: str) -> AIResult:
+    """Draft AI responses for every subcontractor comment on an agreement.
 
-    agreement_id = str(rows[0].agreement_id)
-    key = _cache_key(agreement_id, "response_suggestion", sheet_id)
+    The spec refers to a "resolution sheet" but the data model stores each
+    comment as its own CommentsResolutionSheet row, so the natural key here
+    is the agreement's id -- we fetch all rows for it.
+    """
+    key = _cache_key(agreement_id, "response_suggestion")
     cached = await _get_cache(key)
     if cached is not None:
         return AIResult(data=cached, cached=True)
+
+    rows_res = await db.execute(
+        select(CommentsResolutionSheet).where(
+            CommentsResolutionSheet.agreement_id == agreement_id
+        )
+    )
+    rows = rows_res.scalars().all()
+    if not rows:
+        raise ValueError("No resolution sheet rows found for this agreement")
 
     payload = [
         {
@@ -222,14 +227,17 @@ async def suggest_responses(db: AsyncSession, sheet_id: str) -> AIResult:
     return AIResult(data=data, cached=False)
 
 
-async def validate_revision(db: AsyncSession, agreement_id: str, sheet_id: str) -> AIResult:
-    key = _cache_key(agreement_id, "validation", sheet_id)
+async def validate_revision(db: AsyncSession, agreement_id: str) -> AIResult:
+    """Check whether the Admin's revisions address every subcontractor comment."""
+    key = _cache_key(agreement_id, "validation")
     cached = await _get_cache(key)
     if cached is not None:
         return AIResult(data=cached, cached=True)
 
     rows_res = await db.execute(
-        select(CommentsResolutionSheet).where(CommentsResolutionSheet.agreement_id == sheet_id)
+        select(CommentsResolutionSheet).where(
+            CommentsResolutionSheet.agreement_id == agreement_id
+        )
     )
     rows = rows_res.scalars().all()
     if not rows:
