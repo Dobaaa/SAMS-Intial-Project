@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +11,6 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.extension import _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
-from starlette.middleware.base import BaseHTTPMiddleware
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
@@ -38,37 +36,23 @@ def _sanitize_value(value: Any) -> Any:
 
 
 class SanitizedModel(BaseModel):
+    """Opt-in base for request bodies that must never contain HTML.
+
+    Use for credentials, identifiers, and plain-text fields. Do NOT use for
+    payloads that legitimately carry rich HTML (master template content_html,
+    workflow/resolution comments produced by the TipTap editor, etc.) -- those
+    rely on Jinja2 autoescape at render time for XSS safety.
+    """
+
     @model_validator(mode="before")
     @classmethod
     def sanitize_all_text_fields(cls, value: Any) -> Any:
         return _sanitize_value(value)
 
 
-class SanitizationMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
-        if request.url.path.startswith("/api/"):
-            content_type = request.headers.get("content-type", "")
-            if "application/json" in content_type:
-                body = await request.body()
-                if body:
-                    try:
-                        payload = json.loads(body.decode("utf-8"))
-                        sanitized = _sanitize_value(payload)
-                        new_body = json.dumps(sanitized).encode("utf-8")
-
-                        async def receive() -> dict[str, Any]:
-                            return {"type": "http.request", "body": new_body, "more_body": False}
-
-                        request._receive = receive  # type: ignore[attr-defined]
-                    except json.JSONDecodeError:
-                        pass
-        return await call_next(request)
-
-
 def setup_security(app: FastAPI) -> None:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    app.add_middleware(SanitizationMiddleware)
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
