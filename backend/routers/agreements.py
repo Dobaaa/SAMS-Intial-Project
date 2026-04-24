@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db_session
-from middleware.rbac import require_role
-from models.agreement import Agreement, AgreementStatusEnum
+from middleware.rbac import get_current_user, require_role
+from models.agreement import Agreement, AgreementFieldValue, AgreementStatusEnum, AppendixConfig
+from models.master import MasterField
 from models.user import RoleEnum, User
 from services.agreement_service import create_draft_agreement, submit_for_review, update_agreement_fields
 from services.resolution_service import create_resolution_sheet, record_subcontractor_response
@@ -58,6 +59,12 @@ class ResolutionItemCreate(BaseModel):
 
 class ResolutionSheetCreatePayload(BaseModel):
     items: list[ResolutionItemCreate]
+
+
+class AppendixRowUpdate(BaseModel):
+    show_in_appendix: bool | None = None
+    admin_extra_note: str | None = None
+    sort_order: int | None = None
 
 
 @router.post("/", dependencies=[Depends(require_role(RoleEnum.admin))])
@@ -147,6 +154,92 @@ async def record_response(
         "agreement_status": agreement.current_status.value,
         "is_executed": agreement.is_executed,
     }
+
+
+@router.get("/{agreement_id}/appendix")
+async def get_appendix(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
+) -> list[dict]:
+    """Return the appendix rows for an agreement.
+
+    Joins `appendix_config` with `master_fields` (for the row label + clause
+    ref + auto-source metadata) and `agreement_field_values` (for the
+    current value). Sorted by the admin-set sort_order.
+    """
+    # Agreement must exist to scope the query.
+    agreement_res = await db.execute(select(Agreement).where(Agreement.id == agreement_id))
+    if not agreement_res.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+
+    config_res = await db.execute(
+        select(AppendixConfig)
+        .where(AppendixConfig.agreement_id == agreement_id)
+        .order_by(AppendixConfig.sort_order.asc())
+    )
+    configs = config_res.scalars().all()
+
+    master_res = await db.execute(select(MasterField))
+    master_map = {mf.field_id: mf for mf in master_res.scalars().all()}
+
+    value_res = await db.execute(
+        select(AgreementFieldValue).where(AgreementFieldValue.agreement_id == agreement_id)
+    )
+    value_map = {v.field_id: v for v in value_res.scalars().all()}
+
+    rows: list[dict] = []
+    for cfg in configs:
+        mf = master_map.get(cfg.field_id)
+        if not mf:
+            continue
+        value = value_map.get(cfg.field_id)
+        rows.append(
+            {
+                "field_id": cfg.field_id,
+                "row_label": mf.appendix_row_label or mf.field_label,
+                "clause_ref": mf.appendix_clause_ref or mf.clause_number,
+                "current_value": value.entered_value if value else None,
+                "is_modified_from_default": value.is_modified_from_default if value else False,
+                "auto_source_field_id": mf.auto_source_field_id,
+                "show_in_appendix": cfg.show_in_appendix,
+                "admin_extra_note": cfg.admin_extra_note,
+                "sort_order": cfg.sort_order,
+            }
+        )
+    return rows
+
+
+@router.put(
+    "/{agreement_id}/appendix/{field_id}",
+    dependencies=[Depends(require_role(RoleEnum.admin))],
+)
+async def update_appendix_row(
+    agreement_id: uuid.UUID,
+    field_id: str,
+    payload: AppendixRowUpdate,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(require_role(RoleEnum.admin)),
+) -> dict:
+    res = await db.execute(
+        select(AppendixConfig).where(
+            AppendixConfig.agreement_id == agreement_id,
+            AppendixConfig.field_id == field_id,
+        )
+    )
+    row = res.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appendix row not found")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        return {"status": "noop"}
+    for key, value in changes.items():
+        setattr(row, key, value)
+    row.last_modified_by = current_user.id
+    row.last_modified_at = datetime.now(UTC)
+    await db.commit()
+    return {"status": "success"}
 
 
 @router.post("/{agreement_id}/send-to-subcontractor", dependencies=[Depends(require_role(RoleEnum.admin))])

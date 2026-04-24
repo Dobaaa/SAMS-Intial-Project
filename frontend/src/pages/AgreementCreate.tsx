@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import AppendixBuilder from "../components/AppendixBuilder";
 import FieldInput from "../components/FieldInput";
 import { api } from "../lib/api";
 type MasterField = {
@@ -195,15 +196,42 @@ export default function AgreementCreate() {
       )}
 
       {step === 4 && (
-        <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold">Step 4: Appendix Builder</h2>
-          {appendixFields.map((field) => (
-            <div key={field.id} className="rounded-lg border border-sky-100 p-2">
-              <div className="font-medium">{field.field_id} - {field.field_label}</div>
-              <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
+        <div className="space-y-4 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
+          <div>
+            <h2 className="font-semibold">Step 4: Appendix Builder</h2>
+            <p className="text-sm text-sky-700">
+              Override any auto-populated A-field value below, then toggle visibility, add notes,
+              and reorder rows in the Appendix layout.
+            </p>
+          </div>
+
+          <details className="rounded-lg border border-sky-100">
+            <summary className="cursor-pointer bg-sky-50 p-2 text-sm font-medium text-sky-900">
+              A-field value overrides ({appendixFields.length})
+            </summary>
+            <div className="space-y-2 p-2">
+              {appendixFields.map((field) => (
+                <div key={field.id} className="rounded-lg border border-sky-100 p-2">
+                  <div className="font-medium text-sm">
+                    {field.field_id} - {field.field_label}
+                  </div>
+                  <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
+                </div>
+              ))}
             </div>
-          ))}
-          <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { await saveFields(); setStep(5); }}>
+          </details>
+
+          {agreementId && (
+            <AppendixBuilder agreementId={agreementId} refreshKey={JSON.stringify(values)} />
+          )}
+
+          <button
+            className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700"
+            onClick={async () => {
+              await saveFields();
+              setStep(5);
+            }}
+          >
             Next
           </button>
         </div>
