@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from html import escape as html_escape
 from pathlib import Path
 from typing import Any
 
@@ -25,60 +26,61 @@ jinja_env = Environment(
 )
 
 
-def _render_master_with_values(content_html: str, values: dict[str, str]) -> str:
-    explicit_replacements = {
-        "[Insert Name]": values.get("F02", ""),
-        "[Insert PO]": values.get("F03", ""),
-        "[TL Nr.]": values.get("F04", ""),
-        "[Insert Employer Name]": values.get("F05", ""),
-        "[Insert Project Name / Details]": values.get("F06", ""),
-        "[Insert Project Location]": values.get("F07", ""),
-        "[Insert Amount]": values.get("F08", ""),
-        "(……Insert…..) Scope to be detailed here": values.get("C01", ""),
-        "(……Insert…..) To Insert the Quantities Type": values.get("C02", ""),
-        "(……Insert…..) UAE Dirhams": values.get("C03", ""),
-        "within (……Insert…..)": f"within {values.get('C04', '')}",
-    }
+# Legacy phrasings from the first batch of client master templates, before the
+# {{FIELD_ID}} convention. Keep mapping up-to-date as long as any master
+# template in the DB still uses these strings; delete once migrated.
+LEGACY_TOKEN_MAP: dict[str, str] = {
+    "[Insert Name]": "F02",
+    "[Insert PO]": "F03",
+    "[TL Nr.]": "F04",
+    "[Insert Employer Name]": "F05",
+    "[Insert Project Name / Details]": "F06",
+    "[Insert Project Location]": "F07",
+    "[Insert Amount]": "F08",
+    "(……Insert…..) Scope to be detailed here": "C01",
+    "(……Insert…..) To Insert the Quantities Type": "C02",
+    "(……Insert…..) UAE Dirhams": "C03",
+}
 
-    # Generic token map for common Insert placeholders across templates.
-    generic_insert_map = {
-        "[Insert Name]": "F02",
-        "[Insert PO]": "F03",
-        "[TL Nr.]": "F04",
-        "[Insert Employer Name]": "F05",
-        "[Insert Project Name / Details]": "F06",
-        "[Insert Project Location]": "F07",
-        "[Insert Amount]": "F08",
-    }
 
+def _render_master_with_values(
+    content_html: str,
+    values: dict[str, str],
+    master_fields: dict[str, MasterField],
+) -> str:
+    """Replace placeholders in master-template HTML with entered values.
+
+    Two substitution passes, in order:
+
+    1. **Generic token pass** — for every field in the master_fields
+       catalog, replace ``{{FIELD_ID}}`` (e.g. ``{{F02}}``, ``{{C03}}``,
+       or any future ``{{X42}}`` Admin adds) with the agreement's entered
+       value, HTML-escaped. This is the authoritative, schema-driven
+       mechanism: new admin-added fields render automatically with no
+       code change.
+
+    2. **Legacy phrase bridge** — replaces known hardcoded phrases from
+       the initial client documents (``[Insert Name]`` etc.) with the
+       same HTML-escaped values, driven by ``LEGACY_TOKEN_MAP``. This is
+       a migration aid; once all master templates have been re-authored
+       to use ``{{FIELD_ID}}`` tokens, this block can be removed.
+
+    No sequential "pop the next value" fallback: that corrupted output
+    silently when the legal text reordered. Missing tokens are left
+    visible in the rendered PDF so Admin knows to fix the template.
+    """
     rendered = content_html
-    for src, dst in explicit_replacements.items():
-        rendered = rendered.replace(src, str(dst))
 
-    for token, field_id in generic_insert_map.items():
-        rendered = rendered.replace(token, str(values.get(field_id, "")))
+    for field_id in master_fields:
+        token = f"{{{{{field_id}}}}}"  # literal: {{F02}}
+        if token in rendered:
+            value = values.get(field_id, "") or ""
+            rendered = rendered.replace(token, html_escape(value))
 
-    # Fallback: replace unresolved generic placeholders in sequence from known dynamic fields.
-    generic_tokens = ["(……Insert…..)", "(......Insert.....)"]
-    sequential_values = [
-        values.get("C01", ""),
-        values.get("C02", ""),
-        values.get("C03", ""),
-        values.get("C04", ""),
-        values.get("C05", ""),
-        values.get("C06", ""),
-        values.get("C07", ""),
-        values.get("C08", ""),
-        values.get("C09", ""),
-        values.get("C10", ""),
-        values.get("C11", ""),
-        values.get("C12", ""),
-        values.get("C13", ""),
-    ]
-    for token in generic_tokens:
-        while token in rendered and sequential_values:
-            next_value = sequential_values.pop(0) or ""
-            rendered = rendered.replace(token, str(next_value), 1)
+    for phrase, field_id in LEGACY_TOKEN_MAP.items():
+        if phrase in rendered:
+            value = values.get(field_id, "") or ""
+            rendered = rendered.replace(phrase, html_escape(value))
 
     return rendered
 
@@ -173,10 +175,12 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
 
     cover_html = jinja_env.get_template("cover_page.html").render(**context)
     form_html = jinja_env.get_template("form_of_agreement.html").render(
-        **context, form_content=_render_master_with_values(form_doc.content_html, value_map)
+        **context,
+        form_content=_render_master_with_values(form_doc.content_html, value_map, master_fields),
     )
     conditions_html = jinja_env.get_template("conditions.html").render(
-        **context, conditions_content=_render_master_with_values(conditions_doc.content_html, value_map)
+        **context,
+        conditions_content=_render_master_with_values(conditions_doc.content_html, value_map, master_fields),
     )
     appendix_html = jinja_env.get_template("appendix.html").render(**context)
 
