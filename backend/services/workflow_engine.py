@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from models.agreement import Agreement, AgreementStatusEnum
 from models.user import RoleEnum, User
-from models.workflow import WorkflowComment, WorkflowStep, WorkflowStepStatusEnum
+from models.workflow import CommentStatusEnum, WorkflowComment, WorkflowStep, WorkflowStepStatusEnum
 from services.email_service import send_email
 
 
@@ -180,7 +180,12 @@ async def return_step(
 
     agreement = await db.get(Agreement, step.agreement_id)
     if agreement:
-        agreement.current_status = AgreementStatusEnum.under_drafting
+        # Per spec: returns flip the agreement to under_bgcc_revision so
+        # admin sees a distinct state from a brand-new under_drafting and
+        # the dashboard surfaces "Resubmit for Review" + the returned-
+        # comments badge. Resubmit restarts the whole chain from step 1
+        # (PD), so any prior approvals on this agreement are wiped.
+        agreement.current_status = AgreementStatusEnum.under_bgcc_revision
         agreement.status_updated_on = datetime.now(UTC)
 
     admin_result = await db.execute(select(User).where(User.role == RoleEnum.admin, User.is_active.is_(True)))
@@ -203,7 +208,12 @@ async def return_step(
 
 
 async def resubmit_agreement(db: AsyncSession, agreement: Agreement) -> None:
-    res = await db.execute(
+    # Spec: resubmit restarts the WHOLE chain from step 1 (PD for the main
+    # chain, Resolution-OM for the resolution chain) rather than just
+    # reactivating the returned step. Scope to the chain of the returned
+    # step so a main-chain return doesn't wipe resolution progress and
+    # vice versa.
+    returned_res = await db.execute(
         select(WorkflowStep)
         .where(
             and_(
@@ -213,14 +223,41 @@ async def resubmit_agreement(db: AsyncSession, agreement: Agreement) -> None:
         )
         .order_by(WorkflowStep.step_order.asc())
     )
-    step = res.scalars().first()
-    if not step:
+    returned_step = returned_res.scalars().first()
+    if not returned_step:
         return
-    step.status = WorkflowStepStatusEnum.pending
-    step.acted_by = None
-    step.acted_at = None
+
+    in_resolution = _is_resolution_step(returned_step)
+    chain_filter = (
+        WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES)
+        if in_resolution
+        else ~WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES)
+    )
+    chain_res = await db.execute(
+        select(WorkflowStep).where(
+            and_(WorkflowStep.agreement_id == agreement.id, chain_filter)
+        )
+    )
+    for s in chain_res.scalars().all():
+        s.status = WorkflowStepStatusEnum.pending
+        s.acted_by = None
+        s.acted_at = None
+
     agreement.current_status = AgreementStatusEnum.under_internal_review
     agreement.status_updated_on = datetime.now(UTC)
+
+    # Resubmit implies admin has addressed the returned comments. Mark every
+    # open WorkflowComment on this agreement as resolved so the dashboard
+    # badge clears and the next reviewer sees them as historically addressed.
+    open_comments = await db.execute(
+        select(WorkflowComment).where(
+            WorkflowComment.agreement_id == agreement.id,
+            WorkflowComment.status != CommentStatusEnum.resolved,
+        )
+    )
+    for c in open_comments.scalars().all():
+        c.status = CommentStatusEnum.resolved
+
     await db.commit()
 
 

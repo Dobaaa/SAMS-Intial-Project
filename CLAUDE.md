@@ -89,7 +89,7 @@ SAMS_Implementation_Handover_Report.md   what Tasks 01–14 delivered + known ga
 1. **Admin fills `[Insert]` fields only** — legal boilerplate is never retyped. Field catalog is the F/C/A IDs only.
 2. **Every master template change = new version.** Old agreements keep a FK to the exact version they were built from.
 3. **Appendix is a diff document.** Auto-populates from F/C. Admin can show/hide rows per agreement and add extra notes.
-4. **All returns go back to Admin**, not the previous reviewer. On resubmit the **same step** reactivates, not the whole chain.
+4. **All returns go back to Admin**, not the previous reviewer. On resubmit the **whole chain restarts from step 1 (PD)** — any prior approvals on this agreement are wiped and every reviewer must re-approve.
 5. **All reviewers can see and edit all comments.** Every edit writes a row in `comment_edit_history`. Only Admin can mark a comment `resolved`.
 6. **No auto-approvals.** Every AI output is a suggestion that a human must confirm before action.
 7. **Reference number is BGCC-controlled**, format suggestion `SAG-[PROJECT_CODE]-[YEAR]-[SEQ]`, editable until GM approval.
@@ -171,9 +171,9 @@ Legend: 🔴 blocker (functionally broken or spec-violating) · 🟡 should-fix 
 - 🟡 "Risk" column is always `"Pending AI"` — no wiring to `ai_service.detect_risks` output.
 
 ### TASK 08 — Approval workflow — **OK**
-- ✅ On submit: 4 `workflow_steps` created (PD/Acc/OM/GM), all `pending`. `approve_step` activates next via role check, `return_step` requires comment, resubmit reactivates the returned step. Email notifications to next reviewer on approve, to Admin on return. GM approval sets `gm_approval_date`.
+- ✅ On submit: 4 `workflow_steps` created (PD/Acc/OM/GM), all `pending`. `approve_step` activates next via role check, `return_step` requires comment, resubmit restarts the **whole chain** from PD (wipes prior approvals). Email notifications to next reviewer on approve, to Admin on return. GM approval sets `gm_approval_date`.
 - 🟡 GM approval leaves `current_status = under_internal_review` — spec says Admin then sends; no explicit transition to a post-GM status.
-- 🟡 `resubmit_agreement` wipes `acted_by/acted_at` on the returned step — loses audit trail of the prior return.
+- 🟡 `resubmit_agreement` wipes `acted_by/acted_at` on **every step in the chain** — full audit of who approved or returned what during the prior pass is lost on the steps themselves; only the `WorkflowComment` rows preserve return history.
 - 🟡 `get_pending_for_role` works because previous-step-approved check guards it, but **4 pre-created pending steps visible to no-one** is a bit weird; serial gating is implicit.
 - 🟡 `CommentThread` component exists but isn't wired into `WorkflowReview.tsx` (which renders its own simpler list).
 

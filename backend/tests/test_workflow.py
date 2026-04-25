@@ -110,21 +110,31 @@ async def test_return_step_requires_comment_and_resets_status(
 
 
 @pytest.mark.asyncio
-async def test_resubmit_reactivates_the_same_returned_step(
+async def test_resubmit_reactivates_the_whole_chain(
     authed_client, admin_user, seeded_reviewers
 ):
+    """A mid-chain return + resubmit must wipe prior approvals and put every
+    step (including PD/Accounts that had already approved) back to pending."""
     agreement = await _make_submitted_agreement(authed_client)
     detail = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
-    pd_step_id = next(
-        s["id"] for s in detail.json()["steps"] if s["role_required"] == "project_director"
-    )
+    steps_by_role = {s["role_required"]: s for s in detail.json()["steps"]}
 
-    # PD returns it.
+    # PD approves.
     pd_token = await _login(authed_client, "project_director@test.local")
     authed_client.headers["Authorization"] = f"Bearer {pd_token}"
+    await authed_client.post(f"/api/workflow/{steps_by_role['project_director']['id']}/approve")
+
+    # Accounts approves.
+    acc_token = await _login(authed_client, "accounts@test.local")
+    authed_client.headers["Authorization"] = f"Bearer {acc_token}"
+    await authed_client.post(f"/api/workflow/{steps_by_role['accounts']['id']}/approve")
+
+    # OM returns it (mid-chain).
+    om_token = await _login(authed_client, "operation_manager@test.local")
+    authed_client.headers["Authorization"] = f"Bearer {om_token}"
     await authed_client.post(
-        f"/api/workflow/{pd_step_id}/return",
-        json={"comment_text": "fix this"},
+        f"/api/workflow/{steps_by_role['operation_manager']['id']}/return",
+        json={"comment_text": "rework needed"},
     )
 
     # Admin resubmits.
@@ -133,15 +143,13 @@ async def test_resubmit_reactivates_the_same_returned_step(
     resp = await authed_client.post(f"/api/agreements/{agreement['id']}/resubmit")
     assert resp.status_code == 200
 
+    # Every main-chain step must be pending again with cleared actor stamps,
+    # i.e. PD + Accounts approvals are wiped and the chain restarts at PD.
     detail2 = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
-    pd_again = next(
-        s for s in detail2.json()["steps"] if s["role_required"] == "project_director"
-    )
-    assert pd_again["status"] == "pending"
-    # Downstream steps were never touched -- still pending.
     for s in detail2.json()["steps"]:
-        if s["step_order"] > 1:
-            assert s["status"] == "pending"
+        assert s["status"] == "pending", f"{s['step_name']} should be pending"
+        assert s["acted_by"] is None, f"{s['step_name']} acted_by should be cleared"
+        assert s["acted_at"] is None, f"{s['step_name']} acted_at should be cleared"
 
 
 @pytest.mark.asyncio
