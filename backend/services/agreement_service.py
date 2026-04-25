@@ -152,6 +152,25 @@ async def update_agreement_fields(db: AsyncSession, agreement: Agreement, user: 
     for fid, val in values.items():
         effective[fid] = val or ""
 
+    # Legacy dead defaults: the seed wrote literal placeholder strings into
+    # entered_value at draft creation (C03 = "10% of F08", A10 = "10",
+    # A21 = "10") that block the proper cascade because effective.get(target)
+    # returns truthy. Treat them as unset for cascade purposes and force the
+    # write step to overwrite them.
+    DEAD_DEFAULTS: dict[str, set[str]] = {
+        "C03": {"10% of F08"},
+        "A09": {"10% of F08"},  # propagated from C03 in legacy drafts
+        "A10": {"10"},
+        "A21": {"10"},
+    }
+    force_overwrite: set[str] = set()
+    for fid, dead_vals in DEAD_DEFAULTS.items():
+        if fid in values:
+            continue
+        if effective.get(fid) in dead_vals:
+            effective[fid] = ""
+            force_overwrite.add(fid)
+
     # Special compute: F08 -> C03 = 10% of subcontract price (Advance Payment),
     # and F08 -> A10 = 10% of subcontract price (Performance Security AED).
     # Both fire only when caller did not send the target explicitly AND the
@@ -199,6 +218,20 @@ async def update_agreement_fields(db: AsyncSession, agreement: Agreement, user: 
         row.entered_value = entered
         row.is_modified_from_default = (entered or "") != (default_value or "")
         row.entered_by = user.id
+
+    # Force-overwrite for legacy dead defaults that weren't part of values{}
+    # (their effective[fid] was set above but they were skipped by the loop
+    # because we only iterate values{}). Persist the cascaded value here.
+    for fid in force_overwrite:
+        if fid in values:
+            continue  # already handled
+        new_val = effective.get(fid, "")
+        row = current_map.get(fid)
+        if row is not None:
+            row.entered_value = new_val
+            row.entered_by = user.id
+            mf = master_map.get(fid)
+            row.is_modified_from_default = (new_val or "") != ((mf.default_value if mf else None) or "")
 
     agreement.updated_at = datetime.now(UTC)
     await db.commit()
