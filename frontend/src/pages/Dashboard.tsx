@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { useToast } from "../components/Toast";
 import { api } from "../lib/api";
 import { downloadPdf, viewPdf } from "../lib/pdf";
 
@@ -19,6 +20,8 @@ type AgreementRow = {
   status: string;
   status_label: string;
   status_updated_on?: string | null;
+  gm_approval_date?: string | null;
+  open_returned_comments?: number;
 };
 
 type AuditItem = {
@@ -38,6 +41,7 @@ type MasterVersion = {
 };
 
 export default function Dashboard() {
+  const toast = useToast();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [agreements, setAgreements] = useState<AgreementRow[]>([]);
   const [audit, setAudit] = useState<AuditItem[]>([]);
@@ -93,6 +97,55 @@ export default function Dashboard() {
   const flash = (message: string) => {
     setActionMessage(message);
     setTimeout(() => setActionMessage(null), 4000);
+  };
+
+  const resubmitForReview = async (agreement: AgreementRow) => {
+    setBusyId(agreement.id);
+    try {
+      await api.post(`/agreements/${agreement.id}/resubmit`);
+      toast.success(`Resubmitted ${agreement.reference_number} for internal review.`);
+      await loadAll();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? `Failed to resubmit ${agreement.reference_number}.`);
+      console.error(err);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const sendToSubcontractor = async (agreement: AgreementRow) => {
+    setBusyId(agreement.id);
+    try {
+      await api.post(`/agreements/${agreement.id}/send-to-subcontractor`);
+      toast.success(`Sent ${agreement.reference_number} to the subcontractor.`);
+      await loadAll();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? `Failed to send ${agreement.reference_number} to the subcontractor.`);
+      console.error(err);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const recordSubcontractorResponse = async (
+    agreement: AgreementRow,
+    response_type: "signed" | "comments"
+  ) => {
+    setBusyId(agreement.id);
+    try {
+      await api.patch(`/agreements/${agreement.id}/subcontractor-response`, { response_type });
+      const verb = response_type === "signed" ? "signed" : "returned with comments";
+      toast.success(`Recorded ${agreement.reference_number} as ${verb}.`);
+      await loadAll();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? `Failed to record response for ${agreement.reference_number}.`);
+      console.error(err);
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const generatePdf = async (agreement: AgreementRow) => {
@@ -200,14 +253,27 @@ export default function Dashboard() {
           <tbody>
             {agreements.map((a) => (
               <tr key={a.id}>
-                <td className="border border-sky-100 p-2">{a.reference_number}</td>
+                <td className="border border-sky-100 p-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{a.reference_number}</span>
+                    {(a.open_returned_comments ?? 0) > 0 && (
+                      <Link
+                        to="/resolution"
+                        className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 hover:bg-amber-200"
+                        title="Returned with comments — open Resolution"
+                      >
+                        {a.open_returned_comments} comment{a.open_returned_comments === 1 ? "" : "s"}
+                      </Link>
+                    )}
+                  </div>
+                </td>
                 <td className="border border-sky-100 p-2">{a.project_name}</td>
                 <td className="border border-sky-100 p-2">{a.subcontractor_name}</td>
                 <td className="border border-sky-100 p-2">{a.status_label}</td>
                 <td className="border border-sky-100 p-2">{a.status_updated_on ? new Date(a.status_updated_on).toLocaleString() : "-"}</td>
                 <td className="border border-sky-100 p-2">
                   <div className="flex flex-wrap gap-2">
-                    {a.status === "under_drafting" && (
+                    {(a.status === "under_drafting" || a.status === "under_bgcc_revision") && (
                       <Link
                         to={`/agreements/${a.id}/edit`}
                         className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50"
@@ -215,6 +281,46 @@ export default function Dashboard() {
                       >
                         Edit
                       </Link>
+                    )}
+                    {a.status === "under_bgcc_revision" && !a.gm_approval_date && (
+                      <button
+                        className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+                        disabled={busyId === a.id}
+                        onClick={() => void resubmitForReview(a)}
+                        title="Resubmit the revised draft for internal review (GM has not yet approved)"
+                      >
+                        Resubmit for Review
+                      </button>
+                    )}
+                    {(a.status === "under_internal_review" || a.status === "under_bgcc_revision") && a.gm_approval_date && (
+                      <button
+                        className="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                        disabled={busyId === a.id}
+                        onClick={() => void sendToSubcontractor(a)}
+                        title="Send the agreement out to the subcontractor"
+                      >
+                        Send to Subcontractor
+                      </button>
+                    )}
+                    {(a.status === "draft_forwarded_to_subcontractor" || a.status === "under_subcontractor_signature") && (
+                      <button
+                        className="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                        disabled={busyId === a.id}
+                        onClick={() => void recordSubcontractorResponse(a, "signed")}
+                        title="Record that the subcontractor signed without comments — locks the agreement"
+                      >
+                        Mark Signed
+                      </button>
+                    )}
+                    {a.status === "draft_forwarded_to_subcontractor" && (
+                      <button
+                        className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                        disabled={busyId === a.id}
+                        onClick={() => void recordSubcontractorResponse(a, "comments")}
+                        title="Record that the subcontractor returned comments — go to Resolution to enter them"
+                      >
+                        Comments Returned
+                      </button>
                     )}
                     <button
                       className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50 disabled:opacity-50"

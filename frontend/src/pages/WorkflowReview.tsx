@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import DeviationReport from "../components/DeviationReport";
+import { useToast } from "../components/Toast";
 import WorkflowTimeline from "../components/WorkflowTimeline";
 import { api } from "../lib/api";
 
@@ -46,11 +47,13 @@ type WorkflowAgreementDetails = {
 };
 
 export default function WorkflowReview() {
+  const toast = useToast();
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [selectedStepId, setSelectedStepId] = useState<string>("");
   const [details, setDetails] = useState<WorkflowAgreementDetails | null>(null);
   const [commentText, setCommentText] = useState("");
   const [clauseReference, setClauseReference] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const loadPending = async () => {
     const { data } = await api.get("/workflow/pending");
@@ -73,20 +76,50 @@ export default function WorkflowReview() {
   };
 
   const approve = async () => {
-    if (!selectedStepId) return;
-    await api.post(`/workflow/${selectedStepId}/approve`);
-    await loadPending();
+    if (!selectedStepId || busy) return;
+    setBusy(true);
+    try {
+      const ref = details?.agreement.reference_number ?? "";
+      await api.post(`/workflow/${selectedStepId}/approve`);
+      toast.success(`Approved ${ref}.`);
+      setSelectedStepId("");
+      setDetails(null);
+      await loadPending();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "Failed to approve. See console for details.");
+      console.error(err);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const returnForFix = async () => {
-    if (!selectedStepId) return;
-    await api.post(`/workflow/${selectedStepId}/return`, {
-      comment_text: commentText,
-      clause_reference: clauseReference || undefined,
-    });
-    setCommentText("");
-    setClauseReference("");
-    await loadPending();
+    if (!selectedStepId || busy) return;
+    if (!commentText.trim()) {
+      toast.error("A comment is required to return the agreement.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const ref = details?.agreement.reference_number ?? "";
+      await api.post(`/workflow/${selectedStepId}/return`, {
+        comment_text: commentText,
+        clause_reference: clauseReference || undefined,
+      });
+      toast.success(`Returned ${ref} to admin with comment.`);
+      setCommentText("");
+      setClauseReference("");
+      setSelectedStepId("");
+      setDetails(null);
+      await loadPending();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "Failed to return. See console for details.");
+      console.error(err);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -158,11 +191,19 @@ export default function WorkflowReview() {
                   onChange={(e) => setClauseReference(e.target.value)}
                 />
                 <div className="flex gap-2">
-                  <button className="rounded bg-green-700 px-3 py-2 text-white" onClick={approve}>
-                    Approve
+                  <button
+                    className="rounded bg-green-700 px-3 py-2 text-white disabled:opacity-50"
+                    disabled={busy}
+                    onClick={approve}
+                  >
+                    {busy ? "Working…" : "Approve"}
                   </button>
-                  <button className="rounded bg-amber-700 px-3 py-2 text-white" onClick={returnForFix}>
-                    Return with Comment
+                  <button
+                    className="rounded bg-amber-700 px-3 py-2 text-white disabled:opacity-50"
+                    disabled={busy}
+                    onClick={returnForFix}
+                  >
+                    {busy ? "Working…" : "Return with Comment"}
                   </button>
                 </div>
               </div>
