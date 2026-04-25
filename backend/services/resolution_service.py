@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, date, datetime
 
@@ -11,6 +12,8 @@ from models.resolution import CommentsResolutionSheet
 from models.user import RoleEnum, User
 from models.workflow import WorkflowStep, WorkflowStepStatusEnum
 from services.ai_service import suggest_responses
+
+logger = logging.getLogger(__name__)
 
 
 async def record_subcontractor_response(
@@ -29,6 +32,22 @@ async def record_subcontractor_response(
     else:
         raise ValueError("response_type must be 'signed' or 'comments'")
     await db.commit()
+
+    # When the agreement transitions to completed, auto-regenerate the PDF
+    # so the watermark (now blank for completed) and any final values reflect
+    # the executed state without admin needing to click Generate PDF again.
+    # Local import + best-effort: regen failure must not undo the response.
+    if response_type == "signed":
+        try:
+            from services.pdf_service import generate_agreement_pdf  # local import to avoid circular
+
+            await generate_agreement_pdf(db, str(agreement.id), generated_by=None)
+        except Exception as exc:  # noqa: BLE001 — regeneration is best-effort
+            logger.warning(
+                "Failed to auto-regenerate PDF after marking %s as signed: %s",
+                agreement.reference_number,
+                exc,
+            )
 
 
 async def create_resolution_sheet(
