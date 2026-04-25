@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { api } from "../lib/api";
 import { downloadPdf, viewPdf } from "../lib/pdf";
@@ -206,6 +207,15 @@ export default function Dashboard() {
                 <td className="border border-sky-100 p-2">{a.status_updated_on ? new Date(a.status_updated_on).toLocaleString() : "-"}</td>
                 <td className="border border-sky-100 p-2">
                   <div className="flex flex-wrap gap-2">
+                    {a.status === "under_drafting" && (
+                      <Link
+                        to={`/agreements/${a.id}/edit`}
+                        className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50"
+                        title="Resume editing this draft"
+                      >
+                        Edit
+                      </Link>
+                    )}
                     <button
                       className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50 disabled:opacity-50"
                       disabled={busyId === a.id}
