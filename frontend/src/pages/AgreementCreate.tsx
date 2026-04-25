@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import AppendixBuilder from "../components/AppendixBuilder";
 import FieldInput from "../components/FieldInput";
+import { useToast } from "../components/Toast";
 import { api } from "../lib/api";
 type MasterField = {
   id: string;
@@ -13,6 +15,7 @@ type MasterField = {
   is_required: boolean;
   show_in_appendix: boolean;
   sort_order: number;
+  auto_source_field_id?: string | null;
 };
 
 function tenPercentOf(value: string): string {
@@ -33,6 +36,11 @@ const fallbackFields: MasterField[] = [
 ];
 
 export default function AgreementCreate() {
+  const { id: routeId } = useParams<{ id?: string }>();
+  const isEditMode = Boolean(routeId);
+  const navigate = useNavigate();
+  const toast = useToast();
+
   const [step, setStep] = useState(1);
   const [agreementId, setAgreementId] = useState<string>("");
   const [reference, setReference] = useState("");
@@ -55,36 +63,64 @@ export default function AgreementCreate() {
     address: "",
   });
   const [fieldLoadWarning, setFieldLoadWarning] = useState("");
+  const [hydrating, setHydrating] = useState(false);
 
   const formFields = useMemo(() => fields.filter((f) => /^F\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
   const conditionFields = useMemo(() => fields.filter((f) => /^C\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
   const appendixFields = useMemo(() => fields.filter((f) => /^A\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
+  // A-fields with no auto_source_field_id are the ones admin MUST type in
+  // (e.g. A03 Engineer, A05 Main Contractor address, A15 Commencement Date,
+  // A17 Subcontract works completion). The rest cascade from F/C values.
+  const manualAppendixFields = useMemo(
+    () => appendixFields.filter((f) => !f.auto_source_field_id),
+    [appendixFields]
+  );
+  const autoAppendixFields = useMemo(
+    () => appendixFields.filter((f) => f.auto_source_field_id),
+    [appendixFields]
+  );
 
   const onChangeValue = (fieldId: string, value: string) => {
     const next = { ...values, [fieldId]: value };
-    // Auto-populate dependent fields only if they currently hold their
-    // cascaded value (or are empty). If the Admin has explicitly overridden
-    // A01/A02/A07/C03 in the Appendix Builder, editing the source field
-    // should NOT wipe out that override.
-    const isAutoFollow = (target: string, previousSource: string) =>
-      (values[target] ?? "") === "" || (values[target] ?? "") === previousSource;
 
-    if (fieldId === "F02" && isAutoFollow("A01", values.F02 ?? "")) {
-      next.A01 = value;
-    }
-    if (fieldId === "F05" && isAutoFollow("A02", values.F05 ?? "")) {
-      next.A02 = value;
-    }
+    // A field is "auto-following" its source if it's empty OR still equals
+    // whatever the source used to hold. That's the signal that admin has
+    // not manually overridden the cascaded value.
+    const isAutoFollow = (target: string, previousSourceVal: string) =>
+      (values[target] ?? "") === "" || (values[target] ?? "") === previousSourceVal;
+
+    // Special compute: F08 -> C03 (Advance Payment) and F08 -> A10
+    // (Performance Security) both equal 10% of the subcontract price.
     if (fieldId === "F08") {
-      if (isAutoFollow("A07", values.F08 ?? "")) {
-        next.A07 = value;
-      }
       const pct = tenPercentOf(value);
       const prevPct = tenPercentOf(values.F08 ?? "");
-      if ((values.C03 ?? "") === "" || values.C03 === prevPct) {
-        next.C03 = pct;
+      for (const target of ["C03", "A10"]) {
+        if ((values[target] ?? "") === "" || values[target] === prevPct) {
+          next[target] = pct;
+        }
       }
     }
+
+    // Generic cascade driven by master_fields.auto_source_field_id. Two
+    // passes so chained sources propagate (F08 -> C03 -> A09: pass 1 fills
+    // C03 from F08, pass 2 fills A09 from C03). The 10% targets handled
+    // above are skipped here so the percentage compute wins.
+    const tenPctTargets = new Set(["C03", "A10"]);
+    for (let pass = 0; pass < 2; pass++) {
+      for (const f of fields) {
+        const src = f.auto_source_field_id;
+        if (!src) continue;
+        const target = f.field_id;
+        if (tenPctTargets.has(target)) continue;
+        const srcVal = next[src] ?? "";
+        if (!srcVal) continue;
+        const oldSrcVal = pass === 0 ? (values[src] ?? "") : "";
+        if (isAutoFollow(target, oldSrcVal)) {
+          next[target] = srcVal;
+        }
+      }
+    }
+
     setValues(next);
   };
 
@@ -114,29 +150,145 @@ export default function AgreementCreate() {
   };
 
   const createDraft = async () => {
-    const { data } = await api.post("/agreements/", { project, subcontractor, reference_number: reference || undefined });
-    setAgreementId(data.id);
-    setReference(data.reference_number);
-    await loadTemplateFields();
-    setStep(2);
+    try {
+      const { data } = await api.post("/agreements/", { project, subcontractor, reference_number: reference || undefined });
+      setAgreementId(data.id);
+      setReference(data.reference_number);
+      // If admin filled any of the manual appendix fields on Step 1
+      // (A03/A05/A15/A17 etc.), save them immediately so they're persisted
+      // before the wizard moves on. The PUT response also returns the
+      // post-cascade value map, which we merge into local state.
+      const manualPayload: Record<string, string> = {};
+      for (const f of manualAppendixFields) {
+        const v = values[f.field_id];
+        if (v !== undefined && v !== "") manualPayload[f.field_id] = v;
+      }
+      if (Object.keys(manualPayload).length > 0) {
+        const { data: putData } = await api.put(`/agreements/${data.id}/fields`, { values: manualPayload });
+        if (putData?.values && typeof putData.values === "object") {
+          setValues((prev) => ({ ...prev, ...putData.values }));
+        }
+      }
+      setStep(2);
+    } catch (err: unknown) {
+      const e = err as { response?: { status?: number; data?: { detail?: string } } };
+      if (e?.response?.status === 409) {
+        toast.error(e.response.data?.detail ?? "Reference number conflict — leave the field blank to auto-generate.");
+      } else {
+        toast.error("Failed to create draft. See console for details.");
+        console.error(err);
+      }
+    }
+  };
+
+  // Load master fields once on mount (regardless of new vs. edit mode) so
+  // Step 1 can render the manual appendix inputs (A03/A05/A15/A17) before
+  // the draft has been created.
+  useEffect(() => {
+    void loadTemplateFields();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Edit-existing-draft hydration: when route is /agreements/:id/edit, pull
+  // the agreement detail (project, subcontractor, reference, value map) and
+  // start at Step 1 with all state pre-populated so admin can amend any
+  // input — project, subcontractor, or the manual appendix fields.
+  useEffect(() => {
+    if (!routeId) return;
+    let cancelled = false;
+    (async () => {
+      setHydrating(true);
+      try {
+        const { data } = await api.get(`/agreements/${routeId}`);
+        if (cancelled) return;
+        setAgreementId(data.id);
+        setReference(data.reference_number ?? "");
+        if (data.project) setProject(data.project);
+        if (data.subcontractor) setSubcontractor(data.subcontractor);
+        if (data.values && typeof data.values === "object") setValues(data.values);
+        await loadTemplateFields();
+        setStep(1);
+      } catch (err) {
+        console.error("Failed to hydrate existing draft", err);
+        setFieldLoadWarning("Could not load the existing draft. Returning to a fresh wizard.");
+      } finally {
+        if (!cancelled) setHydrating(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId]);
+
+  // Step 1 in edit mode: PATCH parties + PUT manual appendix values, then
+  // advance to Step 2. Skips the POST /agreements/ used for fresh drafts.
+  const saveStep1Edit = async () => {
+    if (!agreementId) return;
+    try {
+      await api.patch(`/agreements/${agreementId}/parties`, { project, subcontractor });
+      const manualPayload: Record<string, string> = {};
+      for (const f of manualAppendixFields) {
+        const v = values[f.field_id];
+        if (v !== undefined) manualPayload[f.field_id] = v;
+      }
+      if (Object.keys(manualPayload).length > 0) {
+        const { data: putData } = await api.put(`/agreements/${agreementId}/fields`, { values: manualPayload });
+        if (putData?.values && typeof putData.values === "object") {
+          setValues((prev) => ({ ...prev, ...putData.values }));
+        }
+      }
+      setStep(2);
+    } catch (err: unknown) {
+      const e = err as { response?: { status?: number; data?: { detail?: string } } };
+      if (e?.response?.status === 409) {
+        toast.error(e.response.data?.detail ?? "Project code conflict.");
+      } else {
+        toast.error("Failed to save changes. See console for details.");
+        console.error(err);
+      }
+    }
   };
 
   const saveFields = async () => {
     if (!agreementId) return;
-    await api.put(`/agreements/${agreementId}/fields`, { values });
+    const { data } = await api.put(`/agreements/${agreementId}/fields`, { values });
+    // Backend cascades F02→A01, F08→C03→A09, etc. The PUT response carries
+    // the full post-cascade value map; merge it back so Steps 4 and 5 reflect
+    // the DB truth instead of stale client state.
+    if (data?.values && typeof data.values === "object") {
+      setValues((prev) => ({ ...prev, ...data.values }));
+    }
   };
 
   const submitForReview = async () => {
     if (!agreementId) return;
-    await saveFields();
-    await api.post(`/agreements/${agreementId}/submit`);
-    alert("Submitted for internal review.");
+    try {
+      await saveFields();
+      await api.post(`/agreements/${agreementId}/submit`);
+      toast.success(`Agreement ${reference || agreementId} submitted for internal review.`);
+      navigate("/dashboard");
+    } catch (err: unknown) {
+      const e = err as { response?: { status?: number; data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "Failed to submit for review. See console for details.");
+      console.error(err);
+    }
   };
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 p-5">
-      <h1 className="text-3xl font-bold text-sky-900">Agreement Creation Wizard</h1>
-      <p className="text-sm text-sky-700">Step {step} / 5</p>
+      <h1 className="text-3xl font-bold text-sky-900">
+        {isEditMode ? "Edit Agreement Draft" : "Agreement Creation Wizard"}
+      </h1>
+      <p className="text-sm text-sky-700">
+        Step {step} / 5
+        {reference ? <> — <span className="font-mono">{reference}</span></> : null}
+      </p>
+      {hydrating && (
+        <div className="rounded border border-sky-200 bg-sky-50 p-2 text-sm text-sky-800">
+          Loading existing draft…
+        </div>
+      )}
       {fieldLoadWarning && (
         <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800">
           {fieldLoadWarning}
@@ -144,23 +296,89 @@ export default function AgreementCreate() {
       )}
 
       {step === 1 && (
-        <div className="space-y-3 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold">Step 1: Project + Subcontractor</h2>
-          <div className="grid grid-cols-2 gap-2">
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="Project name" value={project.project_name} onChange={(e) => setProject({ ...project, project_name: e.target.value })} />
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="Project code" value={project.project_code} onChange={(e) => setProject({ ...project, project_code: e.target.value })} />
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="Location" value={project.project_location} onChange={(e) => setProject({ ...project, project_location: e.target.value })} />
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="Employer" value={project.employer_name} onChange={(e) => setProject({ ...project, employer_name: e.target.value })} />
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="Engineer" value={project.engineer_name} onChange={(e) => setProject({ ...project, engineer_name: e.target.value })} />
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="Reference override (optional)" value={reference} onChange={(e) => setReference(e.target.value)} />
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="Company name" value={subcontractor.company_name} onChange={(e) => setSubcontractor({ ...subcontractor, company_name: e.target.value })} />
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="PO Box" value={subcontractor.po_box} onChange={(e) => setSubcontractor({ ...subcontractor, po_box: e.target.value })} />
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="Trade licence no" value={subcontractor.trade_licence_no} onChange={(e) => setSubcontractor({ ...subcontractor, trade_licence_no: e.target.value })} />
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="Contact person" value={subcontractor.contact_person} onChange={(e) => setSubcontractor({ ...subcontractor, contact_person: e.target.value })} />
-            <input className="rounded-lg border border-sky-200 p-2" placeholder="Email" value={subcontractor.email} onChange={(e) => setSubcontractor({ ...subcontractor, email: e.target.value })} />
-          </div>
-          <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={createDraft}>
-            Create Draft
+        <div className="space-y-4 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
+          <h2 className="font-semibold">
+            Step 1: Project + Subcontractor
+            {isEditMode && <span className="ml-2 text-xs font-normal text-sky-600">(editing)</span>}
+          </h2>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-sky-800">Project</h3>
+            <div>
+              <label className="mb-1 block text-sm">PROJECT_NAME — Project name</label>
+              <input className="w-full rounded border p-2" value={project.project_name} onChange={(e) => setProject({ ...project, project_name: e.target.value })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm">PROJECT_CODE — Project code (used to build the reference number)</label>
+              <input className="w-full rounded border p-2" value={project.project_code} onChange={(e) => setProject({ ...project, project_code: e.target.value })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm">PROJECT_LOCATION — Location</label>
+              <input className="w-full rounded border p-2" value={project.project_location} onChange={(e) => setProject({ ...project, project_location: e.target.value })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm">EMPLOYER_NAME — Employer</label>
+              <input className="w-full rounded border p-2" value={project.employer_name} onChange={(e) => setProject({ ...project, employer_name: e.target.value })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm">ENGINEER_NAME — Engineer / Consultant</label>
+              <input className="w-full rounded border p-2" value={project.engineer_name} onChange={(e) => setProject({ ...project, engineer_name: e.target.value })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm">REFERENCE — Reference number override (optional, auto-generated otherwise)</label>
+              <input className="w-full rounded border p-2" value={reference} onChange={(e) => setReference(e.target.value)} />
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-sky-800">Subcontractor</h3>
+            <div>
+              <label className="mb-1 block text-sm">SUB_COMPANY — Company name</label>
+              <input className="w-full rounded border p-2" value={subcontractor.company_name} onChange={(e) => setSubcontractor({ ...subcontractor, company_name: e.target.value })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm">SUB_PO_BOX — PO Box</label>
+              <input className="w-full rounded border p-2" value={subcontractor.po_box} onChange={(e) => setSubcontractor({ ...subcontractor, po_box: e.target.value })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm">SUB_TRADE_LICENCE — Trade licence no</label>
+              <input className="w-full rounded border p-2" value={subcontractor.trade_licence_no} onChange={(e) => setSubcontractor({ ...subcontractor, trade_licence_no: e.target.value })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm">SUB_CONTACT — Contact person</label>
+              <input className="w-full rounded border p-2" value={subcontractor.contact_person} onChange={(e) => setSubcontractor({ ...subcontractor, contact_person: e.target.value })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm">SUB_EMAIL — Email</label>
+              <input className="w-full rounded border p-2" value={subcontractor.email} onChange={(e) => setSubcontractor({ ...subcontractor, email: e.target.value })} />
+            </div>
+          </section>
+
+          {manualAppendixFields.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold text-sky-800">
+                Required appendix inputs ({manualAppendixFields.length})
+              </h3>
+              <p className="text-xs text-sky-700">
+                These appendix rows have no source field elsewhere — fill them in here so they
+                propagate into the rest of the wizard.
+              </p>
+              {manualAppendixFields.map((field) => (
+                <div key={field.id}>
+                  <label className="mb-1 block text-sm">
+                    {field.field_id} — {field.field_label}
+                  </label>
+                  <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
+                </div>
+              ))}
+            </section>
+          )}
+
+          <button
+            className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700"
+            onClick={isEditMode ? saveStep1Edit : createDraft}
+          >
+            {isEditMode ? "Save & Continue" : "Create Draft"}
           </button>
         </div>
       )}
@@ -200,20 +418,48 @@ export default function AgreementCreate() {
           <div>
             <h2 className="font-semibold">Step 4: Appendix Builder</h2>
             <p className="text-sm text-sky-700">
-              Override any auto-populated A-field value below, then toggle visibility, add notes,
-              and reorder rows in the Appendix layout.
+              Confirm or amend the appendix-only fields below, override any auto-populated value,
+              and toggle visibility / notes / order on each row.
             </p>
           </div>
 
+          {manualAppendixFields.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="text-sm font-semibold text-amber-900">
+                Required appendix inputs ({manualAppendixFields.length})
+                <span className="ml-2 text-xs font-normal text-amber-700">
+                  (also editable on Step 1)
+                </span>
+              </div>
+              {manualAppendixFields.map((field) => (
+                <div key={field.id} className="rounded-lg border border-amber-100 bg-white p-2">
+                  <div className="text-sm font-medium">
+                    {field.field_id} — {field.field_label}
+                  </div>
+                  <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
+                </div>
+              ))}
+            </div>
+          )}
+
           <details className="rounded-lg border border-sky-100">
             <summary className="cursor-pointer bg-sky-50 p-2 text-sm font-medium text-sky-900">
-              A-field value overrides ({appendixFields.length})
+              Auto-populated A-field overrides ({autoAppendixFields.length})
             </summary>
             <div className="space-y-2 p-2">
-              {appendixFields.map((field) => (
+              <p className="text-xs text-sky-700">
+                These cascade from Form/Conditions values you already entered. Edit only if you need
+                to override the cascaded value for this agreement.
+              </p>
+              {autoAppendixFields.map((field) => (
                 <div key={field.id} className="rounded-lg border border-sky-100 p-2">
-                  <div className="font-medium text-sm">
-                    {field.field_id} - {field.field_label}
+                  <div className="text-sm font-medium">
+                    {field.field_id} — {field.field_label}
+                    {field.auto_source_field_id && (
+                      <span className="ml-2 text-xs text-sky-600">
+                        (auto from {field.auto_source_field_id})
+                      </span>
+                    )}
                   </div>
                   <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
                 </div>

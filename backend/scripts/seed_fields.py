@@ -33,6 +33,7 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.form, "F06", "Preamble", "Project name/details", InputTypeEnum.textarea, is_required=True, sort_order=6),
     FieldSeed(TemplateTypeEnum.form, "F07", "Preamble", "Project location", InputTypeEnum.text, is_required=True, sort_order=7),
     FieldSeed(TemplateTypeEnum.form, "F08", "2", "Subcontract Price (AED)", InputTypeEnum.number, is_required=True, appendix_row_label="The Subcontract Price", appendix_clause_ref="3.1", sort_order=8),
+    FieldSeed(TemplateTypeEnum.form, "F09", "Cover", "Scope Title", InputTypeEnum.text, is_required=True, show_in_appendix=False, sort_order=9),
     # Conditions (C01-C13)
     FieldSeed(TemplateTypeEnum.conditions, "C01", "2.2", "Scope of Works details", InputTypeEnum.textarea, is_required=True, sort_order=1),
     FieldSeed(TemplateTypeEnum.conditions, "C02", "3.3", "Subcontract Quantities Type", InputTypeEnum.dropdown, is_required=True, sort_order=2),

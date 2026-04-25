@@ -143,6 +143,18 @@ def _appendix_rows(
     return rows
 
 
+def _appendix_overrides(
+    appendix_config: list[AppendixConfig],
+) -> tuple[dict[str, bool], dict[str, str]]:
+    visible: dict[str, bool] = {}
+    notes: dict[str, str] = {}
+    for row in appendix_config:
+        visible[row.field_id] = row.show_in_appendix
+        if row.admin_extra_note:
+            notes[row.field_id] = row.admin_extra_note
+    return visible, notes
+
+
 async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_by: User | None) -> PDFOutput:
     agreement = await _load_agreement_bundle(db, agreement_id)
     if not agreement:
@@ -161,6 +173,7 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
     value_map = _collect_field_values(agreement.field_values)
     master_fields = await _load_master_fields(db)
     appendix_rows = _appendix_rows(agreement.appendix_rows, value_map, master_fields)
+    appendix_visible, appendix_notes = _appendix_overrides(agreement.appendix_rows)
 
     context: dict[str, Any] = {
         "agreement": agreement,
@@ -168,6 +181,8 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
         "subcontractor": agreement.subcontractor,
         "values": value_map,
         "appendix_rows": appendix_rows,
+        "appendix_visible": appendix_visible,
+        "appendix_notes": appendix_notes,
         "status_watermark": _status_watermark(agreement.current_status),
         "generated_date": datetime.now(UTC).date().isoformat(),
         "bgcc_logo_url": "",
@@ -184,12 +199,24 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
     )
     appendix_html = jinja_env.get_template("appendix.html").render(**context)
 
+    reference_number = html_escape(agreement.reference_number or "")
+    running_header = (
+        '<div class="running-header">'
+        '<em>Bhatia General Contracting Co. L.L.C. (BGCC)</em>'
+        '</div>'
+        f'<span class="reference-anchor">{reference_number}</span>'
+    )
+
+    # The cover page uses `@page cover` with `page-break-after: always`, so no
+    # explicit page-break div is needed after it. The running-header block is
+    # the WeasyPrint `position: running()` element, declared once before the
+    # first body-page document and reused via @top-left on every page.
     combined_html = f"""
     <html>
       <head><meta charset="utf-8"></head>
       <body>
         {cover_html}
-        <div class="page-break"></div>
+        {running_header}
         {form_html}
         <div class="page-break"></div>
         {conditions_html}

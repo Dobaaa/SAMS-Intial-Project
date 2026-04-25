@@ -59,9 +59,27 @@ async def create_draft_agreement(
     subcontractor_payload: dict,
     reference_number: str | None = None,
 ) -> Agreement:
-    project = Project(**project_payload, created_by=user.id)
+    # Reuse the Project when the same project_code already exists. A project
+    # can host multiple subcontract agreements (different scopes / different
+    # subcontractors), so blindly inserting a new Project row violates the
+    # unique(project_code) constraint when admin starts a 2nd agreement under
+    # the same project.
+    project_code = project_payload.get("project_code")
+    project: Project | None = None
+    if project_code:
+        existing = await db.execute(
+            select(Project).where(Project.project_code == project_code)
+        )
+        project = existing.scalar_one_or_none()
+    if project is None:
+        project = Project(**project_payload, created_by=user.id)
+        db.add(project)
+
+    # Subcontractor has no unique key — always create a fresh row per
+    # agreement. Two agreements with the same subcontractor get two rows;
+    # consolidating subcontractors is a future cleanup, not load-bearing here.
     subcontractor = Subcontractor(**subcontractor_payload)
-    db.add_all([project, subcontractor])
+    db.add(subcontractor)
     await db.flush()
 
     form_template = await _get_active_template(db, TemplateTypeEnum.form)
@@ -125,6 +143,48 @@ async def update_agreement_fields(db: AsyncSession, agreement: Agreement, user: 
     )
     current_map = {row.field_id: row for row in current_res.scalars().all()}
 
+    # Effective post-payload value map for cascade lookups: existing rows
+    # plus anything in this payload (the payload always wins for its own keys).
+    effective: dict[str, str] = {
+        fid: (row.entered_value or "")
+        for fid, row in current_map.items()
+    }
+    for fid, val in values.items():
+        effective[fid] = val or ""
+
+    # Special compute: F08 -> C03 = 10% of subcontract price (Advance Payment),
+    # and F08 -> A10 = 10% of subcontract price (Performance Security AED).
+    # Both fire only when caller did not send the target explicitly AND the
+    # target is currently empty (preserves admin override).
+    if effective.get("F08"):
+        ten_pct = _advance_payment_from_price(effective["F08"])
+        if ten_pct is not None:
+            for target in ("C03", "A10"):
+                if target not in values and not effective.get(target):
+                    values[target] = ten_pct
+                    effective[target] = ten_pct
+
+    # Generic cascade: for every MasterField with auto_source_field_id, copy
+    # the source value into the target if the target wasn't sent explicitly
+    # in this payload AND has no current value. Existing values are never
+    # clobbered — admin overrides stick. We iterate twice so chained sources
+    # (e.g. F08 -> C03 -> A09) propagate one hop per pass.
+    for _ in range(2):
+        for mf in master_map.values():
+            src = mf.auto_source_field_id
+            if not src:
+                continue
+            target = mf.field_id
+            if target in values:
+                continue
+            if effective.get(target):
+                continue
+            src_val = effective.get(src)
+            if src_val:
+                values[target] = src_val
+                effective[target] = src_val
+
+    # Single write loop covering both user-entered and cascaded values.
     for field_id, entered in values.items():
         row = current_map.get(field_id)
         if not row:
@@ -134,41 +194,11 @@ async def update_agreement_fields(db: AsyncSession, agreement: Agreement, user: 
                 entered_by=user.id,
             )
             db.add(row)
+            current_map[field_id] = row
         default_value = master_map.get(field_id).default_value if master_map.get(field_id) else None
         row.entered_value = entered
         row.is_modified_from_default = (entered or "") != (default_value or "")
         row.entered_by = user.id
-
-    # Required auto-population rules.
-    # Only cascade into a dependent field if the client did NOT send it
-    # explicitly in the same payload -- this lets Admin override A01/A02/A07/C03
-    # from the Appendix Builder without the override getting clobbered.
-    if "F02" in values and "A01" not in values:
-        values["A01"] = values["F02"]
-    if "F05" in values and "A02" not in values:
-        values["A02"] = values["F05"]
-    if "F08" in values:
-        if "A07" not in values:
-            values["A07"] = values["F08"]
-        if "C03" not in values:
-            advance = _advance_payment_from_price(values.get("F08"))
-            if advance is not None:
-                values["C03"] = advance
-
-    for auto_key in ("A01", "A02", "A07", "C03"):
-        if auto_key in values:
-            row = current_map.get(auto_key)
-            if not row:
-                row = AgreementFieldValue(
-                    agreement_id=agreement.id,
-                    field_id=auto_key,
-                    entered_by=user.id,
-                )
-                db.add(row)
-            default_value = master_map.get(auto_key).default_value if master_map.get(auto_key) else None
-            row.entered_value = values[auto_key]
-            row.is_modified_from_default = (values[auto_key] or "") != (default_value or "")
-            row.entered_by = user.id
 
     agreement.updated_at = datetime.now(UTC)
     await db.commit()
