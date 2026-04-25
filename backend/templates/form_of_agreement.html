@@ -1,4 +1,4 @@
-<div class="watermark">{{ status_watermark }}</div>
+{% if status_watermark %}<div class="watermark">{{ status_watermark }}</div>{% endif %}
 <div class="doc-body form-doc">
   {{ form_content | safe }}
 </div>

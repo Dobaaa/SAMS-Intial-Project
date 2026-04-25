@@ -86,8 +86,15 @@ def _render_master_with_values(
 
 
 def _status_watermark(status: AgreementStatusEnum) -> str:
+    """Return the watermark text to overlay on every PDF page.
+
+    Empty string means "no watermark" — once an agreement is fully executed
+    (status = completed) the PDF is the final document and no overlay should
+    bleed through. The Jinja shells skip rendering the .watermark div when
+    this is empty, so the regenerated post-signature PDF is fully clean.
+    """
     if status == AgreementStatusEnum.completed:
-        return "EXECUTED"
+        return ""
     if status in (AgreementStatusEnum.under_subcontractor_signature, AgreementStatusEnum.under_gm_signature):
         return "FINAL"
     return "DRAFT"
