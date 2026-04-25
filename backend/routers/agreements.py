@@ -4,11 +4,12 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db_session
 from middleware.rbac import get_current_user, require_role
-from models.agreement import Agreement, AgreementFieldValue, AgreementStatusEnum, AppendixConfig
+from models.agreement import Agreement, AgreementFieldValue, AgreementStatusEnum, AppendixConfig, Project, Subcontractor
 from models.master import MasterField
 from models.user import RoleEnum, User
 from services.agreement_service import create_draft_agreement, submit_for_review, update_agreement_fields
@@ -83,12 +84,98 @@ async def create_agreement_draft(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        await db.rollback()
+        msg = str(exc.orig) if exc.orig else str(exc)
+        if "agreements_reference_number_key" in msg:
+            detail = (
+                f"Reference number '{payload.reference_number}' already exists. "
+                "Leave the reference field blank to auto-generate a unique number."
+            )
+        elif "projects_project_code_key" in msg:
+            detail = f"Project code '{payload.project.project_code}' already exists with different details."
+        else:
+            detail = "Could not create agreement: a unique field already has that value."
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail) from exc
 
     return {
         "id": str(agreement.id),
         "reference_number": agreement.reference_number,
         "status": agreement.current_status.value,
     }
+
+
+class UpdatePartiesPayload(BaseModel):
+    project: ProjectPayload
+    subcontractor: SubcontractorPayload
+
+
+@router.patch("/{agreement_id}/parties", dependencies=[Depends(require_role(RoleEnum.admin))])
+async def update_parties(
+    agreement_id: uuid.UUID,
+    payload: UpdatePartiesPayload,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Update the Project + Subcontractor rows linked to an existing draft.
+
+    Used by the wizard's edit mode (Step 1) so admin can amend project and
+    subcontractor details without creating a new agreement. project_code is
+    the unique key — if changed, we look up an existing Project with that
+    code and re-link, otherwise update the current row's code in place.
+    """
+    res = await db.execute(select(Agreement).where(Agreement.id == agreement_id))
+    agreement = res.scalar_one_or_none()
+    if not agreement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+    if agreement.is_executed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agreement is locked after execution")
+
+    project_data = payload.project.model_dump()
+    subcontractor_data = payload.subcontractor.model_dump()
+
+    project = await db.get(Project, agreement.project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Linked project missing")
+
+    new_code = project_data["project_code"]
+    if new_code != project.project_code:
+        existing = (
+            await db.execute(
+                select(Project).where(Project.project_code == new_code, Project.id != project.id)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            agreement.project_id = existing.id
+            project = existing
+        else:
+            project.project_code = new_code
+
+    project.project_name = project_data["project_name"]
+    project.project_location = project_data["project_location"]
+    project.employer_name = project_data["employer_name"]
+    project.engineer_name = project_data["engineer_name"]
+
+    subcontractor = await db.get(Subcontractor, agreement.subcontractor_id)
+    if not subcontractor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Linked subcontractor missing")
+    for key, value in subcontractor_data.items():
+        setattr(subcontractor, key, value)
+
+    agreement.updated_at = datetime.now(UTC)
+
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        msg = str(exc.orig) if exc.orig else str(exc)
+        if "projects_project_code_key" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Project code '{new_code}' already exists.",
+            ) from exc
+        raise
+
+    return {"status": "success"}
 
 
 @router.put("/{agreement_id}/fields", dependencies=[Depends(require_role(RoleEnum.admin))])
@@ -105,7 +192,80 @@ async def update_fields(
     if agreement.is_executed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agreement is locked after execution")
     await update_agreement_fields(db, agreement, current_user, payload.values)
-    return {"status": "success"}
+
+    # Return the full {field_id: entered_value} map so the wizard can pick up
+    # backend-cascaded values (e.g. F08 -> C03 -> A09) without a follow-up GET.
+    rows = await db.execute(
+        select(AgreementFieldValue).where(AgreementFieldValue.agreement_id == agreement_id)
+    )
+    values = {r.field_id: (r.entered_value or "") for r in rows.scalars().all()}
+    return {"status": "success", "values": values}
+
+
+@router.get("/{agreement_id}/fields", dependencies=[Depends(require_role(RoleEnum.admin))])
+async def get_fields(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    res = await db.execute(select(Agreement).where(Agreement.id == agreement_id))
+    if not res.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+    rows = await db.execute(
+        select(AgreementFieldValue).where(AgreementFieldValue.agreement_id == agreement_id)
+    )
+    values = {r.field_id: (r.entered_value or "") for r in rows.scalars().all()}
+    return {"values": values}
+
+
+@router.get("/{agreement_id}", dependencies=[Depends(require_role(RoleEnum.admin))])
+async def get_agreement(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """One-call hydrate for the wizard's edit-existing-draft flow.
+
+    Returns project + subcontractor payloads in the same shape Step 1 sends,
+    plus the full {field_id: entered_value} map and the agreement metadata.
+    """
+    from sqlalchemy.orm import selectinload
+
+    res = await db.execute(
+        select(Agreement)
+        .where(Agreement.id == agreement_id)
+        .options(selectinload(Agreement.project), selectinload(Agreement.subcontractor))
+    )
+    agreement = res.scalar_one_or_none()
+    if not agreement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+
+    rows = await db.execute(
+        select(AgreementFieldValue).where(AgreementFieldValue.agreement_id == agreement_id)
+    )
+    values = {r.field_id: (r.entered_value or "") for r in rows.scalars().all()}
+
+    return {
+        "id": str(agreement.id),
+        "reference_number": agreement.reference_number,
+        "current_status": agreement.current_status.value,
+        "is_executed": agreement.is_executed,
+        "project": {
+            "project_name": agreement.project.project_name,
+            "project_code": agreement.project.project_code,
+            "project_location": agreement.project.project_location or "",
+            "employer_name": agreement.project.employer_name or "",
+            "engineer_name": agreement.project.engineer_name or "",
+        },
+        "subcontractor": {
+            "company_name": agreement.subcontractor.company_name,
+            "po_box": agreement.subcontractor.po_box or "",
+            "trade_licence_no": agreement.subcontractor.trade_licence_no or "",
+            "contact_person": agreement.subcontractor.contact_person or "",
+            "email": agreement.subcontractor.email or "",
+            "phone": agreement.subcontractor.phone or "",
+            "address": agreement.subcontractor.address or "",
+        },
+        "values": values,
+    }
 
 
 @router.post("/{agreement_id}/submit", dependencies=[Depends(require_role(RoleEnum.admin))])
