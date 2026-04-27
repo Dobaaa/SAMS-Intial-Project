@@ -36,7 +36,7 @@ async def _create_agreement(authed_client) -> dict:
                 "company_name": "Test Subco LLC",
                 "po_box": "12345",
                 "trade_licence_no": "TL-001",
-                "email": "subco@test.local",
+                "email": "subco@test.example",
             },
         },
     )
@@ -53,10 +53,13 @@ async def test_create_draft_generates_reference_number(authed_client, admin_user
 
 
 @pytest.mark.asyncio
-async def test_update_fields_cascades_f08_to_c03_as_ten_percent(authed_client, admin_user):
+async def test_update_fields_cascades_f08_to_c03_as_ten_percent(authed_client, admin_user, db_session):
     """Regression: the earlier bug copied F08 verbatim into C03. Post-fix,
     C03 must equal 10% of F08 when C03 isn't explicitly provided."""
+    from scripts.seed_fields import seed_master_fields
+
     await _seed_active_templates(authed_client)
+    await seed_master_fields(db_session)
     agreement = await _create_agreement(authed_client)
 
     resp = await authed_client.put(
@@ -74,10 +77,13 @@ async def test_update_fields_cascades_f08_to_c03_as_ten_percent(authed_client, a
 
 
 @pytest.mark.asyncio
-async def test_manual_override_preserves_through_source_update(authed_client, admin_user):
+async def test_manual_override_preserves_through_source_update(authed_client, admin_user, db_session):
     """If the client sends A01 explicitly in the same update payload as F02,
     A01 must win (override not clobbered by cascade)."""
+    from scripts.seed_fields import seed_master_fields
+
     await _seed_active_templates(authed_client)
+    await seed_master_fields(db_session)
     agreement = await _create_agreement(authed_client)
 
     resp = await authed_client.put(

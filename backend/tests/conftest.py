@@ -27,7 +27,8 @@ from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 from pytest_postgresql.janitor import DatabaseJanitor
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 # --- External-service stubs (must run before any module-level client creation) ---
 
@@ -49,6 +50,15 @@ def _stub_external_services():
 
     redis.from_url = _fake  # type: ignore[assignment]
     redis.asyncio.from_url = _fake  # type: ignore[assignment]
+
+    # Disable slowapi rate-limiting for the whole test session. In production
+    # the auth routes are 10/minute per IP; from a test process every call
+    # comes from the same in-memory IP, so cumulative test-suite login
+    # traffic would otherwise trip a 429 mid-run.
+    from middleware.security import limiter
+
+    limiter.enabled = False
+
     yield
 
 
@@ -95,6 +105,7 @@ def _configure_env(database_url, _create_test_database):  # type: ignore[no-unty
     during collection."""
     os.environ["DATABASE_URL"] = database_url
     os.environ.setdefault("REDIS_URL", "redis://fakeredis/0")
+    os.environ.setdefault("GROQ_API_KEY", "test-groq-key")
     os.environ.setdefault("OPENAI_API_KEY", "test-key")
     os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-please-do-not-reuse")
     os.environ.setdefault("SMTP_HOST", "localhost")
@@ -132,42 +143,62 @@ def _alembic_script_location():
 
 
 @pytest_asyncio.fixture
-async def db_session(_prepare_schema, database_url) -> AsyncIterator[AsyncSession]:
-    """A fresh async SQLAlchemy session per test.
+async def test_engine(_prepare_schema, database_url) -> AsyncIterator[AsyncEngine]:
+    """One async engine per test, bound to the running event loop.
 
-    Between tests we TRUNCATE every domain table (CASCADE) so state is
-    predictable. Keeping schema + users tables in place is fine since
-    each test re-seeds what it needs.
+    Uses ``NullPool`` so connections are not reused across tests. This is
+    the single source of truth for both ``db_session`` and the
+    FastAPI-side ``get_db_session`` override -- without that, the
+    module-level ``database.engine`` would bind its connection pool to
+    the first test's loop and break every test after.
     """
-    engine = create_async_engine(database_url, future=True, poolclass=None)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-
-    async with session_factory() as session:
-        yield session
-
-    # Cleanup: wipe all rows from every domain table but leave the
-    # alembic_version table alone.
-    async with engine.connect() as conn:
-        tables = await conn.execute(
-            text(
-                "SELECT tablename FROM pg_tables "
-                "WHERE schemaname='public' AND tablename <> 'alembic_version'"
+    engine = create_async_engine(database_url, future=True, poolclass=NullPool)
+    try:
+        yield engine
+    finally:
+        # Truncate domain tables so state doesn't leak between tests.
+        async with engine.connect() as conn:
+            tables = await conn.execute(
+                text(
+                    "SELECT tablename FROM pg_tables "
+                    "WHERE schemaname='public' AND tablename <> 'alembic_version'"
+                )
             )
-        )
-        table_list = ", ".join(f'"{row[0]}"' for row in tables)
-        if table_list:
-            await conn.execute(text(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE"))
-            await conn.commit()
-    await engine.dispose()
+            table_list = ", ".join(f'"{row[0]}"' for row in tables)
+            if table_list:
+                await conn.execute(text(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE"))
+                await conn.commit()
+        await engine.dispose()
 
 
 @pytest_asyncio.fixture
-async def client(_prepare_schema) -> AsyncIterator[AsyncClient]:
-    """An httpx AsyncClient bound to the FastAPI app (no real network)."""
+async def db_session(test_engine) -> AsyncIterator[AsyncSession]:
+    """A fresh async SQLAlchemy session per test, sharing the per-test engine."""
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        yield session
+
+
+@pytest_asyncio.fixture
+async def client(test_engine) -> AsyncIterator[AsyncClient]:
+    """httpx AsyncClient against the FastAPI app, with get_db_session
+    overridden to use the per-test engine (same loop as the test body).
+    """
+    from database import get_db_session
     from main import app
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
-        yield c
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+
+    async def _override_get_db() -> AsyncIterator[AsyncSession]:
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db_session] = _override_get_db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
+            yield c
+    finally:
+        app.dependency_overrides.pop(get_db_session, None)
 
 
 @pytest_asyncio.fixture
@@ -178,7 +209,7 @@ async def admin_user(db_session):
 
     user = User(
         name="Test Admin",
-        email="admin@test.local",
+        email="admin@test.example",
         password_hash=hash_password("adminpass1"),
         role=RoleEnum.admin,
         is_active=True,
@@ -194,7 +225,7 @@ async def authed_client(client, admin_user):
     """httpx client with a valid Admin bearer token attached."""
     resp = await client.post(
         "/api/auth/login",
-        json={"email": "admin@test.local", "password": "adminpass1"},
+        json={"email": "admin@test.example", "password": "adminpass1"},
     )
     assert resp.status_code == 200, resp.text
     client.headers["Authorization"] = f"Bearer {resp.json()['access_token']}"

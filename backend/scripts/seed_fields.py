@@ -75,50 +75,63 @@ FIELDS: list[FieldSeed] = [
 ]
 
 
-async def seed_master_fields() -> None:
-    async with AsyncSessionLocal() as session:
-        templates_by_type: dict[TemplateTypeEnum, MasterTemplate] = {}
-        for template_type in TemplateTypeEnum:
-            stmt = (
-                select(MasterTemplate)
-                .where(MasterTemplate.type == template_type)
-                .order_by(MasterTemplate.created_at.desc())
-                .limit(1)
-            )
-            result = await session.execute(stmt)
-            template = result.scalar_one_or_none()
-            if template is None:
-                raise RuntimeError(f"Missing master template for type '{template_type.value}'. Seed templates first.")
-            templates_by_type[template_type] = template
+async def _seed_into(session) -> None:
+    templates_by_type: dict[TemplateTypeEnum, MasterTemplate] = {}
+    for template_type in TemplateTypeEnum:
+        stmt = (
+            select(MasterTemplate)
+            .where(MasterTemplate.type == template_type)
+            .order_by(MasterTemplate.created_at.desc())
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        template = result.scalar_one_or_none()
+        if template is None:
+            raise RuntimeError(f"Missing master template for type '{template_type.value}'. Seed templates first.")
+        templates_by_type[template_type] = template
 
-        for field in FIELDS:
-            template = templates_by_type[field.template_type]
-            exists_stmt = select(MasterField.id).where(
-                MasterField.template_id == template.id,
-                MasterField.field_id == field.field_id,
-            )
-            exists = (await session.execute(exists_stmt)).scalar_one_or_none()
-            if exists:
-                continue
+    for field in FIELDS:
+        template = templates_by_type[field.template_type]
+        exists_stmt = select(MasterField.id).where(
+            MasterField.template_id == template.id,
+            MasterField.field_id == field.field_id,
+        )
+        exists = (await session.execute(exists_stmt)).scalar_one_or_none()
+        if exists:
+            continue
 
-            session.add(
-                MasterField(
-                    template_id=template.id,
-                    field_id=field.field_id,
-                    clause_number=field.clause_number,
-                    field_label=field.field_label,
-                    input_type=field.input_type,
-                    default_value=field.default_value,
-                    is_required=field.is_required,
-                    auto_source_field_id=field.auto_source_field_id,
-                    appendix_row_label=field.appendix_row_label,
-                    appendix_clause_ref=field.appendix_clause_ref,
-                    show_in_appendix=field.show_in_appendix,
-                    sort_order=field.sort_order,
-                )
+        session.add(
+            MasterField(
+                template_id=template.id,
+                field_id=field.field_id,
+                clause_number=field.clause_number,
+                field_label=field.field_label,
+                input_type=field.input_type,
+                default_value=field.default_value,
+                is_required=field.is_required,
+                auto_source_field_id=field.auto_source_field_id,
+                appendix_row_label=field.appendix_row_label,
+                appendix_clause_ref=field.appendix_clause_ref,
+                show_in_appendix=field.show_in_appendix,
+                sort_order=field.sort_order,
             )
+        )
 
-        await session.commit()
+    await session.commit()
+
+
+async def seed_master_fields(session=None) -> None:
+    """Seed the 44 master_fields rows.
+
+    When ``session`` is None (CLI use) we open a session via
+    ``AsyncSessionLocal``. Tests pass a session bound to the per-test
+    engine so the seed lands in the test DB.
+    """
+    if session is not None:
+        await _seed_into(session)
+        return
+    async with AsyncSessionLocal() as own_session:
+        await _seed_into(own_session)
     print(f"Seeded {len(FIELDS)} master_fields rows.")
 
 

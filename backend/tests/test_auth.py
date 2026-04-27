@@ -9,13 +9,13 @@ import pytest
 async def test_login_success_returns_tokens_and_user(client, admin_user):
     resp = await client.post(
         "/api/auth/login",
-        json={"email": "admin@test.local", "password": "adminpass1"},
+        json={"email": "admin@test.example", "password": "adminpass1"},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["access_token"]
     assert data["refresh_token"]
-    assert data["user"]["email"] == "admin@test.local"
+    assert data["user"]["email"] == "admin@test.example"
     assert data["user"]["role"] == "admin"
 
 
@@ -23,7 +23,7 @@ async def test_login_success_returns_tokens_and_user(client, admin_user):
 async def test_login_wrong_password_is_401(client, admin_user):
     resp = await client.post(
         "/api/auth/login",
-        json={"email": "admin@test.local", "password": "not-the-password"},
+        json={"email": "admin@test.example", "password": "not-the-password"},
     )
     assert resp.status_code == 401
 
@@ -45,7 +45,7 @@ async def test_me_without_token_is_401(client):
 async def test_refresh_cycles_access_token(client, admin_user):
     login = await client.post(
         "/api/auth/login",
-        json={"email": "admin@test.local", "password": "adminpass1"},
+        json={"email": "admin@test.example", "password": "adminpass1"},
     )
     refresh_token = login.json()["refresh_token"]
 
@@ -61,7 +61,7 @@ async def test_logout_revokes_refresh_token(client, admin_user):
     end-to-end (fakeredis shim used in tests)."""
     login = await client.post(
         "/api/auth/login",
-        json={"email": "admin@test.local", "password": "adminpass1"},
+        json={"email": "admin@test.example", "password": "adminpass1"},
     )
     refresh_token = login.json()["refresh_token"]
 

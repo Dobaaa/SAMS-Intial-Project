@@ -28,7 +28,7 @@ async def seeded_reviewers(db_session):
     ]:
         user = User(
             name=f"Test {role.value}",
-            email=f"{role.value}@test.local",
+            email=f"{role.value}@test.example",
             password_hash=hash_password("testpass1"),
             role=role,
             is_active=True,
@@ -84,7 +84,7 @@ async def test_return_step_requires_comment_and_resets_status(
     )
 
     # Log in as PD.
-    pd_token = await _login(authed_client, "project_director@test.local")
+    pd_token = await _login(authed_client, "project_director@test.example")
     authed_client.headers["Authorization"] = f"Bearer {pd_token}"
 
     # Empty comment is rejected.
@@ -120,17 +120,17 @@ async def test_resubmit_reactivates_the_whole_chain(
     steps_by_role = {s["role_required"]: s for s in detail.json()["steps"]}
 
     # PD approves.
-    pd_token = await _login(authed_client, "project_director@test.local")
+    pd_token = await _login(authed_client, "project_director@test.example")
     authed_client.headers["Authorization"] = f"Bearer {pd_token}"
     await authed_client.post(f"/api/workflow/{steps_by_role['project_director']['id']}/approve")
 
     # Accounts approves.
-    acc_token = await _login(authed_client, "accounts@test.local")
+    acc_token = await _login(authed_client, "accounts@test.example")
     authed_client.headers["Authorization"] = f"Bearer {acc_token}"
     await authed_client.post(f"/api/workflow/{steps_by_role['accounts']['id']}/approve")
 
     # OM returns it (mid-chain).
-    om_token = await _login(authed_client, "operation_manager@test.local")
+    om_token = await _login(authed_client, "operation_manager@test.example")
     authed_client.headers["Authorization"] = f"Bearer {om_token}"
     await authed_client.post(
         f"/api/workflow/{steps_by_role['operation_manager']['id']}/return",
@@ -138,7 +138,7 @@ async def test_resubmit_reactivates_the_whole_chain(
     )
 
     # Admin resubmits.
-    admin_token = await _login(authed_client, "admin@test.local", password="adminpass1")
+    admin_token = await _login(authed_client, "admin@test.example", password="adminpass1")
     authed_client.headers["Authorization"] = f"Bearer {admin_token}"
     resp = await authed_client.post(f"/api/agreements/{agreement['id']}/resubmit")
     assert resp.status_code == 200
@@ -158,7 +158,7 @@ async def test_pending_list_filters_by_current_user_role(
 ):
     agreement = await _make_submitted_agreement(authed_client)
 
-    pd_token = await _login(authed_client, "project_director@test.local")
+    pd_token = await _login(authed_client, "project_director@test.example")
     authed_client.headers["Authorization"] = f"Bearer {pd_token}"
 
     pending = await authed_client.get("/api/workflow/pending")
@@ -167,7 +167,7 @@ async def test_pending_list_filters_by_current_user_role(
     assert any(it["agreement"]["reference_number"] == agreement["reference_number"] for it in items)
 
     # Accounts user should not see it yet (PD must approve first).
-    accounts_token = await _login(authed_client, "accounts@test.local")
+    accounts_token = await _login(authed_client, "accounts@test.example")
     authed_client.headers["Authorization"] = f"Bearer {accounts_token}"
     pending2 = await authed_client.get("/api/workflow/pending")
     assert not any(
