@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 
+import AIReviewPanel from "../components/AIReviewPanel";
 import DeviationReport from "../components/DeviationReport";
 import { useToast } from "../components/Toast";
 import WorkflowTimeline from "../components/WorkflowTimeline";
 import { api } from "../lib/api";
+import { useAuth } from "../stores/auth";
 
 type PendingItem = {
   step: {
@@ -46,14 +48,29 @@ type WorkflowAgreementDetails = {
   }>;
 };
 
+type AIAnalysis = {
+  comparison: unknown;
+  risks: unknown;
+  cached: boolean;
+};
+
+type AISummary = {
+  data: unknown;
+  cached: boolean;
+};
+
 export default function WorkflowReview() {
   const toast = useToast();
+  const role = useAuth((s) => s.user?.role ?? null);
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [selectedStepId, setSelectedStepId] = useState<string>("");
   const [details, setDetails] = useState<WorkflowAgreementDetails | null>(null);
   const [commentText, setCommentText] = useState("");
   const [clauseReference, setClauseReference] = useState("");
   const [busy, setBusy] = useState(false);
+  const [analysis, setAnalysis] = useState<AIAnalysis | null>(null);
+  const [summary, setSummary] = useState<AISummary | null>(null);
+  const [aiBusy, setAiBusy] = useState<"" | "analyze" | "summary">("");
 
   const loadPending = async () => {
     const { data } = await api.get("/workflow/pending");
@@ -73,6 +90,44 @@ export default function WorkflowReview() {
     setSelectedStepId(item.step.id);
     const detailsResp = await api.get(`/workflow/agreements/${item.agreement.id}`);
     setDetails(detailsResp.data);
+    setAnalysis(null);
+    setSummary(null);
+  };
+
+  const runAnalyze = async () => {
+    if (!details || aiBusy) return;
+    setAiBusy("analyze");
+    try {
+      const { data } = await api.post(`/ai/${details.agreement.id}/analyze`);
+      setAnalysis({
+        comparison: data?.data?.comparison ?? null,
+        risks: data?.data?.risks ?? null,
+        cached: !!data?.cached,
+      });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "AI analyze failed.");
+      console.error(err);
+    } finally {
+      setAiBusy("");
+    }
+  };
+
+  const runSummary = async () => {
+    if (!details || aiBusy || !role) return;
+    setAiBusy("summary");
+    try {
+      const { data } = await api.get(`/ai/${details.agreement.id}/summary`, {
+        params: { role },
+      });
+      setSummary({ data: data?.data ?? null, cached: !!data?.cached });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "AI summary failed.");
+      console.error(err);
+    } finally {
+      setAiBusy("");
+    }
   };
 
   const approve = async () => {
@@ -154,8 +209,59 @@ export default function WorkflowReview() {
             <DeviationReport agreementId={details.agreement.id} />
 
             <div className="rounded border p-3">
-              <h3 className="mb-2 text-lg font-semibold">AI Summary (Placeholder)</h3>
-              <p className="text-sm text-gray-600">AI summary panel will be integrated in Task 10.</p>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-lg font-semibold">AI Review</h3>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="rounded bg-indigo-700 px-3 py-1 text-sm text-white disabled:opacity-50"
+                    disabled={!!aiBusy}
+                    onClick={runAnalyze}
+                  >
+                    {aiBusy === "analyze" ? "Analyzing…" : "Run Compare + Risks"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded bg-indigo-700 px-3 py-1 text-sm text-white disabled:opacity-50"
+                    disabled={!!aiBusy || !role}
+                    onClick={runSummary}
+                  >
+                    {aiBusy === "summary" ? "Summarizing…" : `Summary (${role ?? "?"})`}
+                  </button>
+                </div>
+              </div>
+              <p className="mb-3 text-xs text-gray-500">
+                AI outputs are suggestions. A human reviewer must confirm before action.
+              </p>
+              <div className="space-y-3">
+                {analysis ? (
+                  <>
+                    <AIReviewPanel
+                      title="Clause Comparison"
+                      data={analysis.comparison}
+                      cached={analysis.cached}
+                      onConfirm={() => toast.success("Comparison reviewed.")}
+                    />
+                    <AIReviewPanel
+                      title="Risk Detection"
+                      data={analysis.risks}
+                      cached={analysis.cached}
+                      onConfirm={() => toast.success("Risks reviewed.")}
+                    />
+                  </>
+                ) : null}
+                {summary ? (
+                  <AIReviewPanel
+                    title={`Role Summary (${role})`}
+                    data={summary.data}
+                    cached={summary.cached}
+                    onConfirm={() => toast.success("Summary reviewed.")}
+                  />
+                ) : null}
+                {!analysis && !summary ? (
+                  <p className="text-sm text-gray-500">Run an analysis to see AI suggestions here.</p>
+                ) : null}
+              </div>
             </div>
 
             <WorkflowTimeline steps={details.steps} />

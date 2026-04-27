@@ -7,10 +7,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import logging
+
 import redis.asyncio as redis
-from openai import AsyncOpenAI
+from openai import APIError, APIConnectionError, AsyncOpenAI, AuthenticationError, RateLimitError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+log = logging.getLogger(__name__)
+
+
+class AIProviderError(RuntimeError):
+    """Raised when the AI provider (Groq/OpenAI) call fails for any reason."""
 
 from config import get_settings
 from models.agreement import Agreement, AgreementFieldValue
@@ -20,7 +28,10 @@ from models.resolution import CommentsResolutionSheet
 
 settings = get_settings()
 redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
-openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+ai_client = AsyncOpenAI(
+    api_key=settings.GROQ_API_KEY,
+    base_url=settings.AI_BASE_URL,
+)
 CACHE_TTL_SECONDS = 60 * 60 * 24
 
 
@@ -51,16 +62,34 @@ def _extract_json(text: str) -> Any:
 
 
 async def _chat_json(system_prompt: str, user_prompt: str) -> Any:
-    completion = await openai_client.chat.completions.create(
-        model="gpt-4o",
-        temperature=0.1,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
+    try:
+        completion = await ai_client.chat.completions.create(
+            model=settings.AI_MODEL,
+            temperature=0.1,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except AuthenticationError as exc:
+        log.error("AI auth failed: %s", exc)
+        raise AIProviderError("AI provider rejected the API key.") from exc
+    except RateLimitError as exc:
+        log.warning("AI rate limit hit: %s", exc)
+        raise AIProviderError("AI provider rate limit reached. Try again shortly.") from exc
+    except APIConnectionError as exc:
+        log.warning("AI connection error: %s", exc)
+        raise AIProviderError("Could not reach AI provider. Check network and try again.") from exc
+    except APIError as exc:
+        log.error("AI API error: %s", exc)
+        raise AIProviderError("AI provider returned an error.") from exc
+
     content = completion.choices[0].message.content or "[]"
-    return _extract_json(content)
+    try:
+        return _extract_json(content)
+    except (ValueError, json.JSONDecodeError) as exc:
+        log.error("AI returned non-JSON content: %r", content[:300])
+        raise AIProviderError("AI response was not valid JSON.") from exc
 
 
 async def _set_cache(key: str, payload: Any) -> None:
@@ -87,7 +116,7 @@ async def _store_ai_review(
             review_type=review_type,
             findings_json=findings,
             risk_score=risk_score,
-            model_used="gpt-4o",
+            model_used=settings.AI_MODEL,
         )
     )
     await db.commit()

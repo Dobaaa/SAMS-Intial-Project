@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import AIReviewPanel from "../components/AIReviewPanel";
 import { useToast } from "../components/Toast";
 import { api } from "../lib/api";
 
@@ -50,6 +51,9 @@ export default function CommentsResolution() {
   const [internalComments, setInternalComments] = useState<WorkflowCommentLite[]>([]);
   const [steps, setSteps] = useState<WorkflowStepLite[]>([]);
   const [loading, setLoading] = useState(false);
+  const [aiBusy, setAiBusy] = useState<"" | "suggest" | "validate">("");
+  const [aiSuggestions, setAiSuggestions] = useState<{ data: unknown; cached: boolean } | null>(null);
+  const [aiValidation, setAiValidation] = useState<{ data: unknown; cached: boolean } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +142,48 @@ export default function CommentsResolution() {
       const e = err as { response?: { data?: { detail?: string } } };
       toast.error(e?.response?.data?.detail ?? "Failed to save row.");
       console.error(err);
+    }
+  };
+
+  const refreshAISuggestions = async () => {
+    if (!agreementId || aiBusy) return;
+    setAiBusy("suggest");
+    try {
+      const { data } = await api.post(`/ai/resolution/${agreementId}/suggest`);
+      setAiSuggestions({ data: data?.data ?? null, cached: !!data?.cached });
+      const mapped = new Map<string, string>();
+      if (Array.isArray(data?.data)) {
+        for (const item of data.data as Array<{ comment_id?: string; suggested_response?: string }>) {
+          if (item?.comment_id) mapped.set(String(item.comment_id), item.suggested_response ?? "");
+        }
+      }
+      setRows((prev) =>
+        prev.map((r) =>
+          mapped.has(r.id) ? { ...r, ai_suggested_response: mapped.get(r.id) ?? r.ai_suggested_response } : r
+        )
+      );
+      toast.success("AI suggestions refreshed. Review and Save each row to persist.");
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "AI suggestion failed.");
+      console.error(err);
+    } finally {
+      setAiBusy("");
+    }
+  };
+
+  const validateRevisions = async () => {
+    if (!agreementId || aiBusy) return;
+    setAiBusy("validate");
+    try {
+      const { data } = await api.post(`/ai/${agreementId}/validate-revision`);
+      setAiValidation({ data: data?.data ?? null, cached: !!data?.cached });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "AI validation failed.");
+      console.error(err);
+    } finally {
+      setAiBusy("");
     }
   };
 
@@ -342,6 +388,54 @@ export default function CommentsResolution() {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="rounded border border-sky-100 bg-white p-3 shadow-sm">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">AI Assistance</h2>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="rounded bg-indigo-700 px-3 py-1 text-sm text-white disabled:opacity-50"
+              disabled={!agreementId || rows.length === 0 || !!aiBusy}
+              onClick={refreshAISuggestions}
+            >
+              {aiBusy === "suggest" ? "Refreshing…" : "Refresh AI Suggestions"}
+            </button>
+            <button
+              type="button"
+              className="rounded bg-indigo-700 px-3 py-1 text-sm text-white disabled:opacity-50"
+              disabled={!agreementId || rows.length === 0 || !!aiBusy}
+              onClick={validateRevisions}
+            >
+              {aiBusy === "validate" ? "Validating…" : "Validate My Revisions"}
+            </button>
+          </div>
+        </div>
+        <p className="mb-3 text-xs text-gray-500">
+          AI outputs are suggestions. Review each row and click Save to persist.
+        </p>
+        <div className="space-y-3">
+          {aiSuggestions ? (
+            <AIReviewPanel
+              title="Suggested Responses"
+              data={aiSuggestions.data}
+              cached={aiSuggestions.cached}
+              onConfirm={() => toast.success("Suggestions reviewed.")}
+            />
+          ) : null}
+          {aiValidation ? (
+            <AIReviewPanel
+              title="Revision Validation"
+              data={aiValidation.data}
+              cached={aiValidation.cached}
+              onConfirm={() => toast.success("Validation reviewed.")}
+            />
+          ) : null}
+          {!aiSuggestions && !aiValidation ? (
+            <p className="text-sm text-gray-500">Run an AI action above to see suggestions here.</p>
+          ) : null}
+        </div>
       </div>
 
       <button

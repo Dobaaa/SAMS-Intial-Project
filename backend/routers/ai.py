@@ -8,6 +8,7 @@ from middleware.rbac import get_current_user
 from models.agreement import Agreement
 from models.user import User
 from services.ai_service import (
+    AIProviderError,
     compare_clauses,
     detect_risks,
     generate_summary,
@@ -28,8 +29,11 @@ async def analyze_agreement(
     if not agreement:
         raise HTTPException(status_code=404, detail="Agreement not found")
 
-    comparison = await compare_clauses(db, str(agreement_id))
-    risks = await detect_risks(db, str(agreement_id))
+    try:
+        comparison = await compare_clauses(db, str(agreement_id))
+        risks = await detect_risks(db, str(agreement_id))
+    except AIProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {
         "status": "success",
         "data": {
@@ -50,7 +54,10 @@ async def get_summary(
     agreement = await db.get(Agreement, agreement_id)
     if not agreement:
         raise HTTPException(status_code=404, detail="Agreement not found")
-    result = await generate_summary(db, str(agreement_id), role)
+    try:
+        result = await generate_summary(db, str(agreement_id), role)
+    except AIProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"status": "success", "data": result.data, "cached": result.cached}
 
 
@@ -64,6 +71,8 @@ async def suggest_resolution_responses(
         result = await suggest_responses(db, str(agreement_id))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AIProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"status": "success", "data": result.data, "cached": result.cached}
 
 
@@ -80,4 +89,6 @@ async def validate_agreement_revision(
         result = await validate_revision(db, str(agreement_id))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AIProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"status": "success", "data": result.data, "cached": result.cached}

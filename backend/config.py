@@ -6,7 +6,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str
-    OPENAI_API_KEY: str
+    GROQ_API_KEY: str
+    OPENAI_API_KEY: str = ""
+    AI_MODEL: str = "llama-3.3-70b-versatile"
+    AI_BASE_URL: str = "https://api.groq.com/openai/v1"
     JWT_SECRET_KEY: str
     SMTP_HOST: str
     SMTP_USER: str
