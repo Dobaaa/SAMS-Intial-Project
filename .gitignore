@@ -23,6 +23,7 @@ logs/
 *.log
 
 # Local environment
+backend/.env
 backend/.env.local
 backend/.env.*.local
 frontend/.env.local

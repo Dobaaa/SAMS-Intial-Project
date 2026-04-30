@@ -20,7 +20,8 @@ fi
 echo "→ deploying branch '$BRANCH' ($(git rev-parse --short "$BRANCH")) to $VPS_HOST:$APP_DIR"
 
 git archive --format=tar "$BRANCH" \
-    | ssh -i "$VPS_KEY" -o BatchMode=yes "$VPS_HOST" "cd $APP_DIR && tar -xf -"
+    | ssh -i "$VPS_KEY" -o BatchMode=yes "$VPS_HOST" \
+        "cd $APP_DIR && tar -xf - --exclude='backend/.env' --exclude='frontend/.env'"
 
 ssh -i "$VPS_KEY" -o BatchMode=yes "$VPS_HOST" 'bash -s' <<'REMOTE'
 set -euo pipefail
