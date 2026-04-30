@@ -300,10 +300,60 @@ git checkout -b feat/<slug> staging       # new feature branch off staging
 
 ---
 
-## 10. Session log (most recent first)
+## 10. Live VPS / Deploy
+
+**Alpha env URL:** https://76-13-159-24.sslip.io  (sslip.io wildcard → 76.13.159.24; switches to `sams.bgcc.ae` once BGCC IT publishes the DNS record)
+
+**VPS:** Hostinger KVM 1 — Ubuntu 24.04 — `developer@76.13.159.24` — passwordless sudo, SSH key at `~/.ssh/sams_deploy_ed25519`. Password auth still enabled (alpha; tighten by setting `PasswordAuthentication no` in `/etc/ssh/sshd_config` once stable).
+
+**Stack on the VPS:** Postgres 16 (db `sams_db`, role `sams_user`) · Redis 7 · nginx 1.24 + Let's Encrypt (auto-renew daily 03:00 via root crontab) · supervisord (`sams-api` program) · Python **3.12** in `/var/www/sams/backend/venv` (NB: spec said 3.11; Ubuntu 24.04 default is 3.12 — works fine) · Node 20.20 + Vite build · daily backup 02:00 via postgres crontab → `/backups/sams_*.sql.gz` (30-day retention).
+
+**Deploy after pushing to `staging` (or any local branch):**
+```bash
+./scripts/deploy-to-vps.sh           # defaults to staging
+./scripts/deploy-to-vps.sh feat/foo  # any local branch
+```
+
+What the script does, in order:
+1. `git archive <branch> | ssh ... | tar -xf -` into `/var/www/sams`. Tar only **adds/overwrites** files — `.env`, `venv/`, `node_modules/`, `dist/`, `uploads/` are NOT in the archive (gitignored), so production state is preserved.
+2. `pip install -r requirements.txt` (idempotent; fast no-op if no deps changed).
+3. `alembic upgrade head` (idempotent).
+4. `npm install && npm run build` — always rebuilds Vite bundle.
+5. `supervisorctl restart sams-api` (FastAPI picks up new code).
+6. `systemctl reload nginx` (only matters if nginx config changed).
+
+Total wall clock on the 1-vCPU box: ~90–150 s for a no-op redeploy; longer if pip / npm pulls in new packages.
+
+**What the script does NOT do:**
+- No DB rollback. If `alembic upgrade` fails mid-deploy, fix forward.
+- No blue/green or atomic swap. Brief window (~3-5 s) where supervisor is restarting and `/api` returns 502.
+- No Vite dist atomic swap; `dist/` is overwritten in place.
+- No pre-deploy backup (the 02:00 cron is the only safety net).
+
+**Manual touch-ups still on the live VPS that haven't been backported to the repo yet** (will land in a follow-up commit):
+- `nginx/sams.conf` — `proxy_pass http://127.0.0.1:8000;` (no trailing slash). The repo version has a trailing slash that strips `/api`, making every backend route 404.
+- `backend/requirements.txt` — needs `asyncpg` added; the code uses `postgresql+asyncpg://` but only `psycopg2-binary` is pinned, so uvicorn + alembic both fail to start without it.
+- `scripts/backup.sh` — `cd /tmp` after `set -euo pipefail` (avoids `find` cwd error when run from anywhere); `DB_USER="${DB_USER:-postgres}"` instead of hardcoded `sams_user` (peer auth via Unix socket).
+
+**Diagnosis & rollback toolkit on the VPS:**
+```bash
+sudo supervisorctl status sams-api
+sudo supervisorctl tail -f sams-api stderr
+sudo tail -f /var/log/sams/error.log
+sudo journalctl -u nginx -n 200
+ls -lh /backups/                  # most recent dump
+gunzip -c /backups/sams_X.sql.gz | psql -U postgres sams_db   # restore
+```
+
+**Resource caveat:** KVM 1 (1 vCPU / 4 GB) is fine for alpha demo (~600 MB used after bring-up, plenty of headroom). Recommend upgrading to KVM 2 minimum / KVM 4 ideal before BGCC's 15 users start using PDF generation concurrently — WeasyPrint is CPU-heavy and shares the single core with Postgres + Redis + uvicorn.
+
+---
+
+## 11. Session log (most recent first)
 
 > Append one bullet per session after meaningful work. Keep terse.
 
+- **2026-05-01** — **Alpha environment deployed to Hostinger VPS** at https://76-13-159-24.sslip.io (sslip.io wildcard since `bgcc.ae` not published yet). Box is Hostinger KVM 1 / Ubuntu 24.04 / 1 vCPU / 4 GB RAM (smaller than spec'd KVM 4) — added 2 GB swap as a cushion. Stack: Postgres 16, Redis 7, nginx 1.24 + Let's Encrypt, supervisord, FastAPI on Python 3.12, Vite build under Node 20.20 (Ubuntu's default Node 18 was too old for Vite 7). Five test users seeded (one per role, `change-me-<role>` temp passwords). 45 master_fields seeded behind 3 placeholder master_templates — admin must replace the template HTML via the UI before real PDFs render. SMTP intentionally placeholder; email path is best-effort and silently no-ops. **3 repo bugs found while running the runbook, patched on the VPS only**: (a) `nginx/sams.conf` `proxy_pass` trailing slash strips `/api` → all backend routes 404; (b) `backend/requirements.txt` missing `asyncpg` (runtime crash); (c) `scripts/backup.sh` hardcoded `sams_user` peer-auth fails + missing `cd` before `find`. Added `scripts/deploy-to-vps.sh` for one-command redeploys (option 1 deploy plan). Added §10 to this file documenting the live env. Daily backups @ 02:00, certbot renewal @ 03:00, both verified. Smoke test green: login, `/api/auth/me`, HTTPS redirect, JS asset 200.
 - **2026-04-24** — Initial project survey completed: read PDF v3 (28 pages, all 14 tasks), handover report, all `ahmed` code (≈5,200 LoC), confirmed spec vs. code drift. Saved memories (`MEMORY.md` index + 6 files). Created `staging` branch off `ahmed` and pushed to `origin`. Added this `CLAUDE.md`. GitHub access: pushes authenticated as `SeifMostafaa` (WRITE confirmed) via `gh`-backed HTTPS credential helper. No features built or bugs fixed yet.
 - **2026-04-24** — Full Task 01–14 static audit. Read every backend service/router/model/migration/template and every frontend page/component. Replaced the placeholder "known gaps" section with a task-by-task gap register (severity-marked) + implementation priority buckets (section 6). Key corrections vs. the handover report: seed script actually covers all **44 fields**, not 27. Key new findings: (1) `SanitizationMiddleware` globally strips HTML from all JSON payloads — will destroy TipTap rich-text; (2) frontend has no auth layer / no login page; (3) refresh-token revocation is in-process set, lost on restart; (4) route order in `masters.py` makes `PUT /fields/reorder` permanently 422; (5) `ai_service.validate_revision` queries by agreement_id but names parameter `sheet_id`; (6) resolution cycle dead-ends after OM/GM approve — no path back to subcontractor-signature.
 - **2026-04-24** — Test infrastructure landed on both sides.
