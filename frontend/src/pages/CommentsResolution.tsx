@@ -419,6 +419,7 @@ export default function CommentsResolution() {
           {aiSuggestions ? (
             <AIReviewPanel
               title="Suggested Responses"
+              kind="suggestions"
               data={aiSuggestions.data}
               cached={aiSuggestions.cached}
               onConfirm={() => toast.success("Suggestions reviewed.")}
@@ -427,6 +428,7 @@ export default function CommentsResolution() {
           {aiValidation ? (
             <AIReviewPanel
               title="Revision Validation"
+              kind="validation"
               data={aiValidation.data}
               cached={aiValidation.cached}
               onConfirm={() => toast.success("Validation reviewed.")}

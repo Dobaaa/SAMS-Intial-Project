@@ -97,7 +97,6 @@ async def generate_deviation_report(
                 "default_value": mf.default_value or "",
                 "entered_value": value_row.entered_value or "",
                 "change_type": change,
-                "risk": "Pending AI",
             }
         )
 

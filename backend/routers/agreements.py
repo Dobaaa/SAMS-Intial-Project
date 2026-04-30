@@ -12,9 +12,14 @@ from middleware.rbac import get_current_user, require_role
 from models.agreement import Agreement, AgreementFieldValue, AgreementStatusEnum, AppendixConfig, Project, Subcontractor
 from models.master import MasterField
 from models.user import RoleEnum, User
+import logging
+
 from services.agreement_service import create_draft_agreement, submit_for_review, update_agreement_fields
+from services.pdf_service import generate_agreement_pdf
 from services.resolution_service import create_resolution_sheet, record_subcontractor_response
 from services.workflow_engine import resubmit_agreement
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agreements", tags=["agreements"])
 
@@ -272,12 +277,20 @@ async def get_agreement(
 async def submit_agreement(
     agreement_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     res = await db.execute(select(Agreement).where(Agreement.id == agreement_id))
     agreement = res.scalar_one_or_none()
     if not agreement:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
     await submit_for_review(db, agreement)
+    # Best-effort: generate the PDF so reviewers always have a copy to read.
+    # If WeasyPrint blows up we still leave the workflow in place; admin can
+    # retry from the dashboard.
+    try:
+        await generate_agreement_pdf(db, str(agreement_id), current_user)
+    except Exception:
+        log.exception("Auto-PDF generation failed for agreement %s", agreement_id)
     return {"status": "submitted"}
 
 
@@ -285,12 +298,17 @@ async def submit_agreement(
 async def resubmit_returned_agreement(
     agreement_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     res = await db.execute(select(Agreement).where(Agreement.id == agreement_id))
     agreement = res.scalar_one_or_none()
     if not agreement:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
     await resubmit_agreement(db, agreement)
+    try:
+        await generate_agreement_pdf(db, str(agreement_id), current_user)
+    except Exception:
+        log.exception("Auto-PDF regeneration failed for agreement %s", agreement_id)
     return {"status": "resubmitted"}
 
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
+import AgreementPdf from "../components/AgreementPdf";
 import AIReviewPanel from "../components/AIReviewPanel";
-import DeviationReport from "../components/DeviationReport";
 import { useToast } from "../components/Toast";
 import WorkflowTimeline from "../components/WorkflowTimeline";
 import { api } from "../lib/api";
@@ -206,7 +206,10 @@ export default function WorkflowReview() {
               <p>Status: {details.agreement.current_status}</p>
             </div>
 
-            <DeviationReport agreementId={details.agreement.id} />
+            <AgreementPdf
+              agreementId={details.agreement.id}
+              referenceNumber={details.agreement.reference_number}
+            />
 
             <div className="rounded border p-3">
               <div className="mb-2 flex items-center justify-between">
@@ -238,12 +241,14 @@ export default function WorkflowReview() {
                   <>
                     <AIReviewPanel
                       title="Clause Comparison"
+                      kind="comparison"
                       data={analysis.comparison}
                       cached={analysis.cached}
                       onConfirm={() => toast.success("Comparison reviewed.")}
                     />
                     <AIReviewPanel
                       title="Risk Detection"
+                      kind="risks"
                       data={analysis.risks}
                       cached={analysis.cached}
                       onConfirm={() => toast.success("Risks reviewed.")}
@@ -253,6 +258,7 @@ export default function WorkflowReview() {
                 {summary ? (
                   <AIReviewPanel
                     title={`Role Summary (${role})`}
+                    kind="summary"
                     data={summary.data}
                     cached={summary.cached}
                     onConfirm={() => toast.success("Summary reviewed.")}
