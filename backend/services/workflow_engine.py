@@ -43,11 +43,19 @@ async def get_pending_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
     pending_items: list[dict] = []
     for step in steps:
         if step.step_order > 1:
+            # Stay within the same chain (main vs resolution); both share
+            # the workflow_steps table so step_order=1 alone matches two rows.
+            is_resolution = _is_resolution_step(step)
             prev_res = await db.execute(
                 select(WorkflowStep).where(
                     and_(
                         WorkflowStep.agreement_id == step.agreement_id,
                         WorkflowStep.step_order == step.step_order - 1,
+                        (
+                            WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES)
+                            if is_resolution
+                            else ~WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES)
+                        ),
                     )
                 )
             )
