@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+cd /tmp
 
 BACKUP_DIR="/backups"
 DB_NAME="sams_db"
-DB_USER="sams_user"
+DB_USER="${DB_USER:-postgres}"
 DATE_TAG="$(date +%F_%H-%M-%S)"
 OUTPUT_FILE="${BACKUP_DIR}/sams_${DATE_TAG}.sql.gz"
 
