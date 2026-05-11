@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import AIReviewPanel from "../components/AIReviewPanel";
 import { useToast } from "../components/Toast";
 import { api } from "../lib/api";
+import { humanRole } from "../lib/roles";
 
 type ResolutionRow = {
   id: string;
@@ -260,7 +261,7 @@ export default function CommentsResolution() {
                 return (
                   <li key={c.id} className="rounded border border-amber-100 bg-white p-2">
                     <div className="text-xs text-amber-700">
-                      {step ? `${step.step_name} — ${step.role_required.replace(/_/g, " ")}` : "Workflow"}
+                      {step ? `${step.step_name} — ${humanRole(step.role_required)}` : "Workflow"}
                       {c.clause_reference ? ` · clause ${c.clause_reference}` : ""}
                       {c.created_at ? ` · ${new Date(c.created_at).toLocaleString()}` : ""}
                       {" · "}status: {c.status}

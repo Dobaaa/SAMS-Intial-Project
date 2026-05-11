@@ -149,10 +149,7 @@ def main() -> None:
     running_header = (
         '<div class="running-header">'
         '  <div class="rh-logo">'
-        '    <div class="bhatia-mark">'
-        '      <div class="bm-line1">BHAT<span class="bm-pillar"></span>A</div>'
-        '      <div class="bm-line2">GENERAL CONTRACTING CO. L.L.C.</div>'
-        '    </div>'
+        '    <img class="rh-logo-img" src="backend/templates/bhatia-logo.png" alt="BHATIA" />'
         '  </div>'
         '  <div class="rh-name">BHATIA GENERAL CONTRACTING CO. L.L.C. (BGCC</div>'
         '</div>'

@@ -239,15 +239,12 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
     reference_number = html_escape(agreement.reference_number or "")
     # Running header replicates the BGCC source: small BHATIA logo on the
     # left, italic blue gradient text "BHATIA GENERAL CONTRACTING CO. L.L.C.
-    # (BGCC" on the right. The thin horizontal underline is drawn via CSS
-    # border-bottom on .running-header.
+    # (BGCC" on the right. The image path is relative to BASE_DIR (the
+    # WeasyPrint base_url passed to write_pdf below).
     running_header = (
         '<div class="running-header">'
         '  <div class="rh-logo">'
-        '    <div class="bhatia-mark">'
-        '      <div class="bm-line1">BHAT<span class="bm-pillar"></span>A</div>'
-        '      <div class="bm-line2">GENERAL CONTRACTING CO. L.L.C.</div>'
-        '    </div>'
+        '    <img class="rh-logo-img" src="backend/templates/bhatia-logo.png" alt="BHATIA" />'
         '  </div>'
         '  <div class="rh-name">BHATIA GENERAL CONTRACTING CO. L.L.C. (BGCC</div>'
         '</div>'

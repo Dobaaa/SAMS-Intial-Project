@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import AgreementPdf from "../components/AgreementPdf";
 import AIReviewPanel from "../components/AIReviewPanel";
 import AppendixView from "../components/AppendixView";
+import { humanRole } from "../lib/roles";
 import { useToast } from "../components/Toast";
 import WorkflowTimeline from "../components/WorkflowTimeline";
 import { api } from "../lib/api";
@@ -48,27 +49,6 @@ type WorkflowAgreementDetails = {
     created_at?: string | null;
   }>;
 };
-
-// Backend stores role as the lowercase enum value (project_director,
-// operation_manager, etc.). The rail card and any other reviewer-facing
-// surface needs the human-readable label.
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Admin",
-  project_director: "Project Director",
-  accounts: "Accounts",
-  operation_manager: "Operation Manager",
-  gm: "General Manager",
-};
-
-function humanRole(value: string): string {
-  return (
-    ROLE_LABELS[value] ??
-    value
-      .split("_")
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ")
-  );
-}
 
 type AIAnalysis = {
   comparison: unknown;

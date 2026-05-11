@@ -87,6 +87,12 @@ body {
   width: 30mm;
 }
 
+.running-header .rh-logo-img {
+  height: 9mm;
+  width: auto;
+  display: block;
+}
+
 .running-header .rh-name {
   font-style: italic;
   font-weight: 700;
@@ -95,37 +101,6 @@ body {
   color: #1f3a7a;
   text-decoration: underline;
   text-underline-offset: 2px;
-}
-
-.bhatia-mark {
-  display: inline-block;
-  border: 1px solid #1f3a7a;
-  padding: 2px 6px;
-  background: #f5f7fb;
-  line-height: 1;
-}
-.bhatia-mark .bm-line1 {
-  font-family: "Calibri", "Open Sans", Arial, sans-serif;
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 1px;
-  color: #1a2c5a;
-}
-.bhatia-mark .bm-line1 .bm-pillar {
-  display: inline-block;
-  width: 3px;
-  height: 9px;
-  background: #1a2c5a;
-  margin: 0 0.5px;
-  vertical-align: middle;
-}
-.bhatia-mark .bm-line2 {
-  font-family: "Calibri", "Open Sans", Arial, sans-serif;
-  font-size: 4.5px;
-  letter-spacing: 0.6px;
-  color: #1a2c5a;
-  text-align: center;
-  margin-top: 1px;
 }
 
 .reference-anchor {
@@ -269,42 +244,18 @@ body {
 .cover-logo-block {
   position: absolute;
   top: 110mm;
-  right: 28mm;
+  right: 24mm;
   z-index: 2;
   text-align: center;
-  width: 38mm;
+  width: 42mm;
   color: #142a52;
 }
 
-.cover-logo-mark {
-  background: #f9d33b;
-  border: 1px solid #1a2c5a;
-  padding: 8px 12px;
-  display: inline-block;
-}
-
-.cover-logo-mark .clm-line1 {
-  font-family: "Calibri", "Open Sans", Arial, sans-serif;
-  font-weight: 900;
-  font-size: 28px;
-  letter-spacing: 2px;
-  color: #142a52;
-  line-height: 1;
-}
-.cover-logo-mark .clm-line1 .clm-pillar {
-  display: inline-block;
-  width: 7px;
-  height: 22px;
-  background: #142a52;
-  margin: 0 1px;
-  vertical-align: middle;
-}
-.cover-logo-mark .clm-line2 {
-  font-size: 5.5px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
-  margin-top: 2px;
-  color: #142a52;
+.cover-logo-img {
+  width: 42mm;
+  height: auto;
+  display: block;
+  margin: 0 auto;
 }
 
 .cover-company {
