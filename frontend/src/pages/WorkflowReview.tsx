@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import AgreementPdf from "../components/AgreementPdf";
 import AIReviewPanel from "../components/AIReviewPanel";
+import AppendixView from "../components/AppendixView";
 import { useToast } from "../components/Toast";
 import WorkflowTimeline from "../components/WorkflowTimeline";
 import { api } from "../lib/api";
@@ -206,10 +207,19 @@ export default function WorkflowReview() {
               <p>Status: {details.agreement.current_status}</p>
             </div>
 
-            <AgreementPdf
-              agreementId={details.agreement.id}
-              referenceNumber={details.agreement.reference_number}
-            />
+            {/* Side-by-side review: full SCA PDF on the left, structured
+                Appendix on the right, so PD/Accounts/OM/GM can compare both
+                without switching tabs. (Comments #1 + #2 from BGCC review.) */}
+            <div className="grid gap-3 xl:grid-cols-2">
+              <AgreementPdf
+                agreementId={details.agreement.id}
+                referenceNumber={details.agreement.reference_number}
+              />
+              <AppendixView
+                agreementId={details.agreement.id}
+                referenceNumber={details.agreement.reference_number}
+              />
+            </div>
 
             <div className="rounded border p-3">
               <div className="mb-2 flex items-center justify-between">

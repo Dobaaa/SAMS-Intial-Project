@@ -78,7 +78,65 @@ export default function MasterTemplates() {
   };
 
   return (
-    <div className="grid grid-cols-12 gap-4 p-4">
+    <div className="space-y-4 p-4">
+      <details className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 shadow-sm">
+        <summary className="cursor-pointer text-sm font-semibold text-sky-900">
+          About the Masters section — how versioning, fields, and placeholders work
+        </summary>
+        <div className="mt-3 space-y-3 text-sm text-sky-900">
+          <p>
+            The Masters section is where you maintain the <strong>three core
+            master templates</strong> that every new subcontract agreement is built
+            from: the <em>Form of Subcontract Agreement</em>, the
+            <em> Conditions of Subcontract Agreement</em>, and the
+            <em> Appendix to the Subcontract Agreement</em>. Each agreement keeps a
+            permanent reference to the exact template version it was created from,
+            so historic agreements are never disturbed by a later template change.
+          </p>
+          <div>
+            <div className="font-semibold">1. Template Versions</div>
+            <p>
+              When the legal text changes, click <em>Save As New Version</em>. The
+              new version becomes <em>active</em> for all <em>future</em> agreements;
+              older agreements still render from their original version. The
+              version number is free-form (use <code>v1.1</code>, <code>2026-Q3</code>, etc.).
+            </p>
+          </div>
+          <div>
+            <div className="font-semibold">2. Field Catalog</div>
+            <p>
+              The field catalog drives what the wizard asks for and what the PDF
+              substitutes. Add a new field by giving it a stable <strong>field id</strong>
+              (e.g. <code>F09</code>, <code>C14</code>, <code>A24</code>), a clause number,
+              a label, and an input type. To make a field auto-populate from
+              another, set <em>auto_source_field_id</em> (e.g. <code>A07</code>'s
+              source is <code>F08</code> so the subcontract price flows into the
+              appendix automatically).
+            </p>
+          </div>
+          <div>
+            <div className="font-semibold">3. Placeholders inside the legal text</div>
+            <p>
+              Inside the template HTML, write <code>{"{{F02}}"}</code>,
+              <code> {"{{C03}}"}</code>, etc. wherever the rendered PDF should
+              substitute the entered value. Tokens not present in the field
+              catalog are left untouched in the PDF so you can spot stray
+              placeholders. Use the legacy phrase mapping only as a migration
+              bridge — long-term, all values flow through <code>{"{{FIELD_ID}}"}</code>.
+            </p>
+          </div>
+          <div>
+            <div className="font-semibold">4. Appendix rendering</div>
+            <p>
+              Appendix rows come from any field marked <em>show_in_appendix</em>.
+              Their order and per-agreement visibility / notes are controlled in
+              Step 4 of the agreement wizard, not here.
+            </p>
+          </div>
+        </div>
+      </details>
+
+      <div className="grid grid-cols-12 gap-4">
       <aside className="col-span-3 space-y-4 rounded border p-3">
         <h2 className="text-lg font-semibold">Template Versions</h2>
         {(["form", "conditions", "appendix"] as const).map((type) => (
@@ -125,6 +183,7 @@ export default function MasterTemplates() {
           />
         )}
       </main>
+      </div>
     </div>
   );
 }

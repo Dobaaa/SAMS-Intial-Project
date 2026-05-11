@@ -9,6 +9,7 @@ type ResolutionRow = {
   agreement_id: string;
   subcontractor_comment: string;
   clause_reference?: string | null;
+  original_clause_text?: string | null;
   ai_suggested_response?: string | null;
   pd_response?: string | null;
   om_response?: string | null;
@@ -47,6 +48,7 @@ export default function CommentsResolution() {
   const [rows, setRows] = useState<ResolutionRow[]>([]);
   const [newComment, setNewComment] = useState("");
   const [newClause, setNewClause] = useState("");
+  const [newOriginalClause, setNewOriginalClause] = useState("");
   const [progress, setProgress] = useState<{ om?: string; gm?: string }>({});
   const [internalComments, setInternalComments] = useState<WorkflowCommentLite[]>([]);
   const [steps, setSteps] = useState<WorkflowStepLite[]>([]);
@@ -114,11 +116,18 @@ export default function CommentsResolution() {
     }
     try {
       await api.post(`/agreements/${agreementId}/resolution-sheet`, {
-        items: [{ subcontractor_comment: newComment, clause_reference: newClause || null }],
+        items: [
+          {
+            subcontractor_comment: newComment,
+            clause_reference: newClause || null,
+            original_clause_text: newOriginalClause || null,
+          },
+        ],
       });
       toast.success("Resolution item added.");
       setNewComment("");
       setNewClause("");
+      setNewOriginalClause("");
       await loadRows();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
@@ -130,6 +139,7 @@ export default function CommentsResolution() {
   const saveRow = async (row: ResolutionRow) => {
     try {
       await api.put(`/resolution/${agreementId}/items/${row.id}`, {
+        original_clause_text: row.original_clause_text ?? null,
         ai_suggested_response: row.ai_suggested_response ?? null,
         pd_response: row.pd_response ?? null,
         om_response: row.om_response ?? null,
@@ -266,22 +276,41 @@ export default function CommentsResolution() {
 
       <div className="rounded border border-sky-100 bg-white p-3 shadow-sm">
         <h2 className="mb-2 text-lg font-semibold">Add Subcontractor Comment</h2>
-        <div className="grid gap-2">
-          <textarea
-            className="rounded border p-2"
-            placeholder="Subcontractor comment"
-            rows={3}
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-          />
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-sky-900">
+              Original SCA Clause (paste verbatim text from the agreement)
+            </label>
+            <textarea
+              className="w-full rounded border p-2"
+              placeholder="e.g. Clause 3.4.6: Interim Payment shall be made by the Main Contractor within 60 days of the Interim Payment Certificate..."
+              rows={4}
+              value={newOriginalClause}
+              onChange={(e) => setNewOriginalClause(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-sky-900">
+              Subcontractor's Comment
+            </label>
+            <textarea
+              className="w-full rounded border p-2"
+              placeholder="The subcontractor's proposed change or remark..."
+              rows={4}
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="mt-2 grid items-end gap-2 md:grid-cols-[1fr_auto]">
           <input
             className="rounded border p-2"
-            placeholder="Clause reference (optional)"
+            placeholder="Clause reference (e.g. 3.4.6)"
             value={newClause}
             onChange={(e) => setNewClause(e.target.value)}
           />
           <button
-            className="w-fit rounded bg-blue-700 px-3 py-2 text-white disabled:opacity-50"
+            className="rounded bg-blue-700 px-3 py-2 text-white disabled:opacity-50"
             onClick={createSheet}
             disabled={!agreementId}
           >
@@ -297,97 +326,151 @@ export default function CommentsResolution() {
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded border border-sky-100 bg-white p-3 shadow-sm">
-        <table className="w-full border-collapse border">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="border p-2">Comment</th>
-              <th className="border p-2">Clause Ref</th>
-              <th className="border p-2">AI Suggestion</th>
-              <th className="border p-2">PD Response</th>
-              <th className="border p-2">OM Response</th>
-              <th className="border p-2">Final Response</th>
-              <th className="border p-2">Resolved</th>
-              <th className="border p-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="p-3 text-center text-sm text-gray-500">
-                  No subcontractor comments recorded for this agreement.
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.id}>
-                  <td className="border p-2">{row.subcontractor_comment}</td>
-                  <td className="border p-2">{row.clause_reference || "-"}</td>
-                  <td className="border p-2">
-                    <textarea
-                      className="w-full rounded border p-1"
-                      rows={2}
-                      value={row.ai_suggested_response || ""}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          prev.map((r) => (r.id === row.id ? { ...r, ai_suggested_response: e.target.value } : r))
+      <div className="space-y-3">
+        {rows.length === 0 ? (
+          <div className="rounded border border-sky-100 bg-white p-4 text-center text-sm text-gray-500 shadow-sm">
+            No subcontractor comments recorded for this agreement.
+          </div>
+        ) : (
+          rows.map((row) => (
+            <div
+              key={row.id}
+              className="space-y-3 rounded border border-sky-100 bg-white p-3 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-sky-900">
+                  <span className="font-semibold">Resolution Item</span>
+                  {row.clause_reference && (
+                    <span className="ml-2 rounded bg-sky-100 px-2 py-0.5 text-xs font-mono text-sky-800">
+                      Clause {row.clause_reference}
+                    </span>
+                  )}
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={row.is_resolved}
+                    onChange={(e) =>
+                      setRows((prev) =>
+                        prev.map((r) =>
+                          r.id === row.id ? { ...r, is_resolved: e.target.checked } : r
                         )
-                      }
-                    />
-                  </td>
-                  <td className="border p-2">
-                    <textarea
-                      className="w-full rounded border p-1"
-                      rows={2}
-                      value={row.pd_response || ""}
-                      onChange={(e) =>
-                        setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, pd_response: e.target.value } : r)))
-                      }
-                    />
-                  </td>
-                  <td className="border p-2">
-                    <textarea
-                      className="w-full rounded border p-1"
-                      rows={2}
-                      value={row.om_response || ""}
-                      onChange={(e) =>
-                        setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, om_response: e.target.value } : r)))
-                      }
-                    />
-                  </td>
-                  <td className="border p-2">
-                    <textarea
-                      className="w-full rounded border p-1"
-                      rows={2}
-                      value={row.final_response || ""}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          prev.map((r) => (r.id === row.id ? { ...r, final_response: e.target.value } : r))
+                      )
+                    }
+                  />
+                  Resolved
+                </label>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded border border-amber-200 bg-amber-50 p-2">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-900">
+                    Original SCA Clause
+                  </div>
+                  <textarea
+                    className="w-full rounded border border-amber-200 bg-white p-2 text-sm"
+                    rows={4}
+                    placeholder="Paste the verbatim clause text from the SCA..."
+                    value={row.original_clause_text || ""}
+                    onChange={(e) =>
+                      setRows((prev) =>
+                        prev.map((r) =>
+                          r.id === row.id ? { ...r, original_clause_text: e.target.value } : r
                         )
-                      }
-                    />
-                  </td>
-                  <td className="border p-2 text-center">
-                    <input
-                      type="checkbox"
-                      checked={row.is_resolved}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          prev.map((r) => (r.id === row.id ? { ...r, is_resolved: e.target.checked } : r))
+                      )
+                    }
+                  />
+                </div>
+                <div className="rounded border border-sky-200 bg-sky-50 p-2">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-sky-900">
+                    Second Party (Subcontractor) Comment
+                  </div>
+                  <div className="whitespace-pre-wrap rounded border border-sky-200 bg-white p-2 text-sm">
+                    {row.subcontractor_comment || (
+                      <span className="text-gray-400">(no comment text)</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <div className="mb-1 text-xs font-semibold text-indigo-900">
+                    AI Suggestion
+                  </div>
+                  <textarea
+                    className="w-full rounded border p-1 text-sm"
+                    rows={3}
+                    value={row.ai_suggested_response || ""}
+                    onChange={(e) =>
+                      setRows((prev) =>
+                        prev.map((r) =>
+                          r.id === row.id ? { ...r, ai_suggested_response: e.target.value } : r
                         )
-                      }
-                    />
-                  </td>
-                  <td className="border p-2">
-                    <button className="rounded bg-gray-800 px-2 py-1 text-white" onClick={() => saveRow(row)}>
-                      Save
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="mb-1 text-xs font-semibold text-sky-900">
+                    PD Response
+                  </div>
+                  <textarea
+                    className="w-full rounded border p-1 text-sm"
+                    rows={3}
+                    value={row.pd_response || ""}
+                    onChange={(e) =>
+                      setRows((prev) =>
+                        prev.map((r) => (r.id === row.id ? { ...r, pd_response: e.target.value } : r))
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="mb-1 text-xs font-semibold text-sky-900">
+                    OM Response
+                  </div>
+                  <textarea
+                    className="w-full rounded border p-1 text-sm"
+                    rows={3}
+                    value={row.om_response || ""}
+                    onChange={(e) =>
+                      setRows((prev) =>
+                        prev.map((r) => (r.id === row.id ? { ...r, om_response: e.target.value } : r))
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="mb-1 text-xs font-semibold text-emerald-900">
+                    Final Response
+                  </div>
+                  <textarea
+                    className="w-full rounded border p-1 text-sm"
+                    rows={3}
+                    value={row.final_response || ""}
+                    onChange={(e) =>
+                      setRows((prev) =>
+                        prev.map((r) =>
+                          r.id === row.id ? { ...r, final_response: e.target.value } : r
+                        )
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  className="rounded bg-gray-800 px-3 py-1 text-sm text-white hover:bg-black"
+                  onClick={() => saveRow(row)}
+                >
+                  Save Row
+                </button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       <div className="rounded border border-sky-100 bg-white p-3 shadow-sm">

@@ -181,6 +181,26 @@ export default function Dashboard() {
     }
   };
 
+  const deleteAgreement = async (agreement: AgreementRow) => {
+    const confirmed = window.confirm(
+      `Delete agreement ${agreement.reference_number}?\n\nThis permanently removes the draft, its appendix configuration, and any workflow steps. ` +
+        `Cannot be undone.`
+    );
+    if (!confirmed) return;
+    setBusyId(agreement.id);
+    try {
+      await api.delete(`/agreements/${agreement.id}`);
+      toast.success(`Deleted ${agreement.reference_number}.`);
+      await loadAll();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? `Failed to delete ${agreement.reference_number}.`);
+      console.error(err);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const downloadAgreementPdf = async (agreement: AgreementRow) => {
     setBusyId(agreement.id);
     try {
@@ -273,7 +293,9 @@ export default function Dashboard() {
                 <td className="border border-sky-100 p-2">{a.status_updated_on ? new Date(a.status_updated_on).toLocaleString() : "-"}</td>
                 <td className="border border-sky-100 p-2">
                   <div className="flex flex-wrap gap-2">
-                    {(a.status === "under_drafting" || a.status === "under_bgcc_revision") && (
+                    {(a.status === "under_drafting" ||
+                      a.status === "under_bgcc_revision" ||
+                      a.status === "under_internal_review") && (
                       <Link
                         to={`/agreements/${a.id}/edit`}
                         className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50"
@@ -282,6 +304,19 @@ export default function Dashboard() {
                         Edit
                       </Link>
                     )}
+                    {(a.status === "under_drafting" ||
+                      a.status === "under_bgcc_revision" ||
+                      a.status === "under_internal_review") &&
+                      !a.gm_approval_date && (
+                        <button
+                          className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-red-800 hover:bg-red-100 disabled:opacity-50"
+                          disabled={busyId === a.id}
+                          onClick={() => void deleteAgreement(a)}
+                          title="Delete this draft permanently"
+                        >
+                          Delete
+                        </button>
+                      )}
                     {a.status === "under_bgcc_revision" && !a.gm_approval_date && (
                       <button
                         className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-sky-800 hover:bg-sky-100 disabled:opacity-50"

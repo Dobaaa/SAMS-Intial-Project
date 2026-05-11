@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../lib/api";
+import { formatNumber } from "../lib/formatNumber";
 
 export type AppendixRow = {
   field_id: string;
@@ -25,6 +26,53 @@ export default function AppendixBuilder({ agreementId, refreshKey }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingField, setSavingField] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<string>("");
+
+  const startEdit = (row: AppendixRow) => {
+    setEditingField(row.field_id);
+    setEditDraft(row.current_value ?? "");
+  };
+
+  const cancelEdit = () => {
+    setEditingField(null);
+    setEditDraft("");
+  };
+
+  const saveValueEdit = async (row: AppendixRow) => {
+    setSavingField(row.field_id);
+    try {
+      const { data } = await api.put(`/agreements/${agreementId}/fields`, {
+        values: { [row.field_id]: editDraft },
+      });
+      // Backend may cascade other field values (e.g. C-> A); reload via api
+      // call to AppendixBuilder is implicit through parent refreshKey, but
+      // we also patch the local state for the edited row immediately so the
+      // value shows up without flicker even before the parent re-renders.
+      setRows((prev) =>
+        prev.map((r) =>
+          r.field_id === row.field_id ? { ...r, current_value: editDraft } : r
+        )
+      );
+      if (data?.values && typeof data.values === "object") {
+        const cascaded: Record<string, string> = data.values;
+        setRows((prev) =>
+          prev.map((r) =>
+            cascaded[r.field_id] !== undefined
+              ? { ...r, current_value: cascaded[r.field_id] }
+              : r
+          )
+        );
+      }
+      setEditingField(null);
+      setEditDraft("");
+    } catch (err) {
+      console.error(err);
+      setError(`Failed to save value for ${row.field_id}.`);
+    } finally {
+      setSavingField(null);
+    }
+  };
 
   const sortedRows = useMemo(
     () => [...rows].sort((a, b) => a.sort_order - b.sort_order),
@@ -150,7 +198,50 @@ export default function AppendixBuilder({ agreementId, refreshKey }: Props) {
                 </div>
               </td>
               <td className="border border-sky-100 p-2 align-top whitespace-pre-wrap">
-                {row.current_value || <span className="text-gray-400">(empty)</span>}
+                {editingField === row.field_id ? (
+                  <div className="space-y-1">
+                    <textarea
+                      className="w-full rounded border border-sky-300 p-1 text-sm"
+                      rows={2}
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                    />
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        className="rounded bg-sky-600 px-2 py-0.5 text-xs text-white hover:bg-sky-700 disabled:opacity-50"
+                        disabled={savingField !== null}
+                        onClick={() => void saveValueEdit(row)}
+                      >
+                        {savingField === row.field_id ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-sky-300 px-2 py-0.5 text-xs text-sky-700 hover:bg-sky-50"
+                        onClick={cancelEdit}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <div>
+                      {row.current_value ? (
+                        formatNumber(row.current_value)
+                      ) : (
+                        <span className="text-gray-400">(empty)</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded border border-sky-200 px-2 py-0.5 text-xs text-sky-700 hover:bg-sky-50"
+                      onClick={() => startEdit(row)}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )}
               </td>
               <td className="border border-sky-100 p-2 align-top text-center">
                 <label className="inline-flex items-center gap-1 text-xs">

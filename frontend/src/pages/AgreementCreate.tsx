@@ -5,6 +5,7 @@ import AppendixBuilder from "../components/AppendixBuilder";
 import FieldInput from "../components/FieldInput";
 import { useToast } from "../components/Toast";
 import { api } from "../lib/api";
+import { formatNumber } from "../lib/formatNumber";
 type MasterField = {
   id: string;
   template_id: string;
@@ -23,6 +24,11 @@ function tenPercentOf(value: string): string {
   if (!Number.isFinite(n)) return "";
   return (n * 0.1).toFixed(2);
 }
+
+// F02-F08 duplicate the project / subcontractor inputs collected on Step 1
+// (sub company / PO box / trade licence / employer / project name / location /
+// price). Step 2 hides these and the values are synced via buildStep1FieldSync.
+const STEP1_DUPLICATE_F_FIELDS = new Set(["F02", "F03", "F04", "F05", "F06", "F07", "F08"]);
 
 const fallbackFields: MasterField[] = [
   { id: "F01", template_id: "fallback", field_id: "F01", field_label: "Day of signing", input_type: "date", is_required: true, show_in_appendix: false, sort_order: 1 },
@@ -64,8 +70,31 @@ export default function AgreementCreate() {
   });
   const [fieldLoadWarning, setFieldLoadWarning] = useState("");
   const [hydrating, setHydrating] = useState(false);
+  const [subcontractorOptions, setSubcontractorOptions] = useState<
+    Array<{
+      id: string;
+      company_name: string;
+      po_box: string;
+      trade_licence_no: string;
+      contact_person: string;
+      email: string;
+      phone: string;
+      address: string;
+    }>
+  >([]);
+  const [subSearch, setSubSearch] = useState("");
 
-  const formFields = useMemo(() => fields.filter((f) => /^F\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
+  // Step 2 only asks for header-level F fields that AREN'T already collected
+  // as project/subcontractor in Step 1 (see STEP1_DUPLICATE_F_FIELDS above).
+  // The user requested no repeated inputs.
+  const formFields = useMemo(
+    () =>
+      fields
+        .filter((f) => /^F\d+/.test(f.field_id))
+        .filter((f) => !STEP1_DUPLICATE_F_FIELDS.has(f.field_id))
+        .sort((a, b) => a.sort_order - b.sort_order),
+    [fields]
+  );
   const conditionFields = useMemo(() => fields.filter((f) => /^C\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
   const appendixFields = useMemo(() => fields.filter((f) => /^A\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
   // A-fields with no auto_source_field_id are the ones admin MUST type in
@@ -73,10 +102,6 @@ export default function AgreementCreate() {
   // A17 Subcontract works completion). The rest cascade from F/C values.
   const manualAppendixFields = useMemo(
     () => appendixFields.filter((f) => !f.auto_source_field_id),
-    [appendixFields]
-  );
-  const autoAppendixFields = useMemo(
-    () => appendixFields.filter((f) => f.auto_source_field_id),
     [appendixFields]
   );
 
@@ -149,22 +174,38 @@ export default function AgreementCreate() {
     }
   };
 
+  // Step 1's project + subcontractor data IS the source of truth for F02-F08
+  // (sub company, PO box, trade licence, employer, project name, location,
+  // price). We push those values into the field-values map immediately after
+  // creating/updating the draft so Step 2/3/4 see them cascaded into A01,
+  // A02, A04, A06, A07 etc., and the user never re-types the same info.
+  const buildStep1FieldSync = (): Record<string, string> => {
+    const out: Record<string, string> = {};
+    if (subcontractor.company_name) out.F02 = subcontractor.company_name;
+    if (subcontractor.po_box) out.F03 = subcontractor.po_box;
+    if (subcontractor.trade_licence_no) out.F04 = subcontractor.trade_licence_no;
+    if (project.employer_name) out.F05 = project.employer_name;
+    if (project.project_name) out.F06 = project.project_name;
+    if (project.project_location) out.F07 = project.project_location;
+    // F08 (price) is intentionally not synced — admin enters it explicitly
+    // in Step 2 alongside F01 (signing date) + F09 (scope title).
+    return out;
+  };
+
   const createDraft = async () => {
     try {
       const { data } = await api.post("/agreements/", { project, subcontractor, reference_number: reference || undefined });
       setAgreementId(data.id);
       setReference(data.reference_number);
-      // If admin filled any of the manual appendix fields on Step 1
-      // (A03/A05/A15/A17 etc.), save them immediately so they're persisted
-      // before the wizard moves on. The PUT response also returns the
-      // post-cascade value map, which we merge into local state.
-      const manualPayload: Record<string, string> = {};
+      // Sync F02-F07 from Step 1's project/subcontractor inputs, plus any
+      // manual appendix fields admin filled on Step 1 (A03/A05/A15/A17 etc.).
+      const payload: Record<string, string> = { ...buildStep1FieldSync() };
       for (const f of manualAppendixFields) {
         const v = values[f.field_id];
-        if (v !== undefined && v !== "") manualPayload[f.field_id] = v;
+        if (v !== undefined && v !== "") payload[f.field_id] = v;
       }
-      if (Object.keys(manualPayload).length > 0) {
-        const { data: putData } = await api.put(`/agreements/${data.id}/fields`, { values: manualPayload });
+      if (Object.keys(payload).length > 0) {
+        const { data: putData } = await api.put(`/agreements/${data.id}/fields`, { values: payload });
         if (putData?.values && typeof putData.values === "object") {
           setValues((prev) => ({ ...prev, ...putData.values }));
         }
@@ -188,6 +229,41 @@ export default function AgreementCreate() {
     void loadTemplateFields();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Subcontractor picker: debounce the search input and call the list
+  // endpoint so admin can pick an existing subcontractor instead of re-typing
+  // company name / PO box / trade licence / contact details. Contract price
+  // (F08) is NEVER copied — that's per-agreement.
+  useEffect(() => {
+    if (isEditMode) return; // picker only makes sense for fresh drafts
+    const handle = setTimeout(async () => {
+      try {
+        const { data } = await api.get("/subcontractors/", {
+          params: subSearch ? { search: subSearch } : undefined,
+        });
+        setSubcontractorOptions(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.warn("Failed to load subcontractors", err);
+      }
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [subSearch, isEditMode]);
+
+  const applySubcontractor = (
+    pick: (typeof subcontractorOptions)[number] | null
+  ) => {
+    if (!pick) return;
+    setSubcontractor({
+      company_name: pick.company_name || "",
+      po_box: pick.po_box || "",
+      trade_licence_no: pick.trade_licence_no || "",
+      contact_person: pick.contact_person || "",
+      email: pick.email || "",
+      phone: pick.phone || "",
+      address: pick.address || "",
+    });
+    toast.success(`Pre-filled subcontractor details from ${pick.company_name}.`);
+  };
 
   // Edit-existing-draft hydration: when route is /agreements/:id/edit, pull
   // the agreement detail (project, subcontractor, reference, value map) and
@@ -227,13 +303,13 @@ export default function AgreementCreate() {
     if (!agreementId) return;
     try {
       await api.patch(`/agreements/${agreementId}/parties`, { project, subcontractor });
-      const manualPayload: Record<string, string> = {};
+      const payload: Record<string, string> = { ...buildStep1FieldSync() };
       for (const f of manualAppendixFields) {
         const v = values[f.field_id];
-        if (v !== undefined) manualPayload[f.field_id] = v;
+        if (v !== undefined) payload[f.field_id] = v;
       }
-      if (Object.keys(manualPayload).length > 0) {
-        const { data: putData } = await api.put(`/agreements/${agreementId}/fields`, { values: manualPayload });
+      if (Object.keys(payload).length > 0) {
+        const { data: putData } = await api.put(`/agreements/${agreementId}/fields`, { values: payload });
         if (putData?.values && typeof putData.values === "object") {
           setValues((prev) => ({ ...prev, ...putData.values }));
         }
@@ -332,6 +408,44 @@ export default function AgreementCreate() {
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-sky-800">Subcontractor</h3>
+
+            {!isEditMode && (
+              <div className="space-y-2 rounded-lg border border-sky-100 bg-sky-50/50 p-3">
+                <label className="block text-xs font-semibold text-sky-800">
+                  Search existing subcontractors (optional)
+                </label>
+                <input
+                  type="text"
+                  className="w-full rounded border p-2 text-sm"
+                  placeholder="Type a company name to filter..."
+                  value={subSearch}
+                  onChange={(e) => setSubSearch(e.target.value)}
+                />
+                {subcontractorOptions.length > 0 && (
+                  <select
+                    className="w-full rounded border p-2 text-sm"
+                    defaultValue=""
+                    onChange={(e) => {
+                      const pick = subcontractorOptions.find((o) => o.id === e.target.value) ?? null;
+                      applySubcontractor(pick);
+                    }}
+                  >
+                    <option value="">— Pick a subcontractor to auto-fill —</option>
+                    {subcontractorOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.company_name}
+                        {opt.trade_licence_no ? ` · TL ${opt.trade_licence_no}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <p className="text-xs text-sky-700">
+                  Picks pre-fill company / PO box / trade licence / contact / email / phone / address.
+                  Subcontract price stays blank — it's always entered per agreement.
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="mb-1 block text-sm">SUB_COMPANY — Company name</label>
               <input className="w-full rounded border p-2" value={subcontractor.company_name} onChange={(e) => setSubcontractor({ ...subcontractor, company_name: e.target.value })} />
@@ -385,31 +499,57 @@ export default function AgreementCreate() {
 
       {step === 2 && (
         <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold">Step 2: Form Fields (F01-F08)</h2>
-          {formFields.map((field) => (
-            <div key={field.id}>
-              <label className="mb-1 block text-sm">{field.field_id} - {field.field_label}</label>
-              <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
+          <h2 className="font-semibold">Step 2: Agreement Header</h2>
+          <p className="text-sm text-sky-700">
+            Subcontractor + project details from Step 1 already populate F02–F07 automatically.
+            Enter only the agreement-level inputs below.
+          </p>
+          {formFields.length === 0 ? (
+            <div className="rounded border border-sky-100 bg-sky-50/50 p-2 text-sm text-sky-700">
+              No additional Form fields to enter. Click Next to continue.
             </div>
-          ))}
-          <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { await saveFields(); setStep(3); }}>
-            Next
-          </button>
+          ) : (
+            formFields.map((field) => (
+              <div key={field.id}>
+                <label className="mb-1 block text-sm">{field.field_id} - {field.field_label}</label>
+                <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
+              </div>
+            ))
+          )}
+          <div className="flex gap-2">
+            <button
+              className="rounded-lg border border-sky-300 px-3 py-2 text-sky-700 hover:bg-sky-50"
+              onClick={() => setStep(1)}
+            >
+              Back
+            </button>
+            <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { await saveFields(); setStep(3); }}>
+              Next
+            </button>
+          </div>
         </div>
       )}
 
       {step === 3 && (
         <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold">Step 3: Conditions Fields (C01-C13)</h2>
+          <h2 className="font-semibold">Step 3: Conditions Fields (C01-C14)</h2>
           {conditionFields.map((field) => (
             <div key={field.id}>
               <label className="mb-1 block text-sm">{field.field_id} - {field.field_label}</label>
               <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
             </div>
           ))}
-          <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { await saveFields(); setStep(4); }}>
-            Next
-          </button>
+          <div className="flex gap-2">
+            <button
+              className="rounded-lg border border-sky-300 px-3 py-2 text-sky-700 hover:bg-sky-50"
+              onClick={() => setStep(2)}
+            >
+              Back
+            </button>
+            <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { await saveFields(); setStep(4); }}>
+              Next
+            </button>
+          </div>
         </div>
       )}
 
@@ -418,68 +558,33 @@ export default function AgreementCreate() {
           <div>
             <h2 className="font-semibold">Step 4: Appendix Builder</h2>
             <p className="text-sm text-sky-700">
-              Confirm or amend the appendix-only fields below, override any auto-populated value,
-              and toggle visibility / notes / order on each row.
+              Each appendix row is shown below with its current value. Use the Edit button on
+              each row to amend the value, toggle visibility, add an admin note, or reorder.
+              Required inputs (rows without a source field) can also be filled here.
             </p>
           </div>
-
-          {manualAppendixFields.length > 0 && (
-            <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <div className="text-sm font-semibold text-amber-900">
-                Required appendix inputs ({manualAppendixFields.length})
-                <span className="ml-2 text-xs font-normal text-amber-700">
-                  (also editable on Step 1)
-                </span>
-              </div>
-              {manualAppendixFields.map((field) => (
-                <div key={field.id} className="rounded-lg border border-amber-100 bg-white p-2">
-                  <div className="text-sm font-medium">
-                    {field.field_id} — {field.field_label}
-                  </div>
-                  <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
-                </div>
-              ))}
-            </div>
-          )}
-
-          <details className="rounded-lg border border-sky-100">
-            <summary className="cursor-pointer bg-sky-50 p-2 text-sm font-medium text-sky-900">
-              Auto-populated A-field overrides ({autoAppendixFields.length})
-            </summary>
-            <div className="space-y-2 p-2">
-              <p className="text-xs text-sky-700">
-                These cascade from Form/Conditions values you already entered. Edit only if you need
-                to override the cascaded value for this agreement.
-              </p>
-              {autoAppendixFields.map((field) => (
-                <div key={field.id} className="rounded-lg border border-sky-100 p-2">
-                  <div className="text-sm font-medium">
-                    {field.field_id} — {field.field_label}
-                    {field.auto_source_field_id && (
-                      <span className="ml-2 text-xs text-sky-600">
-                        (auto from {field.auto_source_field_id})
-                      </span>
-                    )}
-                  </div>
-                  <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
-                </div>
-              ))}
-            </div>
-          </details>
 
           {agreementId && (
             <AppendixBuilder agreementId={agreementId} refreshKey={JSON.stringify(values)} />
           )}
 
-          <button
-            className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700"
-            onClick={async () => {
-              await saveFields();
-              setStep(5);
-            }}
-          >
-            Next
-          </button>
+          <div className="flex gap-2">
+            <button
+              className="rounded-lg border border-sky-300 px-3 py-2 text-sky-700 hover:bg-sky-50"
+              onClick={() => setStep(3)}
+            >
+              Back
+            </button>
+            <button
+              className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700"
+              onClick={async () => {
+                await saveFields();
+                setStep(5);
+              }}
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
 
@@ -491,15 +596,25 @@ export default function AgreementCreate() {
             .sort((a, b) => a.sort_order - b.sort_order)
             .map((field) => {
               const changed = (values[field.field_id] ?? "") !== (field.default_value ?? "");
+              const raw = values[field.field_id] ?? "";
+              const display = field.input_type === "number" ? formatNumber(raw) : raw;
               return (
                 <div key={field.id} className={`rounded-lg border border-sky-100 p-2 ${changed ? "bg-amber-100" : ""}`}>
-                  <strong>{field.field_id}</strong> - {field.field_label}: {values[field.field_id] ?? ""}
+                  <strong>{field.field_id}</strong> - {field.field_label}: {display}
                 </div>
               );
             })}
-          <button className="rounded-lg bg-emerald-600 px-3 py-2 text-white hover:bg-emerald-700" onClick={submitForReview}>
-            Submit for Review
-          </button>
+          <div className="flex gap-2">
+            <button
+              className="rounded-lg border border-sky-300 px-3 py-2 text-sky-700 hover:bg-sky-50"
+              onClick={() => setStep(4)}
+            >
+              Back
+            </button>
+            <button className="rounded-lg bg-emerald-600 px-3 py-2 text-white hover:bg-emerald-700" onClick={submitForReview}>
+              Submit for Review
+            </button>
+          </div>
         </div>
       )}
     </div>
