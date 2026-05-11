@@ -202,6 +202,42 @@ body {
   margin: 8px 0 4px;
 }
 
+/* Headings emitted by the extracted-from-PDF master content.
+   h2 = top-level clause ("1. General Provisions"), h3 = "1.1.", h4 = "1.1.1.". */
+.clause-h2 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a2a4a;
+  margin: 14px 0 6px;
+  text-transform: none;
+}
+.clause-h3 {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 10px 0 4px;
+  color: #1a3a6a;
+}
+.clause-h4 {
+  font-size: 11.5px;
+  font-weight: 700;
+  margin: 8px 0 3px;
+  color: #2a4a7a;
+}
+
+ol.letter-list {
+  list-style-type: lower-alpha;
+  padding-left: 26px;
+  margin: 4px 0 8px;
+}
+ol.letter-list > li { margin-bottom: 4px; }
+
+ol.roman-list {
+  list-style-type: lower-roman;
+  padding-left: 30px;
+  margin: 4px 0 8px;
+}
+ol.roman-list > li { margin-bottom: 4px; }
+
 ol.terms,
 ol.lettered,
 ol.numeric,

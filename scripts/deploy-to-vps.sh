@@ -34,6 +34,13 @@ pip install -q -r requirements.txt
 echo "→ alembic upgrade head"
 alembic upgrade head
 
+# Idempotent re-seed of master_templates.content_html from
+# backend/seeds/*.html. Only updates the most recent active template per
+# type, no-ops if content matches. Treat seed files as source of truth;
+# any edits via the Masters UI will be overwritten on next deploy.
+echo "→ seed_master_content"
+python -m scripts.seed_master_content
+
 cd ../frontend
 echo "→ npm install"
 npm install --silent --no-audit --no-fund
