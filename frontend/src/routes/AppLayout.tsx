@@ -50,15 +50,11 @@ export default function AppLayout() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-cyan-50 to-white">
       <nav className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-sky-100 bg-white/90 p-3 backdrop-blur">
-        <div className="flex items-center gap-2 pr-3 border-r border-sky-100" aria-label="Bhatia General Contracting">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-sky-700 to-sky-900 text-sm font-black tracking-tight text-white shadow-sm">
-            BG
-          </div>
-          <div className="hidden sm:flex sm:flex-col leading-tight">
-            <span className="text-sm font-bold text-sky-900">BHATIA</span>
-            <span className="text-[10px] uppercase tracking-wider text-sky-700">General Contracting Co.</span>
-          </div>
-        </div>
+        <img
+          src="/bhatia-logo.png"
+          alt="Bhatia General Contracting Co."
+          className="h-10 w-auto pr-3 border-r border-sky-100"
+        />
         {visibleItems.map((item) => (
           <NavLink key={item.to} to={item.to} className={linkClass}>
             {item.label}

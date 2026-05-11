@@ -49,6 +49,27 @@ type WorkflowAgreementDetails = {
   }>;
 };
 
+// Backend stores role as the lowercase enum value (project_director,
+// operation_manager, etc.). The rail card and any other reviewer-facing
+// surface needs the human-readable label.
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  project_director: "Project Director",
+  accounts: "Accounts",
+  operation_manager: "Operation Manager",
+  gm: "General Manager",
+};
+
+function humanRole(value: string): string {
+  return (
+    ROLE_LABELS[value] ??
+    value
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ")
+  );
+}
+
 type AIAnalysis = {
   comparison: unknown;
   risks: unknown;
@@ -191,7 +212,7 @@ export default function WorkflowReview() {
             >
               <div className="font-medium">{item.agreement.reference_number}</div>
               <div className="text-xs text-gray-500">
-                {item.step.step_name} - {item.step.role_required}
+                {item.step.step_name} - {humanRole(item.step.role_required)}
               </div>
             </button>
           ))}
