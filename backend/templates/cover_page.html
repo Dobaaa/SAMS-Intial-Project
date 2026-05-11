@@ -1,28 +1,47 @@
-{% if status_watermark %}<div class="watermark">{{ status_watermark }}</div>{% endif %}
-
+{# Cover page — matches the BGCC source PDF: blue left band + narrow right
+   blue strip, white center carrying the title and metadata. BHATIA logo
+   block sits on the right edge between the two bands. The cover uses
+   @page cover (no running header / footer) and forces a page-break after
+   itself so the section-title pages start cleanly. #}
 <div class="cover-page">
-  <div class="cover-band">
+  <div class="cover-left-band"></div>
+  <div class="cover-right-band"></div>
+
+  <div class="cover-content">
     <h1 class="cover-title">SUBCONTRACT<br>AGREEMENT</h1>
-    <div class="cover-side">
-      <div class="cover-logo">BHATIA</div>
-      <p class="cover-company">BHATIA GENERAL CONTRACTING CO. L.L.C<br>BGCC</p>
+
+    <div class="cover-meta">
+      <div class="cover-meta-row">
+        <span class="lbl">The Project</span>
+        <span class="val">{{ values.get("F06") or project.project_name or "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }}</span>
+      </div>
+      <div class="cover-meta-row">
+        <span class="lbl">Subcontractor Name</span>
+        <span class="val">{{ values.get("F02") or subcontractor.company_name or "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }}</span>
+      </div>
+      <div class="cover-meta-row">
+        <span class="lbl">Scope Title</span>
+        <span class="val">{{ values.get("F09") or "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }}</span>
+      </div>
     </div>
+
+    <p class="cover-docs-label">Subcontract Agreement Documents:</p>
+    <ol class="cover-docs">
+      <li data-index="1">Form of Subcontract Agreement</li>
+      <li data-index="2">Appendix to the Subcontract Agreement</li>
+      <li data-index="3">Conditions of the Subcontract Agreement</li>
+      <li data-index="4">The Specifications</li>
+      <li data-index="5">The Drawings</li>
+      <li data-index="6">The Bill of Quantities</li>
+      <li data-index="7">Annexures for any other documents forming part of the Subcontract Agreement and duly acknowledged by both Parties</li>
+    </ol>
   </div>
 
-  <div class="cover-meta">
-    <div class="cover-meta-row"><span class="lbl">The Project</span><span class="val">{{ values.get("F06") or project.project_name or "……………" }}</span></div>
-    <div class="cover-meta-row"><span class="lbl">Subcontractor Name</span><span class="val">{{ values.get("F02") or subcontractor.company_name or "……………" }}</span></div>
-    <div class="cover-meta-row"><span class="lbl">Scope Title</span><span class="val">{{ values.get("F09") or "……………" }}</span></div>
+  <div class="cover-logo-block">
+    <div class="cover-logo-mark">
+      <div class="clm-line1">BHAT<span class="clm-pillar"></span>A</div>
+      <div class="clm-line2">GENERAL CONTRACTING CO. L.L.C.</div>
+    </div>
+    <div class="cover-company"><em>BHATIA GENERAL CONTRACTING CO. L.L.C<br>BGCC</em></div>
   </div>
-
-  <p class="cover-docs-label">Subcontract Agreement Documents:</p>
-  <ol class="cover-docs">
-    <li>Form of Subcontract Agreement</li>
-    <li>Appendix to the Subcontract Agreement</li>
-    <li>Conditions of the Subcontract Agreement</li>
-    <li>The Specifications</li>
-    <li>The Drawings</li>
-    <li>The Bill of Quantities</li>
-    <li>Annexures for any other documents forming part of the Subcontract Agreement and duly acknowledged by both Parties</li>
-  </ol>
 </div>

@@ -30,8 +30,11 @@ PDFS_DIR = ROOT / "contract Pdfs"
 # The earlier 01/02/03_*_03MAR2026.pdf split is superseded; keep this single
 # file as the source of truth so future BGCC revisions only land in one place.
 SOURCE_PDF = PDFS_DIR / "Full Set of Subcontract Agreement_05MAR2026.pdf"
-FORM_PAGE_RANGE = range(2, 5)      # pages 2..4 inclusive (1-based)
-CONDITIONS_PAGE_RANGE = range(8, 43)  # pages 8..42 inclusive (1-based)
+FORM_PAGE_RANGE = range(2, 5)        # pages 2..4 inclusive (Form body)
+# Conditions body starts at p12 of the Full Set — p8 is the section title,
+# p9-11 are the TOC. Both are reconstructed elsewhere (section-title page
+# is rendered by conditions.html, the TOC is implicit via h2/h3 headings).
+CONDITIONS_PAGE_RANGE = range(12, 43)
 
 
 # Heuristics --------------------------------------------------------------
@@ -46,9 +49,23 @@ PAGE_HEADER_PATTERNS = [
 
 
 HEADING_TOP_RE = re.compile(r"^\s*(\d+)\.\s+(.+?)\s*\.{2,}\s*\d+\s*$")  # TOC line "1. General Provisions ....11"
-TOC_SUB_RE = re.compile(r"^\s*\d+(\.\d+)+\.?\s+.+\.{2,}\s*\d+\s*$")  # any TOC sub-line
+TOC_SUB_RE = re.compile(r"^\s*\d+(\.\d+)+\.?\s+.+\.{2,}\s*\d+\s*$")  # TOC sub-line "1.1 Definitions ....11"
+# Catch-all: any line that ends with a long dot-leader run followed by a
+# page number (e.g. "10 Insurance, Indemnity, and Liability ....32"). This
+# covers the top-level entries the two regexes above miss because they
+# require an explicit "1." dot after the leading digit.
+TOC_ANY_RE = re.compile(r".+\.{3,}\s*\d+\s*$")
 
-H2_RE = re.compile(r"^\s*(\d+)\.\s+([A-Z][^.]*?)\s*$")
+# Top-level section headings come in two variants:
+#   (a) Conditions PDF: ``1 General Provisions:`` (no period after the digit,
+#       ends with ``:`` or just the title)
+#   (b) Form PDF:       ``1. The Subcontract Agreement;`` (period after digit,
+#       ends with ``;`` or ``:``)
+# We do NOT promote ``1. The Form of Subcontract Agreement,`` (period +
+# trailing comma) to h2 — those are sub-list items inside a body paragraph
+# and should render at body weight.
+H2_NODOT_RE = re.compile(r"^\s*(\d{1,2})\s+([A-Z][^\n]+?:?)\s*$")
+H2_DOT_RE = re.compile(r"^\s*(\d{1,2})\.\s+([A-Z][^\n]+?[;:])\s*$")
 H3_RE = re.compile(r"^\s*(\d+\.\d+)\.?\s+(.+?)\s*$")
 H4_RE = re.compile(r"^\s*(\d+\.\d+\.\d+)\.?\s+(.+?)\s*$")
 
@@ -133,7 +150,7 @@ def _drop_toc(lines: list[str]) -> list[str]:
     return [
         ln
         for ln in lines
-        if not (TOC_SUB_RE.match(ln) or HEADING_TOP_RE.match(ln))
+        if not (TOC_SUB_RE.match(ln) or HEADING_TOP_RE.match(ln) or TOC_ANY_RE.match(ln))
     ]
 
 
@@ -162,24 +179,32 @@ def _apply_placeholder_subs(text: str) -> str:
 
 
 def _classify_line(line: str) -> tuple[str, str]:
-    """Classify a logical line as ('h2'/'h3'/'h4'/'a)'/'i.'/'p', payload)."""
+    """Classify a logical line as ('h2'/'h3'/'h4'/'a)'/'i.'/'standalone'/'p', payload)."""
     if not line.strip():
         return "blank", ""
+    if _is_standalone_heading(line):
+        return "standalone", line.strip()
     m = H4_RE.match(line)
     if m:
         num, title = m.group(1), m.group(2).strip()
-        # h4 only if title is short-ish and capitalized first word
-        if 2 <= len(num.split(".")) <= 3 and title and title[0].isalpha():
+        if 2 <= len(num.split(".")) <= 3 and title and title[0].isalpha() and len(title) < 60:
             return "h4", f"{num} {title}"
     m = H3_RE.match(line)
     if m:
         num, title = m.group(1), m.group(2).strip()
-        if num.count(".") == 1 and title and title[0].isupper():
+        # Only treat as h3 if the title is short (real heading, not a
+        # wrapping list item like "3.7 Annexures for any addendums...").
+        if num.count(".") == 1 and title and title[0].isupper() and len(title) < 60:
             return "h3", f"{num} {title}"
-    m = H2_RE.match(line)
+    m = H2_NODOT_RE.match(line)
     if m:
         num, title = m.group(1), m.group(2).strip()
-        if title and title[0].isupper():
+        if title and title[0].isupper() and len(title) < 80:
+            return "h2", f"{num} {title}"
+    m = H2_DOT_RE.match(line)
+    if m:
+        num, title = m.group(1), m.group(2).strip()
+        if title and title[0].isupper() and len(title) < 80:
             return "h2", f"{num}. {title}"
     if LIST_LETTER_RE.match(line):
         return "a", line.strip()
@@ -197,6 +222,63 @@ def _html_escape(text: str) -> str:
     )
 
 
+def _is_standalone_heading(line: str) -> bool:
+    """Short all-caps lines (e.g. ``PREAMBLE``) are standalone headings.
+
+    They get a paragraph-break before *and* after themselves so the
+    rendered PDF gives them their own line in the body.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return False
+    # Allow at most 3 words and at most 22 chars.
+    if len(stripped) > 22 or len(stripped.split()) > 3:
+        return False
+    return stripped.isupper() and any(c.isalpha() for c in stripped)
+
+
+def _is_paragraph_terminator(line: str) -> bool:
+    """Heuristic: does this line plausibly end a paragraph?
+
+    Source PDF wraps long paragraphs across multiple visual lines but the
+    text extractor doesn't insert blank-line markers between paragraphs.
+    We need to infer them. A line terminates a paragraph when it ends
+    with a sentence-final punctuation mark *and* it's a "short" line
+    (i.e., the legal text concluded before the right margin). Lines that
+    end with a comma or a wrap-mid-word never terminate a paragraph.
+
+    We treat ``)``, ``."``, ``.``, ``;`` and ``:`` as sentence-final.
+    """
+    stripped = line.rstrip()
+    if not stripped:
+        return False
+    # Long lines (close to right margin) are almost always wrap-of-paragraph,
+    # never paragraph-final. The Form/Conditions PDF wraps around char 95-100.
+    if len(stripped) > 95:
+        return False
+    last = stripped[-1]
+    return last in {".", ";", ":", ")", "”", '"', "”", "?", "!"}
+
+
+def _starts_new_paragraph(line: str) -> bool:
+    """Heuristic: does this line plausibly start a new paragraph?
+
+    A line that begins with a capital letter and isn't continuing a list
+    item is a fresh paragraph if the previous line terminated. We also
+    treat lines starting with "(", "[", or "{{" (placeholders) as fresh
+    paragraphs because admin-inserted fields tend to lead a sentence.
+    """
+    stripped = line.lstrip()
+    if not stripped:
+        return False
+    first = stripped[0]
+    if first.isupper():
+        return True
+    if first in {"(", "[", "{"}:
+        return True
+    return False
+
+
 def _build_html(lines: list[str]) -> str:
     """Walk classified lines and emit semantic HTML.
 
@@ -205,6 +287,10 @@ def _build_html(lines: list[str]) -> str:
     item rather than spawning a separate paragraph. A blank line closes
     the current list item; a fresh ``a)`` / ``i.`` / heading also closes
     it. This keeps multi-line list items legally coherent.
+
+    Paragraph breaks WITHIN body text are inferred via
+    ``_is_paragraph_terminator`` + ``_starts_new_paragraph`` since the
+    source PDF doesn't emit blank lines between paragraphs.
     """
     out: list[str] = []
     paragraph_buf: list[str] = []
@@ -252,6 +338,15 @@ def _build_html(lines: list[str]) -> str:
             flush_li()
             continue
 
+        if kind == "standalone":
+            flush_paragraph()
+            close_letter_list()
+            close_roman_list()
+            out.append(
+                f"<p class=\"standalone-heading\">{_html_escape(payload)}</p>"
+            )
+            continue
+
         if kind in ("h2", "h3", "h4"):
             flush_paragraph()
             close_letter_list()
@@ -286,12 +381,25 @@ def _build_html(lines: list[str]) -> str:
 
         # Plain paragraph line. If we're mid-list-item, this is a continuation
         # of that item (PDF wrapped it across visual lines). Otherwise it
-        # belongs to the running paragraph.
+        # belongs to the running paragraph. Within a running paragraph we
+        # infer paragraph breaks via terminator+starter heuristics because
+        # the source PDF doesn't emit blank lines between paragraphs.
         if pending_li_buf:
-            pending_li_buf.append(payload)
+            prev = pending_li_buf[-1] if pending_li_buf else ""
+            if _is_paragraph_terminator(prev) and _starts_new_paragraph(payload):
+                # End the list item here and start a new paragraph beneath it.
+                flush_li()
+                close_letter_list()
+                close_roman_list()
+                paragraph_buf.append(payload)
+            else:
+                pending_li_buf.append(payload)
         else:
             close_letter_list()
             close_roman_list()
+            prev = paragraph_buf[-1] if paragraph_buf else ""
+            if _is_paragraph_terminator(prev) and _starts_new_paragraph(payload):
+                flush_paragraph()
             paragraph_buf.append(payload)
 
     flush_paragraph()
@@ -330,6 +438,75 @@ def _extract_pdf(pdf_path: Path, page_range: range) -> list[str]:
     cleaned = _strip_page_headers(raw_lines)
     cleaned = _drop_toc(cleaned)
     return cleaned
+
+
+# Signature + witness block that follows the "IN WITNESS WHEREOF" line in
+# the Form. The source PDF renders this as a 2-column table with labelled
+# signature lines and a stamp box per side, then a separate Witnesses
+# table with two BGCC witnesses. Drop in verbatim after the extracted
+# Form text replaces the merged-prose version pypdfium2 produces.
+SIGNATURE_BLOCK_HTML = """
+<table class="signature-block">
+  <thead>
+    <tr>
+      <th>For and on behalf of the Main Contractor (BGCC)</th>
+      <th>For and on behalf of the Sub-Contractor</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <p>Name: ________________________________</p>
+        <p>Designation: ___________________________</p>
+        <p>Date: _________________________________</p>
+        <p class="stamp-box">Main Contractor Company Stamp</p>
+      </td>
+      <td>
+        <p>Name: ________________________________</p>
+        <p>Designation: ___________________________</p>
+        <p>Date: _________________________________</p>
+        <p class="stamp-box">Subcontractor Company Stamp</p>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<p class="witness-label">Witnesses:</p>
+<table class="witness-block">
+  <tbody>
+    <tr>
+      <td>
+        <p>(&hellip;&hellip;&hellip;&hellip;&hellip;&hellip;&hellip;.)<br>Operation Manager - BGCC</p>
+        <p>Date: _____________________</p>
+      </td>
+      <td>
+        <p>(&hellip;&hellip;&hellip;&hellip;&hellip;&hellip;&hellip;.)<br>Estimation Manager - BGCC</p>
+        <p>Date: _____________________</p>
+      </td>
+    </tr>
+  </tbody>
+</table>
+"""
+
+
+def _inject_form_signature_block(html: str) -> str:
+    """Replace everything after the IN WITNESS WHEREOF paragraph with the
+    hardcoded signature block (since pypdfium2 collapses the source's
+    visual 2-col table into mashed inline prose).
+
+    Safe no-op if the marker isn't found (e.g. once admin edits the Form
+    via the Masters UI and rewords the witness paragraph).
+    """
+    marker = "IN WITNESS WHEREOF"
+    idx = html.find(marker)
+    if idx == -1:
+        return html
+    # Keep everything up to AND INCLUDING the </p> of the IN WITNESS paragraph.
+    end_p = html.find("</p>", idx)
+    if end_p == -1:
+        return html
+    head = html[: end_p + len("</p>")]
+    return head + "\n" + SIGNATURE_BLOCK_HTML.strip() + "\n"
 
 
 def main() -> None:
@@ -371,6 +548,7 @@ def main() -> None:
         + form_html_body
         + "\n"
     )
+    form_html = _inject_form_signature_block(form_html)
     (SEEDS_DIR / "form_master.html").write_text(form_html, encoding="utf-8")
     print(f"  wrote {len(form_html)} chars → {SEEDS_DIR / 'form_master.html'}")
 

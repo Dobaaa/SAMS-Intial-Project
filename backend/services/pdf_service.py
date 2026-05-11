@@ -237,17 +237,31 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
     appendix_html = jinja_env.get_template("appendix.html").render(**context)
 
     reference_number = html_escape(agreement.reference_number or "")
+    # Running header replicates the BGCC source: small BHATIA logo on the
+    # left, italic blue gradient text "BHATIA GENERAL CONTRACTING CO. L.L.C.
+    # (BGCC" on the right. The thin horizontal underline is drawn via CSS
+    # border-bottom on .running-header.
     running_header = (
         '<div class="running-header">'
-        '<em>Bhatia General Contracting Co. L.L.C. (BGCC)</em>'
+        '  <div class="rh-logo">'
+        '    <div class="bhatia-mark">'
+        '      <div class="bm-line1">BHAT<span class="bm-pillar"></span>A</div>'
+        '      <div class="bm-line2">GENERAL CONTRACTING CO. L.L.C.</div>'
+        '    </div>'
+        '  </div>'
+        '  <div class="rh-name">BHATIA GENERAL CONTRACTING CO. L.L.C. (BGCC</div>'
         '</div>'
         f'<span class="reference-anchor">{reference_number}</span>'
     )
 
-    # The cover page uses `@page cover` with `page-break-after: always`, so no
-    # explicit page-break div is needed after it. The running-header block is
-    # the WeasyPrint `position: running()` element, declared once before the
-    # first body-page document and reused via @top-left on every page.
+    # Document order matches the cover-page list in the source PDF:
+    #   Cover → Form → Appendix → Conditions
+    # (the previous code rendered Form → Conditions → Appendix which
+    # disagreed with the table-of-contents on the cover.) The running
+    # header is declared once before the first body-page; WeasyPrint reuses
+    # it via @top-left on every subsequent page. Each section template
+    # starts with its own .section-title-page div, which carries
+    # `page-break-after: always` to land the title on its own page.
     combined_html = f"""
     <html>
       <head><meta charset="utf-8"></head>
@@ -255,10 +269,8 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
         {cover_html}
         {running_header}
         {form_html}
-        <div class="page-break"></div>
-        {conditions_html}
-        <div class="page-break"></div>
         {appendix_html}
+        {conditions_html}
       </body>
     </html>
     """

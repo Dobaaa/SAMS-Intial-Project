@@ -1,4 +1,11 @@
+{# Conditions section: section-title page + body. Body comes from the
+   conditions master_template content_html after {{FIELD_ID}} substitution. #}
 {% if status_watermark %}<div class="watermark">{{ status_watermark }}</div>{% endif %}
+
+<div class="section-title-page">
+  <div class="section-title-text">Conditions of the Subcontract Agreement</div>
+</div>
+
 <div class="doc-body conditions-doc">
   {{ conditions_content | safe }}
 </div>

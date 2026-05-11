@@ -1,14 +1,34 @@
+/* ============================================================
+   SAMS subcontract PDF — visual match to the BGCC source PDF
+   (contract Pdfs/Full Set of Subcontract Agreement_05MAR2026.pdf).
+
+   Page layout overview:
+     - @page cover         — full-bleed cover (blue side bands), no header/footer
+     - @page section-title — per-document divider page with light-blue
+                             rectangle border and centered navy title;
+                             carries the running header + footer
+     - default @page       — body pages with BHATIA-branded running header
+                             ("BHATIA GENERAL CONTRACTING CO. L.L.C. (BGCC"
+                             in italic blue) and a footer of "BGCC P-XXX
+                             / SCA#-ZZZ" left + "Page N of M" right.
+
+   Body font is sans-serif (the source PDF uses Calibri-like sans). We
+   fall back through a stack so WeasyPrint can find something close
+   regardless of the host system's installed fonts.
+   ============================================================ */
+
 @page {
   size: A4;
-  margin: 2.4cm 2cm 2.2cm 2cm;
+  margin: 2.6cm 2cm 2.2cm 2cm;
   @top-left {
     content: element(running-header);
   }
   @bottom-left {
     content: string(reference-number);
-    font-size: 9px;
-    color: #555;
+    font-size: 9.5px;
+    color: #1f3a7a;
     font-style: italic;
+    font-weight: 600;
   }
   @bottom-center {
     content: "Page " counter(page) " of " counter(pages);
@@ -20,27 +40,92 @@
 @page cover {
   margin: 0;
   @top-left { content: none; }
+  @top-right { content: none; }
   @bottom-left { content: none; }
   @bottom-center { content: none; }
+  @bottom-right { content: none; }
 }
 
+/* Section-title pages use the default @page rules (running header +
+   footer) — they only differ from body pages in their content. Don't
+   define a separate named @page or the cover-to-section transition
+   inserts an empty intermediate page. */
+
 body {
-  font-family: "Times New Roman", Times, serif;
+  font-family: "Calibri", "Carlito", "Open Sans", "Helvetica Neue",
+    Arial, sans-serif;
   color: #111;
-  font-size: 11.5px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.5;
 }
+
+/* ============================================================
+   Running header (every body page + section-title page) — small
+   BHATIA logo block at left followed by the italic blue gradient
+   text the source uses. The underline beneath is the thin horizontal
+   line the source draws across the page just under the header.
+   ============================================================ */
 
 .running-header {
   position: running(running-header);
   width: 100%;
-  border-bottom: 2px solid #2a6df4;
+  display: table;
+  table-layout: fixed;
+  border-bottom: 1px solid #6b88c4;
   padding-bottom: 4px;
   margin-bottom: 0;
+  font-family: inherit;
+}
+
+.running-header .rh-logo,
+.running-header .rh-name {
+  display: table-cell;
+  vertical-align: middle;
+}
+
+.running-header .rh-logo {
+  width: 30mm;
+}
+
+.running-header .rh-name {
   font-style: italic;
-  color: #2a6df4;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: #1f3a7a;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.bhatia-mark {
+  display: inline-block;
+  border: 1px solid #1f3a7a;
+  padding: 2px 6px;
+  background: #f5f7fb;
+  line-height: 1;
+}
+.bhatia-mark .bm-line1 {
+  font-family: "Calibri", "Open Sans", Arial, sans-serif;
+  font-weight: 700;
   font-size: 11px;
-  font-family: "Times New Roman", Times, serif;
+  letter-spacing: 1px;
+  color: #1a2c5a;
+}
+.bhatia-mark .bm-line1 .bm-pillar {
+  display: inline-block;
+  width: 3px;
+  height: 9px;
+  background: #1a2c5a;
+  margin: 0 0.5px;
+  vertical-align: middle;
+}
+.bhatia-mark .bm-line2 {
+  font-family: "Calibri", "Open Sans", Arial, sans-serif;
+  font-size: 4.5px;
+  letter-spacing: 0.6px;
+  color: #1a2c5a;
+  text-align: center;
+  margin-top: 1px;
 }
 
 .reference-anchor {
@@ -66,162 +151,273 @@ body {
   page-break-before: always;
 }
 
-/* ---- Cover page ---- */
+/* ============================================================
+   Cover page (p1 of source)
+   Left ~65% blue band carrying the title + metadata. Narrow right
+   ~10% blue band as a decorative strip. Logo + BGCC text sit in the
+   white gap between them.
+   ============================================================ */
+
 .cover-page {
   page: cover;
+  width: 210mm;
   height: 297mm;
-  background: linear-gradient(to right, #4a76b4 0%, #4a76b4 65%, #ffffff 65%, #ffffff 100%);
-  position: relative;
-  padding: 0;
   margin: 0;
+  padding: 0;
+  position: relative;
   page-break-after: always;
   color: #fff;
-  overflow: hidden;
+  background: #ffffff;
+  font-family: "Calibri", "Open Sans", Arial, sans-serif;
 }
 
-.cover-band {
-  display: flex;
-  align-items: center;
-  padding: 55mm 0 0 18mm;
-  min-height: 80mm;
+.cover-left-band {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 138mm;
+  height: 297mm;
+  background: linear-gradient(180deg, #4a76b4 0%, #355a92 100%);
+}
+
+.cover-right-band {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 22mm;
+  height: 297mm;
+  background: linear-gradient(180deg, #355a92 0%, #4a76b4 100%);
+}
+
+.cover-content {
+  position: relative;
+  z-index: 1;
+  width: 138mm;
+  height: 297mm;
+  padding: 60mm 12mm 0 18mm;
+  box-sizing: border-box;
+  color: #fff;
 }
 
 .cover-title {
-  font-size: 40px;
-  font-weight: 800;
-  line-height: 1.05;
-  margin: 0;
+  font-size: 44px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin: 0 0 36mm 0;
   letter-spacing: 1px;
   color: #fff;
-  flex: 0 0 auto;
-}
-
-.cover-side {
-  margin-left: auto;
-  text-align: center;
-  width: 35%;
-  padding-right: 8mm;
-}
-
-.cover-logo {
-  background: #f4d72a;
-  color: #1f3a8a;
-  font-weight: 900;
-  font-size: 26px;
-  letter-spacing: 5px;
-  display: inline-block;
-  padding: 6px 14px;
-  margin-bottom: 10px;
-}
-
-.cover-company {
-  font-style: italic;
-  font-size: 9.5px;
-  margin: 6px 0 0;
-  color: #1f3a8a;
+  text-transform: uppercase;
 }
 
 .cover-meta {
-  margin: 18mm 18mm 0 18mm;
+  font-size: 11.5px;
+  margin: 0 0 8mm 0;
   color: #fff;
-  font-size: 12.5px;
 }
 
 .cover-meta-row {
-  display: flex;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  font-family: "Cambria", "Times New Roman", Times, serif;
+  font-style: normal;
 }
 
 .cover-meta-row .lbl {
-  width: 42mm;
-  font-weight: 600;
+  display: inline-block;
+  min-width: 42mm;
+  font-weight: 400;
+  color: #fff;
+}
+
+.cover-meta-row .lbl::after {
+  content: " :";
 }
 
 .cover-meta-row .val {
-  flex: 1;
-  word-wrap: break-word;
+  font-weight: 400;
 }
 
-.cover-meta-row .lbl::after { content: " :"; }
-
 .cover-docs-label {
-  margin: 8mm 18mm 4px 18mm;
+  margin: 4mm 0 1mm 0;
+  font-weight: 400;
+  font-size: 11.5px;
   color: #fff;
-  font-weight: 600;
-  font-size: 12px;
+  font-family: "Cambria", "Times New Roman", Times, serif;
 }
 
 .cover-docs {
+  margin: 0 0 0 12mm;
+  padding: 0;
+  list-style: none;
   color: #fff;
-  margin: 0 75mm 0 18mm;
-  padding-left: 20px;
-  font-size: 11px;
+  font-size: 11.5px;
+  font-family: "Cambria", "Times New Roman", Times, serif;
 }
 
 .cover-docs li {
-  margin-bottom: 1px;
+  margin-bottom: 1.5px;
+  position: relative;
+  padding-left: 8mm;
 }
 
-/* ---- Document body ---- */
+.cover-docs li::before {
+  content: attr(data-index) "-";
+  position: absolute;
+  left: 0;
+  color: #fff;
+}
+
+.cover-logo-block {
+  position: absolute;
+  top: 110mm;
+  right: 28mm;
+  z-index: 2;
+  text-align: center;
+  width: 38mm;
+  color: #142a52;
+}
+
+.cover-logo-mark {
+  background: #f9d33b;
+  border: 1px solid #1a2c5a;
+  padding: 8px 12px;
+  display: inline-block;
+}
+
+.cover-logo-mark .clm-line1 {
+  font-family: "Calibri", "Open Sans", Arial, sans-serif;
+  font-weight: 900;
+  font-size: 28px;
+  letter-spacing: 2px;
+  color: #142a52;
+  line-height: 1;
+}
+.cover-logo-mark .clm-line1 .clm-pillar {
+  display: inline-block;
+  width: 7px;
+  height: 22px;
+  background: #142a52;
+  margin: 0 1px;
+  vertical-align: middle;
+}
+.cover-logo-mark .clm-line2 {
+  font-size: 5.5px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  margin-top: 2px;
+  color: #142a52;
+}
+
+.cover-company {
+  margin: 4mm 0 0 0;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 9px;
+  color: #142a52;
+  text-align: center;
+}
+
+/* ============================================================
+   Section-title page (one before Form, Appendix, Conditions)
+   ============================================================ */
+
+.section-title-page {
+  height: 24cm; /* fills the printable area between header + footer */
+  page-break-after: always;
+  position: relative;
+  background: #e7eef9;
+  border: 2px solid #355a92;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.section-title-text {
+  text-align: center;
+  font-family: "Cambria", "Georgia", "Times New Roman", serif;
+  font-size: 32px;
+  font-weight: 700;
+  color: #142a52;
+  padding: 0 20mm;
+}
+
+/* ============================================================
+   Document body — justified paragraphs, semantic clause headings
+   ============================================================ */
+
 .doc-body {
   text-align: justify;
 }
 
+.doc-body p {
+  margin: 6px 0;
+}
+
 .doc-title {
   text-align: center;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   text-transform: uppercase;
   margin: 4px 0 14px;
+  font-family: "Calibri", "Open Sans", Arial, sans-serif;
 }
 
+/* Source uses navy blue colour + bold for the H1-style section heads,
+   bold + underlined for the H2 sub-clauses, plain bold for H3 leaves. */
+.clause-h2 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a4d8f;
+  margin: 16px 0 8px;
+  text-transform: none;
+}
+
+.clause-h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 10px 0 4px;
+  color: #111;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.clause-h4 {
+  font-size: 11.5px;
+  font-weight: 600;
+  margin: 8px 0 3px;
+  color: #1a2c5a;
+  text-decoration: none;
+}
+
+/* Standalone short all-caps headings ("PREAMBLE", "BETWEEN First Party;",
+   etc.) — small section dividers that should stand alone on their own line. */
+.standalone-heading {
+  font-weight: 700;
+  margin: 10px 0 4px;
+}
+
+/* Legacy classes kept for older master_templates content_html */
 .doc-section {
   font-size: 13px;
   font-weight: 700;
   margin: 14px 0 6px;
 }
-
 .article {
   font-size: 14px;
   font-weight: 700;
-  color: #2a6df4;
+  color: #1a4d8f;
   margin: 16px 0 6px;
 }
-
 .clause {
   font-size: 12px;
   font-weight: 700;
   text-decoration: underline;
   margin: 10px 0 4px;
 }
-
 .sub-clause {
   font-size: 11.5px;
   font-weight: 700;
   text-decoration: underline;
   margin: 8px 0 4px;
-}
-
-/* Headings emitted by the extracted-from-PDF master content.
-   h2 = top-level clause ("1. General Provisions"), h3 = "1.1.", h4 = "1.1.1.". */
-.clause-h2 {
-  font-size: 13px;
-  font-weight: 700;
-  color: #1a2a4a;
-  margin: 14px 0 6px;
-  text-transform: none;
-}
-.clause-h3 {
-  font-size: 12px;
-  font-weight: 700;
-  margin: 10px 0 4px;
-  color: #1a3a6a;
-}
-.clause-h4 {
-  font-size: 11.5px;
-  font-weight: 700;
-  margin: 8px 0 3px;
-  color: #2a4a7a;
 }
 
 ol.letter-list {
@@ -247,7 +443,6 @@ ol.sub-terms {
   padding-left: 22px;
   margin: 4px 0 6px;
 }
-
 ol.terms { list-style-type: decimal; }
 ol.sub-terms { list-style-type: decimal; padding-left: 30px; }
 ol.lettered { list-style-type: lower-alpha; }
@@ -264,6 +459,10 @@ ol.roman-lower { list-style-type: lower-roman; }
   color: #555;
 }
 
+/* ============================================================
+   Generic tables (signature block / witness block / etc.)
+   ============================================================ */
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -273,18 +472,19 @@ table {
 
 th,
 td {
-  border: 1px solid #888;
+  border: 1px solid #000;
   padding: 6px 8px;
   vertical-align: top;
   text-align: left;
 }
 
 th {
-  background: #eef2f9;
+  background: #e7eef9;
   font-weight: 700;
 }
 
-/* ---- Form-specific ---- */
+/* ---- Form-specific signature + witness blocks ---- */
+
 .signature-block,
 .witness-block {
   margin-top: 16px;
@@ -311,23 +511,48 @@ th {
   margin: 12px 0 4px;
 }
 
-/* ---- Appendix ---- */
-.appendix-table th {
+/* ============================================================
+   Appendix table (matches source exactly)
+   ============================================================ */
+
+.appendix-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 10.5px;
+}
+
+.appendix-table thead th {
+  background: #d9dde4;
+  border: 1px solid #000;
+  padding: 6px 8px;
   text-align: center;
+  font-weight: 700;
+  font-size: 11px;
+  color: #111;
+}
+
+.appendix-table tbody td {
+  border: 1px solid #000;
+  padding: 5px 8px;
+  vertical-align: top;
 }
 
 .appx-item {
-  width: 36%;
-  font-weight: 600;
+  width: 38%;
+  font-weight: 500;
+  color: #111;
 }
 
 .appx-clause {
   width: 14%;
   text-align: center;
+  font-weight: 400;
 }
 
 .appx-info {
-  width: 50%;
+  width: 48%;
+  color: #111;
 }
 
 .appx-comm {
@@ -337,14 +562,28 @@ th {
 .appx-note {
   margin-top: 4px;
   padding-top: 4px;
-  border-top: 1px dotted #aaa;
+  border-top: 1px dotted #999;
   font-style: italic;
   color: #444;
-  font-size: 10px;
+  font-size: 9.5px;
 }
 
 .appx-sub {
   margin-top: 4px;
   font-size: 10px;
   color: #2c3e50;
+}
+
+/* Appendix doc title (e.g. APPENDIX TO THE SUBCONTRACT AGREEMENT)
+   is rendered as a centered bold black header sitting alongside the
+   running header at the top of the table page, NOT as a separate
+   massive h1 in the body. */
+.appendix-doc-title {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 12px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #111;
 }
