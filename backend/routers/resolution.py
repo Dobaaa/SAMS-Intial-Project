@@ -23,6 +23,7 @@ router = APIRouter(prefix="/resolution", tags=["resolution"])
 class ResolutionItemCreate(BaseModel):
     subcontractor_comment: str
     clause_reference: str | None = None
+    original_clause_text: str | None = None
 
 
 class ResolutionSheetCreatePayload(BaseModel):
@@ -30,6 +31,7 @@ class ResolutionSheetCreatePayload(BaseModel):
 
 
 class ResolutionItemUpdatePayload(BaseModel):
+    original_clause_text: str | None = None
     ai_suggested_response: str | None = None
     pd_response: str | None = None
     om_response: str | None = None
@@ -50,6 +52,7 @@ async def get_resolution(
             "agreement_id": str(row.agreement_id),
             "subcontractor_comment": row.subcontractor_comment,
             "clause_reference": row.clause_reference,
+            "original_clause_text": row.original_clause_text,
             "ai_suggested_response": row.ai_suggested_response,
             "pd_response": row.pd_response,
             "om_response": row.om_response,
@@ -88,6 +91,7 @@ async def update_resolution_row(
         "status": "success",
         "data": {
             "id": str(updated.id),
+            "original_clause_text": updated.original_clause_text,
             "ai_suggested_response": updated.ai_suggested_response,
             "pd_response": updated.pd_response,
             "om_response": updated.om_response,

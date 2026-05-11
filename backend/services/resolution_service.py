@@ -62,6 +62,7 @@ async def create_resolution_sheet(
             agreement_id=agreement.id,
             subcontractor_comment=(item.get("subcontractor_comment") or "").strip(),
             clause_reference=item.get("clause_reference"),
+            original_clause_text=item.get("original_clause_text") or None,
             last_edited_by=actor.id,
             is_resolved=False,
         )
@@ -108,7 +109,14 @@ async def update_resolution_item(
     actor: User,
     payload: dict,
 ) -> CommentsResolutionSheet:
-    for key in ("ai_suggested_response", "pd_response", "om_response", "final_response", "is_resolved"):
+    for key in (
+        "original_clause_text",
+        "ai_suggested_response",
+        "pd_response",
+        "om_response",
+        "final_response",
+        "is_resolved",
+    ):
         if key in payload:
             setattr(row, key, payload[key])
     row.last_edited_by = actor.id

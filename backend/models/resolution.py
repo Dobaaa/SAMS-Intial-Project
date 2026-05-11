@@ -15,6 +15,7 @@ class CommentsResolutionSheet(Base):
     agreement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agreements.id", ondelete="CASCADE"), nullable=False, index=True)
     subcontractor_comment: Mapped[str] = mapped_column(Text, nullable=False)
     clause_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    original_clause_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_suggested_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     pd_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     om_response: Mapped[str | None] = mapped_column(Text, nullable=True)

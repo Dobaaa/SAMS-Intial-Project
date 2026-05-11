@@ -22,6 +22,43 @@ from services.workflow_engine import resubmit_agreement
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agreements", tags=["agreements"])
+subcontractors_router = APIRouter(prefix="/subcontractors", tags=["subcontractors"])
+
+
+@subcontractors_router.get("/")
+async def list_subcontractors(
+    search: str | None = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
+) -> list[dict]:
+    """Return previously-saved subcontractors so the wizard can offer auto-fill.
+
+    Optional ``search`` does a case-insensitive substring match on
+    company_name. Results are capped at ``limit`` (max 200) and ordered by
+    company_name for predictable picker UX.
+    """
+    if limit > 200:
+        limit = 200
+    stmt = select(Subcontractor)
+    if search:
+        stmt = stmt.where(Subcontractor.company_name.ilike(f"%{search.strip()}%"))
+    stmt = stmt.order_by(Subcontractor.company_name.asc()).limit(limit)
+    res = await db.execute(stmt)
+    rows = res.scalars().all()
+    return [
+        {
+            "id": str(row.id),
+            "company_name": row.company_name,
+            "po_box": row.po_box or "",
+            "trade_licence_no": row.trade_licence_no or "",
+            "contact_person": row.contact_person or "",
+            "email": row.email or "",
+            "phone": row.phone or "",
+            "address": row.address or "",
+        }
+        for row in rows
+    ]
 
 
 class ProjectPayload(BaseModel):
@@ -61,6 +98,7 @@ class SubcontractorResponsePayload(BaseModel):
 class ResolutionItemCreate(BaseModel):
     subcontractor_comment: str
     clause_reference: str | None = None
+    original_clause_text: str | None = None
 
 
 class ResolutionSheetCreatePayload(BaseModel):
@@ -271,6 +309,52 @@ async def get_agreement(
         },
         "values": values,
     }
+
+
+@router.delete("/{agreement_id}", dependencies=[Depends(require_role(RoleEnum.admin))])
+async def delete_agreement(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Delete an in-progress agreement.
+
+    Restricted to drafts that have not yet moved past internal review and
+    have no GM approval on file. Cascades clean up workflow_steps,
+    appendix_config, agreement_field_values, and resolution items via the
+    relationship cascades on Agreement.
+    """
+    res = await db.execute(select(Agreement).where(Agreement.id == agreement_id))
+    agreement = res.scalar_one_or_none()
+    if not agreement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+
+    if agreement.is_executed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete an executed agreement",
+        )
+    deletable_statuses = {
+        AgreementStatusEnum.under_drafting,
+        AgreementStatusEnum.under_bgcc_revision,
+        AgreementStatusEnum.under_internal_review,
+    }
+    if agreement.current_status not in deletable_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Agreement cannot be deleted at this stage "
+                f"(current: {agreement.current_status.value})."
+            ),
+        )
+    if agreement.gm_approval_date is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete an agreement that already has GM approval recorded",
+        )
+
+    await db.delete(agreement)
+    await db.commit()
+    return {"status": "deleted", "id": str(agreement_id)}
 
 
 @router.post("/{agreement_id}/submit", dependencies=[Depends(require_role(RoleEnum.admin))])
@@ -484,6 +568,7 @@ async def create_resolution(
                 "id": str(row.id),
                 "subcontractor_comment": row.subcontractor_comment,
                 "clause_reference": row.clause_reference,
+                "original_clause_text": row.original_clause_text,
                 "ai_suggested_response": row.ai_suggested_response,
             }
             for row in rows

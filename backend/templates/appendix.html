@@ -41,12 +41,13 @@
        '<div>Attention: ' ~ (v.get("A05") or blank) ~ '</div></div>' ~
        '<div class="appx-comm"><strong>The Subcontractor Address</strong>' ~
        '<div>Attention: ' ~ (v.get("A06") or blank) ~ '</div></div>') }}
-    {{ row("A07", "The Subcontract Price", "3.1", v.get("A07") or v.get("F08") or blank) }}
+    {{ row("A07", "The Subcontract Price", "3.1", (v.get("A07") or v.get("F08") or "") | money or blank) }}
     {{ row("A08", "The Subcontract Quantities (Lump Sum or Re-measurable)", "3.3", v.get("A08") or v.get("C02") or "") }}
     {{ row("A09", "Advance Payment Amount", "3.4.1",
-      "10% of the Contract Price<br>" ~ (v.get("A09") or v.get("C03") or blank) ~ " AED") }}
+      "10% of the Contract Price<br>" ~ ((v.get("A09") or v.get("C03") or "") | money or blank) ~ " AED") }}
     {{ row("A10", "Performance Security", "3.4.2",
-      "10% of the Contract Price<br>" ~ (v.get("A10") or blank) ~ " AED") }}
+      "10% of the Contract Price<br>" ~ ((v.get("A10") or "") | money or blank) ~ " AED" ~
+      (("<div class=\"appx-sub\">Type: " ~ v.get("C14") ~ "</div>") if v.get("C14") else "")) }}
     {{ row("A11", "Advance Payment to be released by the Main Contractor", "3.4.1", v.get("A11") or v.get("C04") or blank) }}
     {{ row("A12", "Interim Payment to be paid by the Main Contractor", "3.4.6", v.get("A12") or v.get("C05") or blank) }}
     {{ row("A13", "1st Half of retention Money to be released by the Main Contractor", "3.4.7", v.get("A13") or v.get("C06") or blank) }}
@@ -60,7 +61,7 @@
        "<div>MS2: " ~ (v.get("A18_MS2") or blank) ~ "</div>") }}
     {{ row("A19", "Defects Liability Period", "5", v.get("A19") or v.get("C10") or blank) }}
     {{ row("A20", "Rate Of Liquidated Damages", "6.2",
-      (v.get("A20") or v.get("C11") or blank) ~ " per Calendar Day") }}
+      ((v.get("A20") or v.get("C11") or "") | money or blank) ~ " per Calendar Day") }}
     {{ row("A21", "Maximum Liquidated Damages", "6.2", "10% of the Contract Price") }}
     {{ row("A22", "Time to submit the Copies of the required Insurance Policies", "10.1",
       (v.get("A22") or v.get("C12") or blank) ~ " days from commencement Date") }}

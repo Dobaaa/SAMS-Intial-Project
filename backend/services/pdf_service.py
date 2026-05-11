@@ -26,6 +26,31 @@ jinja_env = Environment(
 )
 
 
+def _format_money(value: object) -> str:
+    """Render a numeric value with thousand separators (and 2-dp decimals).
+
+    Free-form text (e.g. ``60 days PDC``) is returned verbatim so this filter
+    is safe to chain everywhere in the templates. The filter NEVER raises;
+    unparseable input round-trips as-is.
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    cleaned = text.replace(",", "").replace(" ", "")
+    try:
+        n = float(cleaned)
+    except ValueError:
+        return text
+    if n.is_integer():
+        return f"{int(n):,}"
+    return f"{n:,.2f}"
+
+
+jinja_env.filters["money"] = _format_money
+
+
 # Legacy phrasings from the first batch of client master templates, before the
 # {{FIELD_ID}} convention. Keep mapping up-to-date as long as any master
 # template in the DB still uses these strings; delete once migrated.
@@ -71,16 +96,21 @@ def _render_master_with_values(
     """
     rendered = content_html
 
+    def _display_value(fid: str) -> str:
+        raw = values.get(fid, "") or ""
+        mf = master_fields.get(fid)
+        if mf is not None and mf.input_type.value == "number":
+            return _format_money(raw)
+        return raw
+
     for field_id in master_fields:
         token = f"{{{{{field_id}}}}}"  # literal: {{F02}}
         if token in rendered:
-            value = values.get(field_id, "") or ""
-            rendered = rendered.replace(token, html_escape(value))
+            rendered = rendered.replace(token, html_escape(_display_value(field_id)))
 
     for phrase, field_id in LEGACY_TOKEN_MAP.items():
         if phrase in rendered:
-            value = values.get(field_id, "") or ""
-            rendered = rendered.replace(phrase, html_escape(value))
+            rendered = rendered.replace(phrase, html_escape(_display_value(field_id)))
 
     return rendered
 

@@ -39,15 +39,21 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.conditions, "C02", "3.3", "Subcontract Quantities Type", InputTypeEnum.dropdown, is_required=True, sort_order=2),
     FieldSeed(TemplateTypeEnum.conditions, "C03", "3.4.1", "Advance Payment Amount (AED)", InputTypeEnum.number, default_value="10% of F08", sort_order=3),
     FieldSeed(TemplateTypeEnum.conditions, "C04", "3.4.1", "Advance Payment release condition", InputTypeEnum.text, sort_order=4),
-    FieldSeed(TemplateTypeEnum.conditions, "C05", "3.4.6", "Interim Payment days", InputTypeEnum.number, is_required=True, sort_order=5),
-    FieldSeed(TemplateTypeEnum.conditions, "C06", "3.4.7", "1st Half Retention release days", InputTypeEnum.number, sort_order=6),
-    FieldSeed(TemplateTypeEnum.conditions, "C07", "3.4.7", "2nd Half Retention release days", InputTypeEnum.number, sort_order=7),
+    # Free-text so admin can record "60 days PDC" or "30 days from completion"
+    # alongside plain integers. PDF renders the text verbatim.
+    FieldSeed(TemplateTypeEnum.conditions, "C05", "3.4.6", "Interim Payment days", InputTypeEnum.text, is_required=True, sort_order=5),
+    FieldSeed(TemplateTypeEnum.conditions, "C06", "3.4.7", "1st Half Retention release days", InputTypeEnum.text, sort_order=6),
+    FieldSeed(TemplateTypeEnum.conditions, "C07", "3.4.7", "2nd Half Retention release days", InputTypeEnum.text, sort_order=7),
     FieldSeed(TemplateTypeEnum.conditions, "C08", "4.3", "Time for Completion (Project)", InputTypeEnum.text, is_required=True, sort_order=8),
     FieldSeed(TemplateTypeEnum.conditions, "C09", "4.3", "Milestones table", InputTypeEnum.table, sort_order=9),
     FieldSeed(TemplateTypeEnum.conditions, "C10", "5", "Defects Liability Period (months)", InputTypeEnum.number, default_value="12", sort_order=10),
     FieldSeed(TemplateTypeEnum.conditions, "C11", "6.2", "Rate of Liquidated Damages (AED/day)", InputTypeEnum.number, is_required=True, sort_order=11),
     FieldSeed(TemplateTypeEnum.conditions, "C12", "10.1", "Insurance submission deadline (days)", InputTypeEnum.number, sort_order=12),
     FieldSeed(TemplateTypeEnum.conditions, "C13", "13.3", "Dispute Resolution Jurisdiction", InputTypeEnum.text, is_required=True, sort_order=13),
+    # Performance Security Type: admin picks Bank Guarantee Cheque vs
+    # Company Undated Security Cheque. Cascades into the appendix beneath
+    # A10 (Performance Security amount) for the executed agreement.
+    FieldSeed(TemplateTypeEnum.conditions, "C14", "3.4.2", "Performance Security Type", InputTypeEnum.dropdown, is_required=True, appendix_row_label="Performance Security Type", appendix_clause_ref="3.4.2", sort_order=14),
     # Appendix (A01-A23)
     FieldSeed(TemplateTypeEnum.appendix, "A01", "1.1", "The Subcontractor", InputTypeEnum.text, auto_source_field_id="F02", appendix_row_label="The Subcontractor", appendix_clause_ref="1.1", sort_order=1),
     FieldSeed(TemplateTypeEnum.appendix, "A02", "1.1", "The Employer", InputTypeEnum.text, auto_source_field_id="F05", appendix_row_label="The Employer", appendix_clause_ref="1.1", sort_order=2),
