@@ -180,7 +180,7 @@ export default function WorkflowReview() {
 
   return (
     <div className="grid grid-cols-12 gap-4 p-4">
-      <aside className="col-span-3 rounded border p-3">
+      <aside className="col-span-2 rounded border p-3">
         <h2 className="mb-3 text-lg font-semibold">My Pending Agreements</h2>
         <div className="space-y-2">
           {pending.map((item) => (
@@ -198,7 +198,7 @@ export default function WorkflowReview() {
         </div>
       </aside>
 
-      <main className="col-span-9 space-y-4">
+      <main className="col-span-10 space-y-4">
         {details ? (
           <>
             <div className="rounded border p-3">
