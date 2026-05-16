@@ -18,7 +18,7 @@
    ============================================================ */
 
 @page {
-  size: A4;
+  size: letter;
   margin: 2.6cm 2cm 2.2cm 2cm;
   @top-left {
     content: element(running-header);
