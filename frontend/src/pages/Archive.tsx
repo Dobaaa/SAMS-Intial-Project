@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { api } from "../lib/api";
+import { formatDateTime } from "../lib/formatDate";
 
 type ArchiveRow = {
   id: string;
@@ -149,7 +150,7 @@ export default function ArchivePage() {
                       {row.status_label}
                     </span>
                   </td>
-                  <td className="border p-2">{row.status_updated_on ? new Date(row.status_updated_on).toLocaleString() : "-"}</td>
+                  <td className="border p-2">{row.status_updated_on ? formatDateTime(row.status_updated_on) : "-"}</td>
                   <td className="border p-2">{row.gm_approval_date ?? "-"}</td>
                   <td className="border p-2">{row.execution_date ?? "-"}</td>
                 </tr>

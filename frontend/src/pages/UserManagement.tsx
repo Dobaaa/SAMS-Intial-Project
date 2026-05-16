@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../lib/api";
+import { formatDateTime } from "../lib/formatDate";
 
 type UserRow = {
   id: string;
@@ -94,7 +95,7 @@ export default function UserManagement() {
                 <span className={`rounded px-2 py-1 text-xs ${roleBadge[user.role]}`}>{user.role}</span>
               </td>
               <td className="border border-sky-100 p-2">{user.is_active ? "active" : "inactive"}</td>
-              <td className="border border-sky-100 p-2">{user.last_login ? new Date(user.last_login).toLocaleString() : "-"}</td>
+              <td className="border border-sky-100 p-2">{formatDateTime(user.last_login) || "-"}</td>
               <td className="border border-sky-100 p-2">
                 <div className="flex gap-2">
                   <button className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50" onClick={() => setEditing(user)}>

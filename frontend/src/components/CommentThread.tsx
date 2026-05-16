@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { api } from "../lib/api";
+import { formatDateTime } from "../lib/formatDate";
 
 type EditHistory = {
   id: string;
@@ -75,7 +76,7 @@ export default function CommentThread({ comments, onUpdated }: Props) {
                 {comment.original_author_name || "Unknown"}
               </span>
               <span className="ml-2 text-gray-500">
-                {comment.created_at ? new Date(comment.created_at).toLocaleString() : ""}
+                {formatDateTime(comment.created_at)}
               </span>
             </div>
             <span className={`rounded px-2 py-1 text-xs ${badgeClasses[comment.status]}`}>
@@ -106,7 +107,7 @@ export default function CommentThread({ comments, onUpdated }: Props) {
           {comment.last_edited_at && (
             <div className="mt-2 text-xs text-gray-600">
               Edited by {comment.last_edited_by_name || "Unknown"}{" "}
-              {new Date(comment.last_edited_at).toLocaleString()}
+              {formatDateTime(comment.last_edited_at)}
             </div>
           )}
 
@@ -127,7 +128,7 @@ export default function CommentThread({ comments, onUpdated }: Props) {
                 <div key={h.id} className="rounded border p-2 text-xs">
                   <div>
                     Edited by {h.edited_by_name || "Unknown"}{" "}
-                    {h.edited_at ? new Date(h.edited_at).toLocaleString() : ""}
+                    {formatDateTime(h.edited_at)}
                   </div>
                   <div className="text-gray-600">From: {h.previous_text}</div>
                   <div className="text-gray-800">To: {h.new_text}</div>

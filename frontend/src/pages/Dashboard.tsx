@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { useToast } from "../components/Toast";
 import { api } from "../lib/api";
+import { formatDateTime } from "../lib/formatDate";
 import { downloadPdf, viewPdf } from "../lib/pdf";
 
 type Summary = {
@@ -290,7 +291,7 @@ export default function Dashboard() {
                 <td className="border border-sky-100 p-2">{a.project_name}</td>
                 <td className="border border-sky-100 p-2">{a.subcontractor_name}</td>
                 <td className="border border-sky-100 p-2">{a.status_label}</td>
-                <td className="border border-sky-100 p-2">{a.status_updated_on ? new Date(a.status_updated_on).toLocaleString() : "-"}</td>
+                <td className="border border-sky-100 p-2">{a.status_updated_on ? formatDateTime(a.status_updated_on) : "-"}</td>
                 <td className="border border-sky-100 p-2">
                   <div className="flex flex-wrap gap-2">
                     {(a.status === "under_drafting" ||
@@ -410,7 +411,7 @@ export default function Dashboard() {
                 <td className="border border-sky-100 p-2">{row.user_name || "-"}</td>
                 <td className="border border-sky-100 p-2">{row.action}</td>
                 <td className="border border-sky-100 p-2">{row.entity_type}</td>
-                <td className="border border-sky-100 p-2">{row.created_at ? new Date(row.created_at).toLocaleString() : "-"}</td>
+                <td className="border border-sky-100 p-2">{row.created_at ? formatDateTime(row.created_at) : "-"}</td>
               </tr>
             ))}
           </tbody>

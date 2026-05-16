@@ -48,7 +48,41 @@ def _format_money(value: object) -> str:
     return f"{n:,.2f}"
 
 
+def _ordinal_suffix(day: int) -> str:
+    # 1st 2nd 3rd 4th ... 11th 12th 13th 14th ... 21st 22nd 23rd 24th ...
+    if 10 <= (day % 100) <= 20:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+
+def _format_longdate(value: object) -> str:
+    """Render a date as ``05th May 2026`` (Rev 01 item 1).
+
+    Zero-padded day + ordinal suffix + full month name + 4-digit year.
+    Accepts ``datetime``, ``date``, or an ISO-8601 string; returns "" for
+    None/empty. Unparseable input round-trips verbatim so the filter is
+    safe to chain in any template.
+    """
+    if value is None:
+        return ""
+    d = None
+    if isinstance(value, datetime):
+        d = value
+    elif hasattr(value, "strftime") and not isinstance(value, str):
+        d = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return ""
+        try:
+            d = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return text
+    return f"{d.day:02d}{_ordinal_suffix(d.day)} {d.strftime('%B')} {d.year}"
+
+
 jinja_env.filters["money"] = _format_money
+jinja_env.filters["longdate"] = _format_longdate
 
 
 # Legacy phrasings from the first batch of client master templates, before the
@@ -221,7 +255,7 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
         "appendix_visible": appendix_visible,
         "appendix_notes": appendix_notes,
         "status_watermark": _status_watermark(agreement.current_status),
-        "generated_date": datetime.now(UTC).date().isoformat(),
+        "generated_date": datetime.now(UTC),  # rendered with |usdate in templates
         "bgcc_logo_url": "",
     }
 

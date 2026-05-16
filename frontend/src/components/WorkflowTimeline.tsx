@@ -1,3 +1,5 @@
+import { formatDateTime } from "../lib/formatDate";
+
 type Step = {
   id: string;
   step_name: string;
@@ -32,7 +34,7 @@ export default function WorkflowTimeline({ steps }: Props) {
                   {step.step_order}. {step.step_name} ({step.role_required})
                 </div>
                 <div className="text-xs text-gray-500">
-                  {step.acted_at ? new Date(step.acted_at).toLocaleString() : "No action yet"}
+                  {step.acted_at ? formatDateTime(step.acted_at) : "No action yet"}
                 </div>
               </div>
               <span className={`rounded px-2 py-1 text-xs ${statusColor[step.status] ?? "bg-gray-100 text-gray-700"}`}>
