@@ -499,10 +499,12 @@ export default function AgreementCreate() {
 
       {step === 2 && (
         <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold">Step 2: Agreement Header</h2>
+          <h2 className="font-semibold">Step 2: Form of Agreement Header</h2>
           <p className="text-sm text-sky-700">
-            Subcontractor + project details from Step 1 already populate F02–F07 automatically.
-            Enter only the agreement-level inputs below.
+            Only the agreement-specific fields below are requested here. The
+            project details, subcontractor identity, employer and contract
+            price you entered in Step 1 are already attached to this draft and
+            are <strong>not</strong> shown again.
           </p>
           {formFields.length === 0 ? (
             <div className="rounded border border-sky-100 bg-sky-50/50 p-2 text-sm text-sky-700">
