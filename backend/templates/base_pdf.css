@@ -52,14 +52,17 @@
    inserts an empty intermediate page. */
 
 body {
-  /* Body of the SCA renders in Times New Roman (matches the BGCC source
-     docx which declares "Times New Roman" for ~1,500 of its ~1,650 runs).
-     Liberation Serif is the fallback when TNR isn't installed; the metrics
-     are close enough to keep line-wrap roughly aligned. */
-  font-family: "Times New Roman", "Liberation Serif", "Nimbus Roman", serif;
+  /* The BGCC source docx's paragraph styles (Normal / BodyText / Heading2 /
+     ListParagraph / TableParagraph) all declare Tahoma as the body font.
+     Run-level overrides apply Times New Roman to specific spans (italic
+     phrases, contract references, etc.) but the dominant *paragraph* face
+     is sans-serif Tahoma. Tahoma is not redistributable; Verdana (same
+     designer, ttf-mscorefonts-installer) is the closest free stand-in,
+     then DejaVu Sans / Noto Sans on minimal Linux installs. */
+  font-family: "Tahoma", "Verdana", "DejaVu Sans", "Noto Sans", sans-serif;
   color: #111;
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 /* ============================================================
