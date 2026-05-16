@@ -227,92 +227,42 @@ def _appendix_overrides(
 
 
 async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_by: User | None) -> PDFOutput:
+    """Render the SCA PDF via the docx-based pipeline.
+
+    Up to 2026-05-17 this function rendered a WeasyPrint+HTML/CSS PDF. We
+    switched to a docx-based pipeline (services.docx_pdf_service) because
+    the HTML/CSS approach could only get ~95% visual match to the BGCC
+    source — Word/LibreOffice produce different pagination, list markers,
+    indentation, and table spacing than WeasyPrint does. Using the source
+    docx directly + LibreOffice render gives a near-replica.
+
+    The MasterTemplate rows are still used as the version pointer so each
+    agreement is permanently tied to the docx file that was active when it
+    was created (the actual docx bytes live in backend/masters/).
+    """
+    from services.docx_pdf_service import render_agreement_docx_to_pdf
+
     agreement = await _load_agreement_bundle(db, agreement_id)
     if not agreement:
         raise ValueError("Agreement not found")
 
-    if not agreement.form_version_id or not agreement.conditions_version_id:
-        raise ValueError("Agreement templates are not configured")
-
-    from models.master import MasterTemplate  # local import to avoid cycles in some environments
-
-    form_doc = await db.get(MasterTemplate, agreement.form_version_id)
-    conditions_doc = await db.get(MasterTemplate, agreement.conditions_version_id)
-    if not form_doc or not conditions_doc:
-        raise ValueError("Master template versions not found")
-
     value_map = _collect_field_values(agreement.field_values)
-    master_fields = await _load_master_fields(db)
-    appendix_rows = _appendix_rows(agreement.appendix_rows, value_map, master_fields)
-    appendix_visible, appendix_notes = _appendix_overrides(agreement.appendix_rows)
-
-    context: dict[str, Any] = {
-        "agreement": agreement,
-        "project": agreement.project,
-        "subcontractor": agreement.subcontractor,
-        "values": value_map,
-        "appendix_rows": appendix_rows,
-        "appendix_visible": appendix_visible,
-        "appendix_notes": appendix_notes,
-        "status_watermark": _status_watermark(agreement.current_status),
-        "generated_date": datetime.now(UTC),  # rendered with |usdate in templates
-        "bgcc_logo_url": "",
-    }
-
-    cover_html = jinja_env.get_template("cover_page.html").render(**context)
-    form_html = jinja_env.get_template("form_of_agreement.html").render(
-        **context,
-        form_content=_render_master_with_values(form_doc.content_html, value_map, master_fields),
-    )
-    conditions_html = jinja_env.get_template("conditions.html").render(
-        **context,
-        conditions_content=_render_master_with_values(conditions_doc.content_html, value_map, master_fields),
-    )
-    appendix_html = jinja_env.get_template("appendix.html").render(**context)
-
-    reference_number = html_escape(agreement.reference_number or "")
-    # Running header replicates the BGCC source: small BHATIA logo on the
-    # left, italic blue gradient text "BHATIA GENERAL CONTRACTING CO. L.L.C.
-    # (BGCC" on the right. The image path is relative to BASE_DIR (the
-    # WeasyPrint base_url passed to write_pdf below).
-    running_header = (
-        '<div class="running-header">'
-        '  <div class="rh-logo">'
-        '    <img class="rh-logo-img" src="backend/templates/bhatia-logo.png" alt="BHATIA" />'
-        '  </div>'
-        '  <div class="rh-name">BHATIA GENERAL CONTRACTING CO. L.L.C. (BGCC</div>'
-        '</div>'
-        f'<span class="reference-anchor">{reference_number}</span>'
-    )
-
-    # Document order matches the cover-page list in the source PDF:
-    #   Cover → Form → Appendix → Conditions
-    # (the previous code rendered Form → Conditions → Appendix which
-    # disagreed with the table-of-contents on the cover.) The running
-    # header is declared once before the first body-page; WeasyPrint reuses
-    # it via @top-left on every subsequent page. Each section template
-    # starts with its own .section-title-page div, which carries
-    # `page-break-after: always` to land the title on its own page.
-    combined_html = f"""
-    <html>
-      <head><meta charset="utf-8"></head>
-      <body>
-        {cover_html}
-        {running_header}
-        {form_html}
-        {appendix_html}
-        {conditions_html}
-      </body>
-    </html>
-    """
-
-    css = CSS(filename=str(TEMPLATES_DIR / "base_pdf.css"))
-    pdf_bytes = HTML(string=combined_html, base_url=str(BASE_DIR)).write_pdf(stylesheets=[css])
 
     agreement_dir = UPLOADS_DIR / agreement.reference_number
     agreement_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     pdf_path = agreement_dir / f"draft_{timestamp}.pdf"
+
+    # Render into the same dir as the final PDF so cleanup is one rmdir.
+    work_dir = agreement_dir / f"_render_{timestamp}"
+    try:
+        pdf_bytes = render_agreement_docx_to_pdf(value_map, work_dir)
+    finally:
+        # Best-effort cleanup of the intermediate docx + LibreOffice work files.
+        if work_dir.exists():
+            import shutil
+            shutil.rmtree(work_dir, ignore_errors=True)
+
     pdf_path.write_bytes(pdf_bytes)
 
     output = PDFOutput(
@@ -320,7 +270,7 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
         pdf_type=PDFTypeEnum.draft,
         file_path=str(pdf_path),
         generated_by=generated_by.id if generated_by else None,
-        watermark_type=context["status_watermark"],
+        watermark_type=_status_watermark(agreement.current_status),
     )
     db.add(output)
     await db.commit()

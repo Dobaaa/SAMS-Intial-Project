@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Install the fonts WeasyPrint needs to reproduce the BGCC 42-page
-# subcontract agreement layout. Idempotent — safe to re-run.
+# Install the PDF-rendering dependencies the docx-based pipeline needs.
+# Idempotent — safe to re-run.
 #
 # Installs:
+#   * libreoffice (core + writer + headless) — converts the per-agreement
+#     populated docx into the final PDF
 #   * ttf-mscorefonts-installer — Times New Roman, Arial, Georgia,
 #                                 Verdana, Tahoma fallback, Webdings, etc.
 #   * fonts-crosextra-caladea   — metric-compatible substitute for Cambria
@@ -23,9 +25,12 @@ echo "==> Pre-accepting MS core fonts EULA"
 echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true \
   | $SUDO debconf-set-selections
 
-echo "==> Installing ttf-mscorefonts-installer + fonts-crosextra-caladea"
+echo "==> Installing LibreOffice + MS core fonts + Caladea"
 $SUDO apt-get update -qq
 $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  libreoffice-core \
+  libreoffice-writer \
+  libreoffice-common \
   ttf-mscorefonts-installer \
   fonts-crosextra-caladea
 
@@ -49,4 +54,11 @@ if [[ $missing -gt 0 ]]; then
   exit 2
 fi
 
-echo "==> Done. WeasyPrint can now render with the BGCC source fonts."
+echo "==> Verifying LibreOffice available"
+if ! command -v libreoffice >/dev/null 2>&1; then
+  echo "  MISS libreoffice not on PATH after install" >&2
+  exit 2
+fi
+echo "  ok   $(libreoffice --version 2>&1 | head -1)"
+
+echo "==> Done. SAMS docx-based PDF pipeline can now render with BGCC source fonts."
