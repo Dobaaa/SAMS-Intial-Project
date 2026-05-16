@@ -103,6 +103,115 @@ async def test_manual_override_preserves_through_source_update(authed_client, ad
 
 
 @pytest.mark.asyncio
+async def test_a_field_recomputes_when_source_changes_without_override(
+    authed_client, admin_user, db_session
+):
+    """Rev 01 item 35: A-fields without an explicit override flag MUST re-derive
+    from their source on every cascade. The old "preserve manual override"
+    behaviour was reversed — drive-by typing no longer sticks."""
+    from scripts.seed_fields import seed_master_fields
+
+    await _seed_active_templates(authed_client)
+    await seed_master_fields(db_session)
+    agreement = await _create_agreement(authed_client)
+
+    # Admin types a value into A07 without setting the override flag.
+    resp = await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={"values": {"F08": "1000000", "A07": "custom-drive-by"}},
+    )
+    assert resp.status_code == 200
+    # On this call A07 is honoured (caller wins same-payload).
+    appendix = await authed_client.get(f"/api/agreements/{agreement['id']}/appendix")
+    rows = {row["field_id"]: row for row in appendix.json()}
+    assert rows["A07"]["current_value"] == "custom-drive-by"
+    assert rows["A07"]["is_manual_override"] is False
+
+    # Now admin changes F08. A07 has NO override flag set, so the cascade
+    # must clobber it back to mirror F08.
+    resp = await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={"values": {"F08": "2000000"}},
+    )
+    assert resp.status_code == 200
+    appendix = await authed_client.get(f"/api/agreements/{agreement['id']}/appendix")
+    rows = {row["field_id"]: row for row in appendix.json()}
+    assert rows["A07"]["current_value"] == "2000000"
+
+
+@pytest.mark.asyncio
+async def test_a_field_override_locks_through_source_change(
+    authed_client, admin_user, db_session
+):
+    """Setting overrides[A07]=true via the AppendixBuilder Edit flow locks the
+    row — subsequent F08 updates leave A07 alone until reset-to-auto."""
+    from scripts.seed_fields import seed_master_fields
+
+    await _seed_active_templates(authed_client)
+    await seed_master_fields(db_session)
+    agreement = await _create_agreement(authed_client)
+
+    # Admin clicks Edit on A07 (AppendixBuilder): sends value + overrides=true.
+    resp = await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={
+            "values": {"F08": "1000000", "A07": "9999999"},
+            "overrides": {"A07": True},
+        },
+    )
+    assert resp.status_code == 200
+    appendix = await authed_client.get(f"/api/agreements/{agreement['id']}/appendix")
+    rows = {row["field_id"]: row for row in appendix.json()}
+    assert rows["A07"]["current_value"] == "9999999"
+    assert rows["A07"]["is_manual_override"] is True
+
+    # F08 changes. A07 is locked — must not be touched.
+    resp = await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={"values": {"F08": "2000000"}},
+    )
+    assert resp.status_code == 200
+    appendix = await authed_client.get(f"/api/agreements/{agreement['id']}/appendix")
+    rows = {row["field_id"]: row for row in appendix.json()}
+    assert rows["A07"]["current_value"] == "9999999"
+    assert rows["A07"]["is_manual_override"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_field_reset_to_auto_recomputes_from_source(
+    authed_client, admin_user, db_session
+):
+    """overrides[A07]=False ('Reset to Auto') clears the lock and the cascade
+    re-derives A07 from its source (F08) in the same call."""
+    from scripts.seed_fields import seed_master_fields
+
+    await _seed_active_templates(authed_client)
+    await seed_master_fields(db_session)
+    agreement = await _create_agreement(authed_client)
+
+    # First: lock A07 at a custom value.
+    await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={
+            "values": {"F08": "1000000", "A07": "9999999"},
+            "overrides": {"A07": True},
+        },
+    )
+
+    # Now reset A07: empty values map, overrides flips False. Cascade re-runs
+    # and A07 becomes whatever F08 currently is.
+    resp = await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={"values": {}, "overrides": {"A07": False}},
+    )
+    assert resp.status_code == 200
+    appendix = await authed_client.get(f"/api/agreements/{agreement['id']}/appendix")
+    rows = {row["field_id"]: row for row in appendix.json()}
+    assert rows["A07"]["current_value"] == "1000000"
+    assert rows["A07"]["is_manual_override"] is False
+
+
+@pytest.mark.asyncio
 async def test_submit_creates_four_workflow_steps(authed_client, admin_user):
     await _seed_active_templates(authed_client)
     agreement = await _create_agreement(authed_client)

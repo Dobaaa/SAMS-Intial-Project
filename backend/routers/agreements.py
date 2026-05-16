@@ -87,6 +87,10 @@ class CreateAgreementPayload(BaseModel):
 
 class UpdateFieldsPayload(BaseModel):
     values: dict[str, str]
+    # Optional: per-field-id flag. True locks the value as a manual override
+    # (cascade skips it). False / omitted preserves the existing flag — pass
+    # False to a previously-locked field to reset it back to auto.
+    overrides: dict[str, bool] | None = None
 
 
 class SubcontractorResponsePayload(BaseModel):
@@ -234,7 +238,9 @@ async def update_fields(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
     if agreement.is_executed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agreement is locked after execution")
-    await update_agreement_fields(db, agreement, current_user, payload.values)
+    await update_agreement_fields(
+        db, agreement, current_user, payload.values, overrides=payload.overrides
+    )
 
     # Return the full {field_id: entered_value} map so the wizard can pick up
     # backend-cascaded values (e.g. F08 -> C03 -> A09) without a follow-up GET.
@@ -463,6 +469,7 @@ async def get_appendix(
                 "clause_ref": mf.appendix_clause_ref or mf.clause_number,
                 "current_value": value.entered_value if value else None,
                 "is_modified_from_default": value.is_modified_from_default if value else False,
+                "is_manual_override": value.is_manual_override if value else False,
                 "auto_source_field_id": mf.auto_source_field_id,
                 "show_in_appendix": cfg.show_in_appendix,
                 "admin_extra_note": cfg.admin_extra_note,

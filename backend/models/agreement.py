@@ -96,6 +96,11 @@ class AgreementFieldValue(Base):
     field_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     entered_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_modified_from_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Rev 01 item 35: when False, A-fields with an auto_source_field_id are
+    # recomputed from source on every update. When True, admin has explicitly
+    # locked the value via the AppendixBuilder Edit flow and the cascade
+    # leaves it alone. Reset-to-Auto flips it back to False and re-derives.
+    is_manual_override: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     modification_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     entered_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

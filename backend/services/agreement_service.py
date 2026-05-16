@@ -137,7 +137,21 @@ async def create_draft_agreement(
     return agreement
 
 
-async def update_agreement_fields(db: AsyncSession, agreement: Agreement, user: User, values: dict[str, str]) -> None:
+async def update_agreement_fields(
+    db: AsyncSession,
+    agreement: Agreement,
+    user: User,
+    values: dict[str, str],
+    overrides: dict[str, bool] | None = None,
+) -> None:
+    """Persist field values and re-derive every auto-source target.
+
+    Rev 01 item 35: A-fields with ``auto_source_field_id`` are NOT sticky.
+    Every call recomputes them from their source unless that row carries
+    ``is_manual_override=True`` (set via the AppendixBuilder Edit flow on
+    Step 4). A reset-to-auto flips the flag off and the next update of any
+    source field re-derives the value.
+    """
     master_res = await db.execute(select(MasterField))
     master_map = {mf.field_id: mf for mf in master_res.scalars().all()}
 
@@ -155,51 +169,43 @@ async def update_agreement_fields(db: AsyncSession, agreement: Agreement, user: 
     for fid, val in values.items():
         effective[fid] = val or ""
 
-    # Legacy dead defaults: the seed wrote literal placeholder strings into
-    # entered_value at draft creation (C03 = "10% of F08", A10 = "10",
-    # A21 = "10") that block the proper cascade because effective.get(target)
-    # returns truthy. Treat them as unset for cascade purposes and force the
-    # write step to overwrite them.
-    DEAD_DEFAULTS: dict[str, set[str]] = {
-        "C03": {"10% of F08"},
-        "A09": {"10% of F08"},  # propagated from C03 in legacy drafts
-        "A10": {"10"},
-        "A21": {"10"},
-    }
-    force_overwrite: set[str] = set()
-    for fid, dead_vals in DEAD_DEFAULTS.items():
-        if fid in values:
-            continue
-        if effective.get(fid) in dead_vals:
-            effective[fid] = ""
-            force_overwrite.add(fid)
+    # Apply any override flag changes BEFORE the cascade reads _is_locked.
+    # Passing override=False resets a row back to auto; True locks it (and
+    # whatever value is in `values` for that field becomes the locked value).
+    overrides = overrides or {}
+    pending_override_changes: dict[str, bool] = dict(overrides)
 
-    # Special compute: F08 -> C03 = 10% of subcontract price (Advance Payment),
-    # and F08 -> A10 = 10% of subcontract price (Performance Security AED).
-    # Both fire only when caller did not send the target explicitly AND the
-    # target is currently empty (preserves admin override).
+    def _is_locked(field_id: str) -> bool:
+        """True when admin has explicitly overridden this row — cascade must skip it."""
+        if field_id in pending_override_changes:
+            return pending_override_changes[field_id]
+        row = current_map.get(field_id)
+        return bool(row and row.is_manual_override)
+
+    # Special compute: F08 -> C03 = 10% (Advance Payment), F08 -> A10 = 10%
+    # (Performance Security AED). Always recompute unless the target is
+    # explicitly locked or sent in the payload.
     if effective.get("F08"):
         ten_pct = _advance_payment_from_price(effective["F08"])
         if ten_pct is not None:
             for target in ("C03", "A10"):
-                if target not in values and not effective.get(target):
-                    values[target] = ten_pct
-                    effective[target] = ten_pct
+                if target in values or _is_locked(target):
+                    continue
+                values[target] = ten_pct
+                effective[target] = ten_pct
 
     # Generic cascade: for every MasterField with auto_source_field_id, copy
-    # the source value into the target if the target wasn't sent explicitly
-    # in this payload AND has no current value. Existing values are never
-    # clobbered — admin overrides stick. We iterate twice so chained sources
-    # (e.g. F08 -> C03 -> A09) propagate one hop per pass.
+    # the source value into the target on every update — overriding any prior
+    # auto-computed value — UNLESS the row is locked (is_manual_override=True)
+    # or the target is sent in this payload (caller wins). Two passes for
+    # chained sources (F08 -> C03 -> A09).
     for _ in range(2):
         for mf in master_map.values():
             src = mf.auto_source_field_id
             if not src:
                 continue
             target = mf.field_id
-            if target in values:
-                continue
-            if effective.get(target):
+            if target in values or _is_locked(target):
                 continue
             src_val = effective.get(src)
             if src_val:
@@ -207,7 +213,16 @@ async def update_agreement_fields(db: AsyncSession, agreement: Agreement, user: 
                 effective[target] = src_val
 
     # Single write loop covering both user-entered and cascaded values.
+    # Skip writes to currently-locked rows unless this payload also carries an
+    # `overrides` directive for the same field. This prevents a drive-by
+    # cascade from Step 2/3 (which always rederives auto-source A-fields
+    # client-side for live UI feedback) from blowing away a deliberate
+    # override set via the AppendixBuilder Edit flow on Step 4.
     for field_id, entered in values.items():
+        if field_id not in pending_override_changes:
+            existing = current_map.get(field_id)
+            if existing and existing.is_manual_override:
+                continue
         row = current_map.get(field_id)
         if not row:
             row = AgreementFieldValue(
@@ -222,19 +237,23 @@ async def update_agreement_fields(db: AsyncSession, agreement: Agreement, user: 
         row.is_modified_from_default = (entered or "") != (default_value or "")
         row.entered_by = user.id
 
-    # Force-overwrite for legacy dead defaults that weren't part of values{}
-    # (their effective[fid] was set above but they were skipped by the loop
-    # because we only iterate values{}). Persist the cascaded value here.
-    for fid in force_overwrite:
-        if fid in values:
-            continue  # already handled
-        new_val = effective.get(fid, "")
-        row = current_map.get(fid)
-        if row is not None:
-            row.entered_value = new_val
-            row.entered_by = user.id
-            mf = master_map.get(fid)
-            row.is_modified_from_default = (new_val or "") != ((mf.default_value if mf else None) or "")
+    # Persist override flag changes. Reset-to-auto (False) must run AFTER the
+    # cascade so the recomputed value lands in entered_value above; lock (True)
+    # is order-insensitive.
+    for field_id, locked in pending_override_changes.items():
+        row = current_map.get(field_id)
+        if row is None:
+            # Row will only exist if `values` included it OR a cascade wrote
+            # it. If neither happened we still create one so the flag has a
+            # home to sit on.
+            row = AgreementFieldValue(
+                agreement_id=agreement.id,
+                field_id=field_id,
+                entered_by=user.id,
+            )
+            db.add(row)
+            current_map[field_id] = row
+        row.is_manual_override = bool(locked)
 
     agreement.updated_at = datetime.now(UTC)
     await db.commit()
