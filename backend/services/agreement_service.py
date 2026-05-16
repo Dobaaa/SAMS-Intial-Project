@@ -27,9 +27,12 @@ async def _get_active_template(db: AsyncSession, template_type: TemplateTypeEnum
     return res.scalar_one_or_none()
 
 
-async def _build_reference_number(db: AsyncSession, project_code: str) -> str:
+async def _build_reference_number(db: AsyncSession, site_no: str) -> str:
+    # Format mandated by BGCC (Rev 01, item 2): SAG-{YEAR}-{SITE_NO}-{REF_NO:03d}
+    # e.g. SAG-2026-319-001. The Site No is stored on Project.project_code
+    # (renamed in the UI; column kept for migration simplicity).
     year = datetime.now(UTC).year
-    prefix = f"SAG-{project_code}-{year}-"
+    prefix = f"SAG-{year}-{site_no}-"
     res = await db.execute(
         select(func.count(Agreement.id)).where(Agreement.reference_number.like(f"{prefix}%"))
     )

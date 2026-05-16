@@ -48,7 +48,12 @@ async def _create_agreement(authed_client) -> dict:
 async def test_create_draft_generates_reference_number(authed_client, admin_user):
     await _seed_active_templates(authed_client)
     data = await _create_agreement(authed_client)
-    assert data["reference_number"].startswith("SAG-TP001-")
+    from datetime import datetime, UTC
+
+    year = datetime.now(UTC).year
+    # New format (Rev 01 item 2): SAG-{YEAR}-{SITE_NO}-{REF_NO:03d}
+    assert data["reference_number"].startswith(f"SAG-{year}-TP001-")
+    assert data["reference_number"].endswith("-001")
     assert data["status"] == "under_drafting"
 
 

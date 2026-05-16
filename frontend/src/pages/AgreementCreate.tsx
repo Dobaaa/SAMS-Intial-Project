@@ -385,7 +385,7 @@ export default function AgreementCreate() {
               <input className="w-full rounded border p-2" value={project.project_name} onChange={(e) => setProject({ ...project, project_name: e.target.value })} />
             </div>
             <div>
-              <label className="mb-1 block text-sm">PROJECT_CODE — Project code (used to build the reference number)</label>
+              <label className="mb-1 block text-sm">SITE_NO — Site number (used as the {`{SITE_NO}`} part of the reference, e.g. SAG-2026-319-001)</label>
               <input className="w-full rounded border p-2" value={project.project_code} onChange={(e) => setProject({ ...project, project_code: e.target.value })} />
             </div>
             <div>
