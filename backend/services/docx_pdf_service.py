@@ -51,6 +51,22 @@ MASTER_DOCX = MASTERS_DIR / "sca_master_v1.docx"
 # strings; the master's tokens don't know that.
 DATE_FIELDS: set[str] = {"F01", "A15"}
 
+# Field IDs whose values are stored as raw numbers but should render
+# with thousands separators + 2-dp decimals per Rev 01 items 11/12
+# (e.g. F08 "8500000" -> "8,500,000.00"). Free-text values for these
+# fields pass through unchanged so admin can still type "10% of F08"
+# or similar qualifiers when needed.
+MONEY_FIELDS: set[str] = {
+    "F08",  # Subcontract Price
+    "C03",  # Advance Payment Amount
+    "C11",  # Rate of Liquidated Damages (AED/day)
+    "A07",  # Subcontract Price (mirror)
+    "A09",  # Advance Payment (mirror)
+    "A10",  # Performance Security amount (mirror)
+    "A20",  # Rate of LDs (mirror)
+    "A21",  # Maximum LDs (10% default)
+}
+
 TOKEN_RE = re.compile(r"\{\{\s*([A-Z][0-9]+)\s*\}\}")
 
 
@@ -58,6 +74,29 @@ def _ordinal_suffix(day: int) -> str:
     if 10 <= (day % 100) <= 20:
         return "th"
     return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+
+def _format_money(value: object) -> str:
+    """Render a numeric value with thousands separators (and 2-dp decimals).
+
+    Free-form text ("60 days PDC", an empty string, etc.) round-trips
+    verbatim — the filter NEVER raises and is safe to chain anywhere.
+    Mirrors pdf_service._format_money so the docx and (legacy) WeasyPrint
+    pipelines agree on formatting.
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    cleaned = text.replace(",", "").replace(" ", "")
+    try:
+        n = float(cleaned)
+    except ValueError:
+        return text
+    if n.is_integer():
+        return f"{int(n):,}.00"  # Currency context: always show 2dp
+    return f"{n:,.2f}"
 
 
 def _format_longdate(value: object) -> str:
@@ -112,6 +151,8 @@ def _substitute_in_paragraph(para: Paragraph, values: dict[str, str]) -> bool:
             return ""
         if field_id in DATE_FIELDS:
             return _format_longdate(raw)
+        if field_id in MONEY_FIELDS:
+            return _format_money(raw)
         return str(raw)
 
     new_text = TOKEN_RE.sub(replace_one, full)
