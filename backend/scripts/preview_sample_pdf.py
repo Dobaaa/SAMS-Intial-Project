@@ -93,6 +93,12 @@ def main() -> None:
         loader=FileSystemLoader(str(TEMPLATES_DIR)),
         autoescape=select_autoescape(["html", "xml"]),
     )
+    # Mirror the filters registered by services.pdf_service so the preview
+    # exercises the same Jinja runtime as the production renderer.
+    from services.pdf_service import _format_longdate, _format_money
+
+    env.filters["money"] = _format_money
+    env.filters["longdate"] = _format_longdate
 
     form_src = (SEEDS_DIR / "form_master.html").read_text(encoding="utf-8")
     cond_src = (SEEDS_DIR / "conditions_master.html").read_text(encoding="utf-8")
@@ -136,18 +142,23 @@ def main() -> None:
         f'<span class="reference-anchor">{ref}</span>'
     )
 
+    # Production assembly order (pdf_service.generate_agreement_pdf):
+    # Cover -> Form -> Appendix -> Conditions. Match it so the preview is
+    # representative of what BGCC reviewers actually see.
     combined = (
         '<html><head><meta charset="utf-8"></head><body>'
         f"{cover}{running}{form}"
         '<div class="page-break"></div>'
-        f"{cond}"
-        '<div class="page-break"></div>'
         f"{appx}"
+        '<div class="page-break"></div>'
+        f"{cond}"
         "</body></html>"
     )
 
     css = CSS(filename=str(TEMPLATES_DIR / "base_pdf.css"))
-    pdf_bytes = HTML(string=combined).write_pdf(stylesheets=[css])
+    # base_url so relative image refs (backend/templates/bhatia-logo.png)
+    # resolve against the repo root the same way services.pdf_service does.
+    pdf_bytes = HTML(string=combined, base_url=str(BACKEND_DIR.parent)).write_pdf(stylesheets=[css])
     OUT_PATH.write_bytes(pdf_bytes)
 
     pages = "?"

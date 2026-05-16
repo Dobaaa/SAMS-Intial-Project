@@ -52,11 +52,14 @@
    inserts an empty intermediate page. */
 
 body {
-  font-family: "Calibri", "Carlito", "Open Sans", "Helvetica Neue",
-    Arial, sans-serif;
+  /* Body of the SCA renders in Times New Roman (matches the BGCC source
+     docx which declares "Times New Roman" for ~1,500 of its ~1,650 runs).
+     Liberation Serif is the fallback when TNR isn't installed; the metrics
+     are close enough to keep line-wrap roughly aligned. */
+  font-family: "Times New Roman", "Liberation Serif", "Nimbus Roman", serif;
   color: #111;
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 /* ============================================================
@@ -135,23 +138,27 @@ body {
 
 .cover-page {
   page: cover;
-  width: 210mm;
-  height: 297mm;
+  /* US Letter: 8.5in x 11in (Rev 01 umbrella — matches BGCC source PDF). */
+  width: 8.5in;
+  height: 11in;
   margin: 0;
   padding: 0;
   position: relative;
   page-break-after: always;
   color: #fff;
   background: #ffffff;
-  font-family: "Calibri", "Open Sans", Arial, sans-serif;
+  /* Cover title is a bold sans — Arial is the source. */
+  font-family: "Arial", "Liberation Sans", "Helvetica Neue", sans-serif;
 }
 
 .cover-left-band {
   position: absolute;
   top: 0;
   left: 0;
-  width: 138mm;
-  height: 297mm;
+  /* 65.7% of 8.5in = 5.585in — preserves the source PDF's two-band
+     proportions on US Letter. */
+  width: 5.585in;
+  height: 11in;
   background: linear-gradient(180deg, #4a76b4 0%, #355a92 100%);
 }
 
@@ -159,17 +166,17 @@ body {
   position: absolute;
   top: 0;
   right: 0;
-  width: 22mm;
-  height: 297mm;
+  width: 0.893in;
+  height: 11in;
   background: linear-gradient(180deg, #355a92 0%, #4a76b4 100%);
 }
 
 .cover-content {
   position: relative;
   z-index: 1;
-  width: 138mm;
-  height: 297mm;
-  padding: 60mm 12mm 0 18mm;
+  width: 5.585in;
+  height: 11in;
+  padding: 2.36in 0.47in 0 0.71in;
   box-sizing: border-box;
   color: #fff;
 }
@@ -272,7 +279,10 @@ body {
    ============================================================ */
 
 .section-title-page {
-  height: 24cm; /* fills the printable area between header + footer */
+  /* US Letter printable area (11in - 2.6cm top - 2.2cm bottom margins
+     ~= 22.96cm). The height was 24cm which overflowed onto a 2nd page on
+     US Letter — keep it conservative so the title fits on one page. */
+  height: 22cm;
   page-break-after: always;
   position: relative;
   background: #e7eef9;
@@ -320,6 +330,109 @@ body {
   color: #1a4d8f;
   margin: 16px 0 8px;
   text-transform: none;
+}
+
+/* In the Conditions document the 14 numbered sections each start on
+   their own page (matches the BGCC source PDF's pagination). The Form
+   document's h2 ("1. The Subcontract Agreement", "2. The Subcontract
+   Price", etc.) stays inline because the four Form sections share one
+   page in the source. */
+.conditions-doc .clause-h2 {
+  page-break-before: always;
+}
+/* The very first clause-h2 (1 General Provisions) shouldn't break — it
+   follows the TOC which itself page-break-afters. */
+.conditions-doc .clause-h2:first-of-type {
+  page-break-before: auto;
+}
+
+/* ============================================================
+   Table of Contents (Rev 01 item 6 — TOC missing on orig pp.9-11)
+   ============================================================ */
+.toc {
+  page-break-after: always;
+  font-family: "Times New Roman", "Liberation Serif", serif;
+}
+.toc-heading {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a4d8f;
+  text-align: left;
+  margin: 6px 0 14px;
+}
+.toc-list,
+.toc-sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.toc-list {
+  font-size: 11.5px;
+}
+.toc-sublist {
+  margin-left: 18px;
+  font-size: 10.5px;
+}
+.toc-list > li {
+  margin-top: 8px;
+}
+.toc-sublist > li {
+  margin-top: 2px;
+}
+.toc-row {
+  display: flex;
+  text-decoration: none;
+  color: #111;
+  width: 100%;
+  align-items: baseline;
+  gap: 6px;
+}
+.toc-label {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toc-row::after {
+  /* dotted leader between label and page number */
+  content: "";
+  flex: 1 1 auto;
+  border-bottom: 1px dotted #4a5d80;
+  position: relative;
+  bottom: 3px;
+  margin: 0 4px;
+}
+.toc-page {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  color: #1a4d8f;
+}
+.toc-list > li > .toc-row {
+  font-weight: 600;
+}
+
+/* ============================================================
+   Annexures divider (Rev 01 item 7 — section was missing from output)
+   ============================================================ */
+.annexures-divider {
+  page-break-before: always;
+  margin-top: 4cm;
+  text-align: center;
+}
+.annexures-title {
+  font-family: "Cambria", "Caladea", "Georgia", "Times New Roman", serif;
+  font-size: 26px;
+  font-weight: 700;
+  color: #142a52;
+  margin: 0 0 18px;
+}
+.annexures-note {
+  font-size: 11px;
+  color: #333;
+  font-style: italic;
+  margin: 0 auto;
+  max-width: 12cm;
+  text-align: center;
 }
 
 .clause-h3 {
