@@ -268,8 +268,17 @@ def render_agreement_docx_to_pdf(
     intermediate_docx = output_dir / "rendered.docx"
     doc.save(str(intermediate_docx))
 
+    # LibreOffice insists on a writable "user installation" profile dir.
+    # Without -env:UserInstallation it tries to create one under $HOME,
+    # which fails when the process runs as a service user with /var/www
+    # as its home. Point it at a per-render tmp dir; LO will populate
+    # ~50MB of profile state on first run and reuse it for subsequent
+    # conversions within the same dir.
+    lo_profile = output_dir / "_lo_profile"
+    lo_profile.mkdir(exist_ok=True)
     cmd = [
         libreoffice_bin,
+        f"-env:UserInstallation=file://{lo_profile}",
         "--headless",
         "--convert-to",
         "pdf",
