@@ -4,154 +4,333 @@
 <meta charset="utf-8" />
 <title>SAMS — Rev 01 (16.05.2026) Resolution Report</title>
 <style>
-  /* Page layout */
+  /* ------ Page setup (WeasyPrint + browser-print compatible) ------- */
   @page {
     size: A3 landscape;
-    margin: 12mm 10mm;
+    margin: 14mm 12mm 16mm 12mm;
+    @top-left {
+      content: "SAMS — Rev 01 Resolution Report";
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: 9pt;
+      color: #355a92;
+      font-weight: 600;
+    }
+    @top-right {
+      content: "BGCC · 17 May 2026";
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: 9pt;
+      color: #355a92;
+    }
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: 9pt;
+      color: #555;
+    }
   }
-  * { box-sizing: border-box; }
-  body {
-    font-family: "Calibri", "Open Sans", Arial, sans-serif;
-    font-size: 11px;
-    color: #111;
-    margin: 0;
-    padding: 12px 16px;
+  @page :first {
+    @top-left { content: ""; }
+    @top-right { content: ""; }
   }
-  h1 {
-    font-size: 18px;
-    color: #142a52;
-    margin: 0 0 4px;
-  }
-  h2 {
-    font-size: 13px;
-    color: #355a92;
-    margin: 14px 0 4px;
-  }
-  .meta {
-    font-size: 11px;
-    color: #555;
-    margin-bottom: 10px;
-  }
-  .legend {
-    display: flex;
-    gap: 12px;
-    margin: 6px 0 14px;
-    font-size: 11px;
-  }
-  .legend .pill { padding: 1px 8px; border-radius: 10px; font-weight: 700; }
-  .pill.resolved { background: #c8f0d0; color: #0a5125; }
-  .pill.completed { background: #d6e4ff; color: #1a3a8f; }
-  .pill.deferred { background: #fde2a8; color: #7a4b00; }
-  .pill.clarify { background: #fff3b0; color: #4d3a00; }
-  .pill.info { background: #e7eef9; color: #142a52; }
 
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", "Arial", sans-serif;
+    font-size: 9.5pt;
+    color: #1a1d2b;
+    line-height: 1.4;
   }
-  thead th {
+
+  /* ---------------------- Title block ---------------------- */
+  .titleblock {
+    background: linear-gradient(135deg, #1a3a8f 0%, #355a92 60%, #4a76b4 100%);
+    color: #fff;
+    padding: 22px 26px 18px;
+    border-radius: 8px;
+    margin: 0 0 22px;
+    page-break-after: avoid;
+  }
+  .titleblock h1 {
+    font-size: 24pt;
+    margin: 0 0 4px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .titleblock .subtitle {
+    font-size: 12pt;
+    font-weight: 400;
+    margin: 0 0 10px;
+    opacity: 0.92;
+  }
+  .titleblock .meta {
+    display: table;
+    width: 100%;
+    margin-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.25);
+    padding-top: 8px;
+    font-size: 9pt;
+  }
+  .titleblock .meta > div {
+    display: table-cell;
+    padding-right: 24px;
+    line-height: 1.3;
+  }
+  .titleblock .meta strong { display: block; font-weight: 700; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.85; }
+
+  /* ---------------------- Legend ---------------------- */
+  .legend {
+    display: table;
+    border-collapse: separate;
+    border-spacing: 8px 0;
+    margin: 0 0 18px;
+    font-size: 9pt;
+  }
+  .legend > div { display: table-cell; vertical-align: middle; padding: 0; }
+  .legend .pill { vertical-align: middle; }
+  .legend .label { padding-left: 4px; color: #555; }
+
+  /* ---------------------- Status pills ---------------------- */
+  .pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 8.5pt;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+  .pill.resolved { background: #d4f4dd; color: #0d5e2a; border: 1px solid #9bd6ab; }
+  .pill.completed { background: #dde9ff; color: #163d8a; border: 1px solid #a8c1f0; }
+  .pill.deferred { background: #fde9be; color: #6e4400; border: 1px solid #e7c376; }
+  .pill.clarify { background: #fff3b0; color: #4d3a00; border: 1px solid #e0c95a; }
+  .pill.info { background: #e2e7ef; color: #2c3754; border: 1px solid #b3bbcb; }
+
+  /* ---------------------- Section divider rows ---------------------- */
+  table.report {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    margin: 0 0 18px;
+  }
+  table.report thead th {
     background: #142a52;
     color: #fff;
     font-weight: 700;
     text-align: left;
-    padding: 6px 8px;
-    vertical-align: top;
-    font-size: 11px;
-    border: 1px solid #142a52;
-  }
-  tbody td {
-    border: 1px solid #d2dbea;
-    padding: 6px 8px;
-    vertical-align: top;
-    font-size: 10.5px;
-  }
-  tbody tr.section td {
-    background: #e7eef9;
-    color: #142a52;
-    font-weight: 700;
+    padding: 8px 9px;
+    font-size: 8.5pt;
     text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
+    border-right: 1px solid #2c3f6e;
+    border-bottom: 2px solid #4a76b4;
   }
-  tbody tr:nth-child(even):not(.section) {
-    background: #fbfcfe;
+  table.report thead th:last-child { border-right: none; }
+
+  table.report tbody td {
+    padding: 8px 9px;
+    border-bottom: 1px solid #d9e0ea;
+    border-right: 1px solid #eaeef5;
+    vertical-align: top;
+    font-size: 9pt;
+    background: #fff;
   }
-  .sino { font-weight: 700; color: #355a92; font-size: 12px; }
-  td.status { white-space: nowrap; text-align: center; font-weight: 700; }
-  td.status .pill { display: inline-block; }
-  .rev-comment {
+  table.report tbody td:last-child { border-right: none; }
+  table.report tbody tr:nth-child(odd):not(.section) td { background: #fafbfd; }
+
+  tr.section td {
+    background: linear-gradient(90deg, #1f3a7a 0%, #355a92 100%) !important;
+    color: #fff !important;
+    font-weight: 700;
+    font-size: 10pt;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 9px 12px !important;
+    border-bottom: none !important;
+    border-right: none !important;
+  }
+  tr.section td::before {
+    content: "■  ";
+    color: #ffd166;
+    font-weight: 900;
+  }
+
+  /* ---------------------- Cell-internal styling ---------------------- */
+  .sino {
+    font-weight: 700;
+    color: #1f3a7a;
+    font-size: 11pt;
+    text-align: center;
+  }
+  .ref-cell {
+    font-size: 8pt;
+    color: #555;
+  }
+  td.status { text-align: center; vertical-align: middle; }
+
+  .orig {
+    color: #333;
+  }
+  .new-comment {
+    color: #5a3a00;
     font-style: italic;
-    color: #444;
+    border-left: 3px solid #ffc756;
+    background: #fff8e6;
+    padding: 6px 8px;
+    border-radius: 0 4px 4px 0;
+    font-size: 8.8pt;
   }
+  .new-comment.plain {
+    background: #f3f6fc;
+    color: #2c3754;
+    border-left-color: #4a76b4;
+  }
+
+  /* Resolution column */
   .resolution h4 {
-    font-size: 10.5px;
-    margin: 0 0 2px;
-    color: #1a4d8f;
+    font-size: 8.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 3px;
+    color: #1f3a7a;
+    border-bottom: 1px solid #d9e0ea;
+    padding-bottom: 2px;
+  }
+  .resolution h4 + p,
+  .resolution h4 + ul,
+  .resolution h4 + ol {
+    margin-top: 3px;
+  }
+  .resolution p, .resolution ul, .resolution ol {
+    margin: 0 0 6px;
+    font-size: 9pt;
+  }
+  .resolution ul, .resolution ol { padding-left: 18px; }
+  .resolution li { margin-bottom: 2px; }
+  .resolution code {
+    background: #eef2f8;
+    border: 1px solid #d2dbea;
+    border-radius: 3px;
+    padding: 0 4px;
+    font-family: "SFMono-Regular", "Consolas", "Courier New", monospace;
+    font-size: 8.5pt;
+    color: #1f3a7a;
+  }
+  .scenario {
+    background: #f0f6ec;
+    border-left: 4px solid #4ea65f;
+    padding: 7px 10px;
+    margin: 6px 0 4px;
+    font-size: 9pt;
+    border-radius: 0 4px 4px 0;
+  }
+  .scenario strong:first-child { color: #0d5e2a; }
+  .verify {
+    background: #eef2f8;
+    border-left: 4px solid #355a92;
+    padding: 7px 10px;
+    margin: 6px 0 4px;
+    font-size: 9pt;
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* Column widths */
+  col.c-sino       { width: 3%; }
+  col.c-section    { width: 8%; }
+  col.c-orig       { width: 17%; }
+  col.c-rev        { width: 18%; }
+  col.c-status     { width: 7.5%; }
+  col.c-ref        { width: 7.5%; }
+  col.c-resolution { width: 39%; }
+
+  /* ---------------------- Summary block at end ---------------------- */
+  .summary {
+    margin-top: 12px;
+    background: #f6f8fc;
+    border: 1px solid #d9e0ea;
+    border-radius: 8px;
+    padding: 14px 18px;
+    page-break-inside: avoid;
+  }
+  .summary h2 {
+    margin: 0 0 8px;
+    color: #1f3a7a;
+    font-size: 13pt;
+  }
+  .summary-grid {
+    display: table;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 12px 0;
+    margin-top: 6px;
+  }
+  .summary-grid > div {
+    display: table-cell;
+    background: #fff;
+    border: 1px solid #d9e0ea;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 9pt;
+    vertical-align: top;
+  }
+  .summary-grid .count {
+    font-size: 22pt;
+    font-weight: 700;
+    color: #1f3a7a;
+    display: block;
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+  .summary-grid .label {
+    font-size: 9.5pt;
+    color: #555;
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
-  .resolution p { margin: 0 0 4px; }
-  .resolution ul { margin: 0 0 4px 12px; padding: 0; }
-  .resolution li { margin: 0 0 2px; }
-  .resolution code {
-    background: #f3f6fc;
-    border: 1px solid #d2dbea;
-    padding: 0 3px;
-    border-radius: 2px;
-    font-family: "Consolas", "Courier New", monospace;
-    font-size: 10px;
+  .summary-grid .items {
+    font-size: 8.5pt;
+    color: #444;
+    margin-top: 6px;
   }
-  .scenario {
-    border-left: 3px solid #355a92;
-    background: #f3f6fc;
-    padding: 4px 8px;
-    margin: 4px 0;
-    font-size: 10px;
-  }
-  .scenario strong { color: #142a52; }
-  col.c-sino { width: 3%; }
-  col.c-section { width: 7%; }
-  col.c-orig { width: 19%; }
-  col.c-rev { width: 19%; }
-  col.c-status { width: 7%; }
-  col.c-ref { width: 7%; }
-  col.c-resolution { width: 38%; }
+
+  /* ---------------------- Print behaviour ---------------------- */
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+  tr, tr.section { page-break-inside: avoid; }
 
   .footer {
     margin-top: 18px;
-    font-size: 10px;
-    color: #555;
+    font-size: 8.5pt;
+    color: #888;
     text-align: right;
   }
-
-  @media print {
-    body { padding: 0; }
-    thead { display: table-header-group; }
-    tr { page-break-inside: avoid; }
-  }
+  a { color: #1f3a7a; text-decoration: none; }
+  a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
-<h1>SAMS — Rev 01 Resolution Report</h1>
-<div class="meta">
-  Source feedback: <strong>SAMS Rev 01 — 16.05.2026</strong>
-  &nbsp;·&nbsp;
-  Generated: 17 May 2026
-  &nbsp;·&nbsp;
-  Branch: <code>feat/rev01-pdf-fidelity</code>
-  &nbsp;·&nbsp;
-  Alpha: <a href="https://76-13-159-24.sslip.io">https://76-13-159-24.sslip.io</a>
-</div>
-<div class="legend">
-  <span><span class="pill resolved">RESOLVED</span> shipped in this round</span>
-  <span><span class="pill completed">COMPLETED</span> shipped in round 1 (2026-05-11)</span>
-  <span><span class="pill deferred">DEFERRED</span> awaiting external input</span>
-  <span><span class="pill clarify">CLARIFY</span> needs BGCC re-test</span>
+<div class="titleblock">
+  <h1>SAMS — Rev 01 Resolution Report</h1>
+  <div class="subtitle">Item-by-item status &amp; resolution against BGCC Rev 01 feedback (16.05.2026)</div>
+  <div class="meta">
+    <div><strong>Source feedback</strong>SAMS Rev 01 — 16.05.2026</div>
+    <div><strong>Generated</strong>17 May 2026</div>
+    <div><strong>Branch</strong>feat/rev01-pdf-fidelity</div>
+    <div><strong>Alpha environment</strong>https://76-13-159-24.sslip.io</div>
+  </div>
 </div>
 
-<table>
+<div class="legend">
+  <div><span class="pill resolved">RESOLVED</span><span class="label"> shipped this round</span></div>
+  <div><span class="pill completed">COMPLETED</span><span class="label"> shipped in round 1 (2026-05-11)</span></div>
+  <div><span class="pill deferred">DEFERRED</span><span class="label"> awaiting external input</span></div>
+  <div><span class="pill clarify">CLARIFY</span><span class="label"> needs BGCC re-test</span></div>
+  <div><span class="pill info">REFERENCE</span><span class="label"> no action</span></div>
+</div>
+
+<table class="report">
   <colgroup>
     <col class="c-sino" />
     <col class="c-section" />
@@ -174,14 +353,15 @@
   </thead>
   <tbody>
 
-  <tr class="section"><td colspan="7">GENERAL COMMENTS — 42-page exact match</td></tr>
+  <tr class="section"><td colspan="7">General Comments — 42-page exact match</td></tr>
+
   <tr>
     <td class="sino">G</td>
     <td>General</td>
-    <td>The generated draft must contain the complete <strong>42 pages exactly matching the Original Agreement</strong> in: Sections · Clauses · Sub-clauses · Page sequence · Numbering format · Spacing &amp; layout · Font size.</td>
-    <td class="rev-comment">Umbrella mandate for items 1–16.</td>
+    <td class="orig">The generated draft must contain the complete <strong>42 pages exactly matching the Original Agreement</strong> in: Sections · Clauses · Sub-clauses · Page sequence · Numbering format · Spacing &amp; layout · Font size.</td>
+    <td><div class="new-comment plain">Umbrella mandate for items 1–16.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>—</td>
+    <td class="ref-cell">—</td>
     <td class="resolution">
       <h4>Approach</h4>
       <p>Switched the rendering pipeline from WeasyPrint+HTML/CSS to <strong>docx + LibreOffice headless</strong>. The 42-page master docx you provided is the source-of-truth template; LibreOffice renders it to PDF after token substitution. Word-compatible engine = near-pixel replica.</p>
@@ -189,265 +369,241 @@
       <ul>
         <li>New <code>services/docx_pdf_service.py</code> — loads <code>backend/masters/sca_master_v1.docx</code>, substitutes <code>{{F##}} / {{C##}} / {{A##}}</code> tokens with agreement values, runs <code>libreoffice --headless --convert-to pdf</code>.</li>
         <li>New <code>scripts/tokenize_master_docx.py</code> — one-shot transform of your sample docx into a tokenized master, with cover-paragraph split + contextual <code>(……Insert…..)</code> substitution.</li>
-        <li>Page size <strong>US Letter</strong> (matches source); body font <strong>Tahoma</strong> (installed via IELPKTH.CAB legacy MS bundle).</li>
+        <li>Page size US Letter (matches source); body font <strong>Tahoma</strong> (installed via IELPKTH.CAB legacy MS bundle).</li>
       </ul>
-      <h4>Verification</h4>
-      <div class="scenario"><strong>Scenario:</strong> Render the demo agreement → <code>pdfinfo</code> reports <strong>42 pages, 612×792 pts (Letter)</strong>. <code>pdffonts</code> confirms Tahoma, Times New Roman, Arial, Georgia, Caladea embedded. Visual comparison page-by-page against the BGCC source confirms section breaks at the expected pages (Form §3 on p.4, DLP/LD block on p.7, TOC pp.9–11, etc.).</div>
+      <div class="verify"><strong>Verification</strong> — render the demo agreement → <code>pdfinfo</code> reports <strong>42 pages, 612×792 pts (Letter)</strong>. <code>pdffonts</code> confirms Tahoma, Times New Roman, Arial, Georgia, Caladea embedded.</div>
     </td>
   </tr>
 
-  <tr class="section"><td colspan="7">PAGE-FIDELITY ITEMS (1–16)</td></tr>
+  <tr class="section"><td colspan="7">Page-fidelity items (1–16)</td></tr>
 
   <tr>
     <td class="sino">1</td>
     <td>General</td>
-    <td>In the generated PDF date format <strong>(MM/DD/YYYY)</strong>.</td>
-    <td class="rev-comment">EXAMPLE: <strong>05<sup>th</sup> May 2026</strong>.<br>(You confirmed long-form is canonical, not numeric.)</td>
+    <td class="orig">In the generated PDF date format <strong>(MM/DD/YYYY)</strong>.</td>
+    <td><div class="new-comment">EXAMPLE: <strong>05<sup>th</sup> May 2026</strong>. (You confirmed long-form is canonical, not numeric.)</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 1</td>
+    <td class="ref-cell">Phase 1</td>
     <td class="resolution">
       <h4>Implementation</h4>
       <ul>
-        <li>Backend: Jinja filter <code>| longdate</code> in <code>pdf_service.py</code> and equivalent <code>_format_longdate()</code> in <code>docx_pdf_service.py</code>. Rule: zero-padded day + ordinal + full month name + 4-digit year.</li>
-        <li>Frontend: new <code>frontend/src/lib/formatDate.ts</code> with <code>formatDate()</code> and <code>formatDateTime()</code>. Wired into Dashboard, Archive, UserManagement, CommentThread, CommentsResolution, WorkflowTimeline.</li>
+        <li>Backend: Jinja filter <code>| longdate</code> in <code>pdf_service.py</code> + <code>_format_longdate()</code> in <code>docx_pdf_service.py</code>. Rule: zero-padded day + ordinal + full month + 4-digit year.</li>
+        <li>Frontend: <code>frontend/src/lib/formatDate.ts</code> with <code>formatDate()</code> + <code>formatDateTime()</code>. Wired into Dashboard, Archive, UserManagement, CommentThread, CommentsResolution, WorkflowTimeline.</li>
         <li>Date tokens in the docx (F01 signing, A15 commencement) auto-formatted at render time.</li>
       </ul>
-      <h4>Steps to verify</h4>
-      <ul>
-        <li>Open any dashboard row — <code>status_updated_on</code> renders as e.g. <code>17th May 2026 14:30</code>.</li>
-        <li>Generate a PDF — F01 inside the Form preamble shows <code>22nd May 2026</code>.</li>
-      </ul>
+      <div class="verify"><strong>Verify</strong> — any dashboard row's <code>status_updated_on</code> renders as e.g. <code>17th May 2026 14:30</code>. Generated PDF: F01 in the Form preamble shows <code>22nd May 2026</code>.</div>
     </td>
   </tr>
 
   <tr>
     <td class="sino">2</td>
     <td>General</td>
-    <td>Reference must show: <strong>SAG-2026-(Site No)-(Ref No.)-</strong></td>
-    <td class="rev-comment">EXAMPLE: <strong>SAG-BGCC-QS-2026-319-001</strong></td>
+    <td class="orig">Reference must show: <strong>SAG-2026-(Site No)-(Ref No.)-</strong></td>
+    <td><div class="new-comment">EXAMPLE: <strong>SAG-BGCC-QS-2026-319-001</strong></div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 1</td>
+    <td class="ref-cell">Phase 1</td>
     <td class="resolution">
       <h4>Implementation</h4>
       <ul>
         <li>Format string in <code>services/agreement_service.py::_build_reference_number</code> changed from old <code>SAG-{CODE}-{YEAR}-{SEQ:03d}</code> to <code>SAG-{YEAR}-{SITE_NO}-{REF_NO:03d}</code>.</li>
-        <li>Site No is stored on <code>Project.project_code</code>; UI label renamed to "Site No" on the wizard Step 1 (no DB migration to avoid external integration breakage).</li>
+        <li>Site No is stored on <code>Project.project_code</code>; UI label renamed to "Site No" on Step 1 (no DB rename to avoid integration breakage).</li>
       </ul>
-      <h4>Scenario</h4>
-      <div class="scenario"><strong>Demo agreement reference:</strong> <code>SAG-2026-319-001</code>. Next agreement on site 319 in same year auto-increments to <code>SAG-2026-319-002</code>. Different site = its own sequence starting at <code>-001</code>.</div>
+      <div class="scenario"><strong>Scenario</strong> — Demo agreement reference: <code>SAG-2026-319-001</code>. Next agreement on site 319 in same year auto-increments to <code>SAG-2026-319-002</code>. Different site = its own sequence starting at <code>-001</code>.</div>
     </td>
   </tr>
 
   <tr>
     <td class="sino">3</td>
     <td>General</td>
-    <td>Introduce a <strong>change-management and comparison feature</strong>: THIS WILL APPLY TO ALL (42 pages) AS A DEFAULT.</td>
-    <td class="rev-comment">e.g. if a Subcontractor wants to revise Scope of Works or Definitions section.</td>
+    <td class="orig">Introduce a <strong>change-management and comparison feature</strong>: THIS WILL APPLY TO ALL (42 pages) AS A DEFAULT.</td>
+    <td><div class="new-comment">If a Subcontractor wants to revise Scope of Works or Definitions section.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 v2.0–v2.2</td>
+    <td class="ref-cell">Phase 4 v2.0–v2.2</td>
     <td class="resolution">
       <h4>Implementation</h4>
       <ul>
         <li>Migration <code>004_clause_revisions.py</code> adds <code>agreement_clause_revisions</code> table.</li>
-        <li>Each paragraph in the master docx is a revisable clause anchored by SHA-256 of its normalised text (robust to re-tokenization).</li>
-        <li>New endpoints: <code>GET /api/agreements/{id}/clauses</code>, <code>GET/POST/PATCH/DELETE /api/agreements/{id}/revisions</code>, <code>POST /api/agreements/{id}/revisions/{id}/accept|reject</code>.</li>
-        <li>Renderer applies <strong>accepted</strong> revisions silently; <strong>pending</strong> revisions render as native Word <code>&lt;w:ins&gt;</code> + <code>&lt;w:del&gt;</code> markup (strikethrough + underline inline).</li>
+        <li>Each paragraph in the master docx is a revisable clause anchored by SHA-256 of its normalised text.</li>
+        <li>Endpoints: <code>GET /api/agreements/{id}/clauses</code>, <code>GET/POST/PATCH/DELETE /revisions</code>, <code>POST /revisions/{id}/accept|reject</code>.</li>
+        <li>Renderer applies <strong>accepted</strong> revisions silently; <strong>pending</strong> renders as native Word <code>&lt;w:ins&gt;</code> + <code>&lt;w:del&gt;</code> (strikethrough + underline inline).</li>
       </ul>
-      <h4>Scenario</h4>
-      <div class="scenario"><strong>Subcontractor wants to revise 3.4.6 (Interim Payment Days):</strong> Admin opens <code>/agreements/{id}/document</code>, scrolls to Clause revisions panel, searches "Interim Payment", clicks the matching clause, types the revised wording in the modal, submits with reason. Revision stored as <code>pending</code>. PD logs in, opens <code>/agreements/{id}/compare</code>, ticks "Show pending changes" — the revised PDF shows the original text struck through + new text underlined inline. PD clicks Accept with note. Revision moves to <code>accepted</code>; PDF auto-regenerates without the strikethrough — the revision is now part of THIS agreement only (master template untouched).</div>
+      <div class="scenario"><strong>Scenario — Subcontractor wants to revise 3.4.6 (Interim Payment Days):</strong> Admin opens <code>/document</code>, scrolls to Clause revisions panel, searches "Interim Payment", clicks the clause, types revised wording, submits with reason. Revision stored as <code>pending</code>. PD logs in, opens <code>/compare</code>, ticks "Show pending changes" — revised PDF shows original struck through + new text underlined inline. PD clicks <strong>Accept</strong> with note. Revision moves to <code>accepted</code>; PDF auto-regenerates with the change applied silently — affects THIS agreement only.</div>
     </td>
   </tr>
 
   <tr>
     <td class="sino">4</td>
     <td>General</td>
-    <td>"SUB-CONTRACT AGREEMENT DOCUMENTS" section should appear on <strong>Page 4</strong>.</td>
-    <td class="rev-comment">Reference image: Form §3 enumeration.</td>
+    <td class="orig">"SUB-CONTRACT AGREEMENT DOCUMENTS" section should appear on <strong>Page 4</strong>.</td>
+    <td><div class="new-comment plain">Reference image: Form §3 enumeration.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
+    <td class="ref-cell">Phase 4 docx</td>
     <td class="resolution">
-      <h4>Implementation</h4>
-      <p>Master docx is the user-provided 42-page replica. LibreOffice render places §3 on page 4 exactly as the source PDF does.</p>
-      <h4>Verify</h4>
-      <p>Demo agreement PDF page 4 shows <code>3. Subcontract Agreement Documents:</code> with the seven enumerated items 3.1–3.7.</p>
+      <p>Master docx is the user-provided 42-page replica. LibreOffice render places §3 on page 4 exactly as the source PDF does. Demo PDF page 4 shows <code>3. Subcontract Agreement Documents:</code> + items 3.1–3.7.</p>
     </td>
   </tr>
 
   <tr>
     <td class="sino">5</td>
     <td>General</td>
-    <td>This should appear on <strong>page 7</strong> (follow the original).</td>
-    <td class="rev-comment">Defects Liability Period / Rate of LDs / Maximum LDs table.</td>
+    <td class="orig">This should appear on <strong>page 7</strong> (follow the original).</td>
+    <td><div class="new-comment plain">Defects Liability Period · Rate of LDs · Maximum LDs table.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
-    <td class="resolution">
-      <p>Master docx places this 3-row table on page 7. No code change beyond using the docx pipeline.</p>
-    </td>
+    <td class="ref-cell">Phase 4 docx</td>
+    <td class="resolution"><p>Master docx places this 3-row table on page 7. No code change beyond using the docx pipeline.</p></td>
   </tr>
 
   <tr>
     <td class="sino">6</td>
     <td>General</td>
-    <td><strong>Table of Content Missing</strong> (Page 9, 10, 11)</td>
-    <td class="rev-comment">Conditions of the Subcontract Agreement TOC.</td>
+    <td class="orig"><strong>Table of Content Missing</strong> (pages 9, 10, 11).</td>
+    <td><div class="new-comment plain">Conditions of the Subcontract Agreement TOC.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
-    <td class="resolution">
-      <p>Master docx ships the TOC across pages 9–11 (Conditions of the Subcontract Agreement, full sub-section listing with leader dots + page numbers). Phase 2's prior HTML/CSS TOC implementation was deprecated when we switched to the docx pipeline.</p>
-    </td>
+    <td class="ref-cell">Phase 4 docx</td>
+    <td class="resolution"><p>Master docx ships the TOC across pages 9–11 (full sub-section listing with leader dots + page numbers). Phase 2's prior HTML/CSS TOC was deprecated when we switched to docx.</p></td>
   </tr>
 
   <tr>
     <td class="sino">7</td>
     <td>General</td>
-    <td><strong>The Annexures of the SCA Missing</strong></td>
-    <td class="rev-comment">Final section title page.</td>
+    <td class="orig"><strong>The Annexures of the SCA Missing.</strong></td>
+    <td><div class="new-comment plain">Final section title page.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
-    <td class="resolution">
-      <p>"Annexures of the Subcontract Agreement" title page renders as the final page in the master docx.</p>
-    </td>
+    <td class="ref-cell">Phase 4 docx</td>
+    <td class="resolution"><p>"Annexures of the Subcontract Agreement" title page renders as the final page in the master docx.</p></td>
   </tr>
 
   <tr>
     <td class="sino">8</td>
     <td>General</td>
-    <td>Clause 1.3 – Priority of Documents shall follow the same sequence and format (Page 13 in Original vs Page 10 in your Draft).</td>
-    <td class="rev-comment">Numbered enumeration of the 7 SCA documents.</td>
+    <td class="orig">Clause 1.3 – Priority of Documents shall follow the same sequence and format (Page 13 in Original vs Page 10 in your Draft).</td>
+    <td><div class="new-comment plain">Numbered enumeration of the 7 SCA documents.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
-    <td class="resolution">
-      <p>Page break + content sequence now match the source PDF since we render the source docx directly.</p>
-    </td>
+    <td class="ref-cell">Phase 4 docx</td>
+    <td class="resolution"><p>Page break + content sequence now match the source PDF since we render the source docx directly.</p></td>
   </tr>
 
   <tr>
     <td class="sino">9</td>
     <td>General</td>
-    <td>Clause 1.5 – Confidential Information: Item (b) should appear on the next page (page 14 in original).</td>
-    <td class="rev-comment">"Party next page and item a is b in the original."</td>
+    <td class="orig">Clause 1.5 – Confidential Information: Item (b) should appear on the next page (page 14 in original).</td>
+    <td><div class="new-comment plain">"Party next page and item a is b in the original."</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
-    <td class="resolution">
-      <p>Page break preserved by the docx renderer (LibreOffice respects the source's section / paragraph break markers).</p>
-    </td>
+    <td class="ref-cell">Phase 4 docx</td>
+    <td class="resolution"><p>Page break preserved by the docx renderer (LibreOffice respects source's section / paragraph break markers).</p></td>
   </tr>
 
   <tr>
     <td class="sino">10</td>
     <td>General</td>
-    <td>Below item c (Page 14 in 42-page original).</td>
-    <td class="rev-comment">"1.6 Communications" header position.</td>
+    <td class="orig">Below item c (Page 14 in 42-page original).</td>
+    <td><div class="new-comment plain">"1.6 Communications" header position.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
+    <td class="ref-cell">Phase 4 docx</td>
     <td class="resolution"><p>Matches source by virtue of using the source docx as the template.</p></td>
   </tr>
 
   <tr>
     <td class="sino">11</td>
     <td>General</td>
-    <td>This is Page 15 in 42-page original.</td>
-    <td class="rev-comment">"2 Scope of Works" section start.</td>
+    <td class="orig">This is Page 15 in 42-page original.</td>
+    <td><div class="new-comment plain">"2 Scope of Works" section start.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
+    <td class="ref-cell">Phase 4 docx</td>
     <td class="resolution"><p>Matches source.</p></td>
   </tr>
 
   <tr>
     <td class="sino">12</td>
     <td>General</td>
-    <td>This is Page 17 in 42-page original.</td>
-    <td class="rev-comment">"3 Subcontract Price and Payments / 3.1 The Subcontract Price".</td>
+    <td class="orig">This is Page 17 in 42-page original.</td>
+    <td><div class="new-comment plain">"3 Subcontract Price and Payments / 3.1".</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
+    <td class="ref-cell">Phase 4 docx</td>
     <td class="resolution"><p>Matches source.</p></td>
   </tr>
 
   <tr>
     <td class="sino">13</td>
     <td>General</td>
-    <td>Under 3.4 Payment Terms, item e should appear in next page.</td>
-    <td class="rev-comment">Follow 42-page original.</td>
+    <td class="orig">Under 3.4 Payment Terms, item e should appear in next page.</td>
+    <td><div class="new-comment plain">Follow 42-page original.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
+    <td class="ref-cell">Phase 4 docx</td>
     <td class="resolution"><p>Page break preserved by source docx.</p></td>
   </tr>
 
   <tr>
     <td class="sino">14</td>
     <td>General</td>
-    <td>Serial sequence incorrect — please follow 42-page original.</td>
-    <td class="rev-comment">"10.2 Types Of Insurance — a. Contractor's All Risks / Erection All Risks".</td>
+    <td class="orig">Serial sequence incorrect — please follow 42-page original.</td>
+    <td><div class="new-comment plain">"10.2 Types Of Insurance — a. Contractor's All Risks / Erection All Risks".</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
+    <td class="ref-cell">Phase 4 docx</td>
     <td class="resolution"><p>Source docx carries the correct serial sequence; renderer preserves it.</p></td>
   </tr>
 
   <tr>
     <td class="sino">15</td>
     <td>General</td>
-    <td>Follow the cover page format throughout — same format/layout/headings/clauses across all 42 pages.</td>
-    <td class="rev-comment">Whatever is on each page should remain exactly the same in corresponding sections.</td>
+    <td class="orig">Follow the cover page format throughout — same format / layout / headings / clauses across all 42 pages.</td>
+    <td><div class="new-comment plain">Whatever is on each page should remain exactly the same in corresponding sections.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 docx replica</td>
-    <td class="resolution">
-      <p>The cover paragraph was the one structural deviation from the source — we corrected the 3 label rows back into separate paragraphs with the <code>:</code> separator (cover paragraph split logic in <code>scripts/tokenize_master_docx.py::_split_cover_paragraph</code>).</p>
-    </td>
+    <td class="ref-cell">Phase 4 docx</td>
+    <td class="resolution"><p>The cover paragraph was the one structural deviation from the source — we corrected the 3 label rows back into separate paragraphs with the <code>:</code> separator (cover paragraph split logic in <code>scripts/tokenize_master_docx.py::_split_cover_paragraph</code>).</p></td>
   </tr>
 
   <tr>
     <td class="sino">16</td>
     <td>General</td>
-    <td>All info written on each page shall be fully visible in the Admin Dashboard. The Admin shall have <strong>editable access to modify, update, highlight, compare, and track all changes</strong>. The dashboard shall maintain the original document structure and display contents page-by-page.</td>
-    <td class="rev-comment">Page-by-page editable dashboard.</td>
+    <td class="orig">All info written on each page shall be fully visible in the Admin Dashboard. Admin shall have <strong>editable access to modify, update, highlight, compare, and track all changes</strong>. The dashboard shall maintain the original document structure and display contents page-by-page.</td>
+    <td><div class="new-comment plain">Page-by-page editable dashboard.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 3 + Phase 4</td>
+    <td class="ref-cell">Phase 3 + 4</td>
     <td class="resolution">
       <h4>Implementation</h4>
       <ul>
-        <li><strong>Document view</strong> at <code>/agreements/:id/document</code> — left pane: full 42-page PDF; right pane: grouped field editor (F / C / A) + AppendixBuilder + ClauseRevisionsPanel.</li>
-        <li><strong>Admin</strong> sees full edit surface (modify / update / save-and-regenerate / propose-revisions).</li>
-        <li><strong>Non-admin reviewers</strong> (PD/Accounts/OM/GM) see a read-only field-values summary with an "Open Compare view →" button. No inputs, no buttons.</li>
-        <li><strong>Compare view</strong> at <code>/agreements/:id/compare</code> handles the highlight / compare / track-changes (item 17-extension).</li>
+        <li><strong>Document view</strong> at <code>/agreements/:id/document</code> — left: full 42-page PDF; right: grouped field editor + AppendixBuilder + ClauseRevisionsPanel.</li>
+        <li><strong>Admin</strong> sees the full edit surface.</li>
+        <li><strong>Non-admin reviewers</strong> see a read-only field-values summary with a button to /compare. No inputs, no buttons.</li>
+        <li><strong>Compare view</strong> at <code>/agreements/:id/compare</code> handles highlight / compare / track-changes (item 17-extension).</li>
       </ul>
-      <h4>Scenario</h4>
-      <div class="scenario"><strong>Admin tweaks a wrong contract price after submission:</strong> open Document view → Form fields section → change F08 → "Save &amp; regenerate" → PDF iframe reloads in ~3s with the new value baked into every clause that references it (Form §2, Appendix A07, Advance Payment §3.4.1).</div>
+      <div class="scenario"><strong>Scenario — Admin tweaks a wrong contract price after submission:</strong> open Document view → Form fields → change F08 → "Save &amp; regenerate" → PDF reloads in ~3s with the new value baked into every clause that references it (Form §2, Appendix A07, Advance Payment §3.4.1).</div>
     </td>
   </tr>
 
-  <tr class="section"><td colspan="7">ROUND-1 ITEMS (17–35) — REVIEW STATUS</td></tr>
+  <tr class="section"><td colspan="7">Round-1 items (17–35) — review &amp; status</td></tr>
 
   <tr>
     <td class="sino">17</td>
     <td>Admin Dashboards</td>
-    <td>42-page SCA on left, Appendix on right in Workflow Review. Reviewers see both simultaneously without switching tabs.</td>
-    <td class="rev-comment"><strong>EXTENSION:</strong> Introduce Side-by-Side Agreement Comparison (42 Pages). TRACKING WILL APPLY TO GM-PD-OM-ACCOUNTS-ADMIN. Two parallel columns: Original (left) / Revised (right). Each clause aligned page-by-page. All modifications clearly highlighted. Change tracking marks modified clauses / added or deleted provisions / financial or commercial adjustments / compliance or technical revisions.</td>
+    <td class="orig">42-page SCA on left, Appendix on right in Workflow Review. Reviewers see both simultaneously without switching tabs.</td>
+    <td><div class="new-comment"><strong>EXTENSION:</strong> Introduce Side-by-Side Agreement Comparison (42 Pages). TRACKING WILL APPLY TO GM-PD-OM-ACCOUNTS-ADMIN. Two parallel columns: Original (left) / Revised (right). Each clause aligned page-by-page. All modifications clearly highlighted. Change tracking marks modified clauses / added or deleted provisions / financial or commercial adjustments / compliance or technical revisions.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 4 v1+v2</td>
+    <td class="ref-cell">Phase 4 v1+v2</td>
     <td class="resolution">
       <h4>Implementation</h4>
       <ul>
         <li>New page <code>/agreements/:id/compare</code> — grid 4/4/4: ORIGINAL master / REVISED agreement / sidebar.</li>
-        <li>ORIGINAL pane: <code>GET /api/pdf/master/preview</code> renders the master docx with empty tokens (the "Base Version – 42 Pages"). Cached server-side keyed by docx mtime.</li>
-        <li>REVISED pane: <code>GET /api/pdf/{id}/preview</code> (accepted-only) by default, swaps to <code>GET /api/pdf/{id}/preview/with_changes</code> when reviewer ticks "Show pending changes" — pending clause revisions render as Word track-changes (<code>&lt;w:ins&gt;</code> underline + <code>&lt;w:del&gt;</code> strikethrough).</li>
-        <li>Sidebar: <strong>ClauseRevisionsPanel</strong> in "review" mode (accept/reject for non-creators) + flat list of every populated field value vs the empty master ("Original: — / Revised: value").</li>
-        <li><strong>RBAC opened to all 5 reviewer roles</strong> (PD, Accounts, OM, GM, Admin). Backend GETs relaxed to <code>get_current_user</code>; write endpoints stay admin-only.</li>
-        <li>Workflow Review now shows an "Open Compare view →" button on the Agreement Summary card so reviewers don't need the URL.</li>
+        <li>ORIGINAL pane: <code>GET /api/pdf/master/preview</code> renders master with empty tokens (the "Base Version – 42 Pages"). Cached server-side.</li>
+        <li>REVISED pane: <code>GET /api/pdf/{id}/preview</code> (accepted-only) by default, swaps to <code>/preview/with_changes</code> when reviewer ticks "Show pending changes" — pending revisions render as Word track-changes (<code>&lt;w:ins&gt;</code> + <code>&lt;w:del&gt;</code>).</li>
+        <li>Sidebar: <strong>ClauseRevisionsPanel</strong> in "review" mode (Accept / Reject for non-creators) + flat list of populated field values.</li>
+        <li><strong>RBAC opened to all 5 reviewer roles</strong>. Backend GETs relaxed to <code>get_current_user</code>; write endpoints stay admin-only.</li>
+        <li>Workflow Review shows an "Open Compare view →" button.</li>
       </ul>
-      <h4>Scenario</h4>
-      <div class="scenario"><strong>Subcontract Price 500 → 400 highlighted:</strong> Admin opens Document view → edits F08 from 500 to 400 → save. PD opens Compare view → sidebar Field-values list shows "F08 · The Subcontract Price · Original: — / Revised: 400". For prose changes, admin proposes a clause revision; PD ticks "Show pending changes" and sees the change inline with strikethrough+underline. Accept or Reject button + decision note.</div>
+      <div class="scenario"><strong>Scenario — Subcontract Price 500 → 400 highlighted:</strong> Admin edits F08 from 500 to 400. PD opens Compare view → sidebar Field-values list shows "F08 · Original — / Revised 400". For prose changes, admin proposes a clause revision; PD ticks "Show pending changes" and sees the inline strikethrough+underline. Accept / Reject buttons + decision note.</div>
     </td>
   </tr>
 
   <tr>
     <td class="sino">18</td>
     <td>Admin Dashboards</td>
-    <td>All default sections, clauses, appendices, standard terms must be fully displayed in generated PDF + Edit option before finalization.</td>
-    <td class="rev-comment">No new comment.</td>
+    <td class="orig">All default sections, clauses, appendices, standard terms must be fully displayed in generated PDF + Edit option before finalization.</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1 + Phase 4</td>
+    <td class="ref-cell">Round 1 + Phase 4</td>
     <td class="resolution">
-      <p>Default sections rendered from the 42-page master docx (item 4–14). Edit option implemented at three levels:</p>
+      <p>Default sections rendered from the 42-page master docx (items 4–14). Edit option implemented at three levels:</p>
       <ul>
         <li><strong>Field values</strong>: wizard + Document view.</li>
         <li><strong>Appendix overrides</strong>: AppendixBuilder per-row override + Reset to Auto (item 35).</li>
@@ -459,211 +615,208 @@
   <tr>
     <td class="sino">19</td>
     <td>Admin Dashboards</td>
-    <td>Bhatia logo remains as default on dashboard.</td>
-    <td class="rev-comment">No new comment.</td>
+    <td class="orig">Bhatia logo remains as default on dashboard.</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1</td>
+    <td class="ref-cell">Round 1</td>
     <td class="resolution">
-      <p>BGCC brand block in <code>frontend/src/routes/AppLayout.tsx</code> top nav. Bhatia logo PNG embedded on the cover page of every generated PDF and as the running header on every body page.</p>
+      <p>BGCC brand block in <code>frontend/src/routes/AppLayout.tsx</code> top nav. Bhatia logo PNG embedded on the cover of every generated PDF and as the running header on every body page.</p>
     </td>
   </tr>
 
   <tr>
     <td class="sino">20</td>
     <td>Admin Dashboards</td>
-    <td>After Internal Review submission, Edit option should appear. Same draft should not appear as duplicate for other users; only latest final version visible.</td>
-    <td class="rev-comment">No new comment.</td>
+    <td class="orig">After Internal Review submission, Edit option should appear. Same draft should not appear as duplicate for other users; only latest final version visible.</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1 + Phase 1</td>
+    <td class="ref-cell">Round 1 + Phase 1</td>
     <td class="resolution">
-      <p>Edit button shows on <code>under_internal_review</code> / <code>under_bgcc_revision</code> / <code>under_drafting</code>. The Dashboard rows show ONE row per agreement; the "latest" status is enforced by the single <code>current_status</code> column. After Phase 1 Step 2 heading rewrite (item 30), there is no longer any confusing duplication-of-fields appearance.</p>
+      <p>Edit button shows on <code>under_internal_review</code> / <code>under_bgcc_revision</code> / <code>under_drafting</code>. Dashboard shows ONE row per agreement; latest status is enforced by the single <code>current_status</code> column. Phase 1 Step 2 heading rewrite (item 30) removed remaining duplication appearance.</p>
     </td>
   </tr>
 
   <tr>
     <td class="sino">21</td>
     <td>Admin Dashboards</td>
-    <td>Delete option to remove unnecessary drafts.</td>
-    <td class="rev-comment">No new comment.</td>
+    <td class="orig">Delete option to remove unnecessary drafts.</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1</td>
-    <td class="resolution">
-      <p><code>DELETE /api/agreements/{id}</code> + red Delete button on dashboard rows for agreements that have not yet been GM-approved.</p>
-    </td>
+    <td class="ref-cell">Round 1</td>
+    <td class="resolution"><p><code>DELETE /api/agreements/{id}</code> + red Delete button on dashboard rows for agreements that have not yet been GM-approved.</p></td>
   </tr>
 
   <tr>
     <td class="sino">22</td>
     <td>Admin Dashboards</td>
-    <td>Bhatia Info (Company Name, P.O. Box, Contact, Fax, Address) auto-filled in independent fields, NOT linked across fields.</td>
-    <td class="rev-comment">No new comment.</td>
+    <td class="orig">Bhatia Info (Company Name, P.O. Box, Contact, Fax, Address) auto-filled in <strong>independent fields</strong>, NOT linked across fields.</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1</td>
-    <td class="resolution">
-      <p>BGCC info is the first party in the SCA and lives as constant text in the master docx — the renderer doesn't touch it, so it's always present, in separate fields/runs, and never propagates between cells.</p>
-    </td>
+    <td class="ref-cell">Round 1</td>
+    <td class="resolution"><p>BGCC info is the first party in the SCA and lives as constant text in the master docx — the renderer doesn't touch it, so it's always present, in separate fields/runs, and never propagates between cells.</p></td>
   </tr>
 
   <tr>
     <td class="sino">23</td>
     <td>Admin Dashboards</td>
-    <td>Repeated information not allowed while creating a New Agreement.</td>
-    <td class="rev-comment"><strong>NEW:</strong> Please keep it to be filled manually ONLY PROJECT DETAILS, EMPLOYER &amp; CONSULTANT DETAILS ONLY.</td>
+    <td class="orig">Repeated information not allowed while creating a New Agreement.</td>
+    <td><div class="new-comment"><strong>NEW:</strong> Please keep it to be filled manually ONLY <strong>PROJECT DETAILS, EMPLOYER &amp; CONSULTANT DETAILS</strong> ONLY.</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Round 1 + verified</td>
+    <td class="ref-cell">Round 1 + verified</td>
     <td class="resolution">
       <h4>Status</h4>
       <p>Verified in <code>frontend/src/pages/AgreementCreate.tsx</code> Step 1: <strong>Project Name, Site No, Project Location, Employer Name, Engineer/Consultant Name</strong> are all manual text inputs with no auto-fill from any picker. Only the <strong>Subcontractor</strong> block has the picker (item 24) which auto-fills 7 sub-fields except contract price.</p>
       <h4>Why this matches BGCC's ask</h4>
-      <p>Project / Employer / Consultant DETAILS = admin types them per agreement, no auto-fill picker. Sub-Contractor identity = picker-driven (item 24 explicitly says so). Bhatia first-party info = constant in the master docx (item 22).</p>
+      <p>Project / Employer / Consultant DETAILS = admin types per agreement, no auto-fill. Sub-Contractor identity = picker-driven (item 24). Bhatia first-party info = constant in the master docx (item 22).</p>
     </td>
   </tr>
 
   <tr>
     <td class="sino">24</td>
     <td>Admin Dashboards</td>
-    <td>Sub-Contractor existing info auto-fills on re-use, <strong>except CONTRACT PRICE</strong>.</td>
-    <td class="rev-comment">No new comment.</td>
+    <td class="orig">Sub-Contractor existing info auto-fills on re-use, <strong>except CONTRACT PRICE</strong>.</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1</td>
-    <td class="resolution">
-      <p>Subcontractor search picker on Step 1: typing a name shows a dropdown sourced from <code>GET /api/subcontractors/?search=…</code>. Selection pre-fills company_name / po_box / trade_licence_no / contact_person / email / phone / address. The Contract Price (F08) input is on the wizard Step 1 project block and is NEVER pre-populated from history.</p>
-    </td>
+    <td class="ref-cell">Round 1</td>
+    <td class="resolution"><p>Subcontractor search picker on Step 1: typing a name shows a dropdown sourced from <code>GET /api/subcontractors/?search=…</code>. Selection pre-fills company_name / po_box / trade_licence_no / contact_person / email / phone / address. Contract Price (F08) is NEVER pre-populated from history.</p></td>
   </tr>
 
   <tr>
     <td class="sino">25</td>
     <td>Admin Dashboards</td>
-    <td>Other users not receiving notifications about new drafts or new comments during internal review.</td>
-    <td class="rev-comment">No new comment.</td>
-    <td class="status"><span class="pill deferred">DEFERRED</span></td>
-    <td>Per your call (leave for now)</td>
+    <td class="orig">Other users not receiving notifications about new drafts or new comments during internal review.</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
+    <td class="status"><span class="pill deferred">AWAITING BGCC SMTP</span></td>
+    <td class="ref-cell">Blocked on BGCC</td>
     <td class="resolution">
-      <h4>What's in place already</h4>
-      <p>Backend has <code>services/email_service.py</code> wired into the workflow — on every submit / return / approve / send-to-subcontractor, it tries to send an email via <code>aiosmtplib</code> and silently swallows transport failures. Currently logs and no-ops because SMTP env vars are not set on alpha.</p>
-      <h4>Steps to enable</h4>
+      <h4>Current status</h4>
+      <p><strong>We are awaiting BGCC SMTP configuration in order to proceed with the mailing service.</strong> The code path is complete and wired into every workflow event; it cannot send mail until BGCC provides the SMTP credentials below for their mail server.</p>
+      <h4>What we need from BGCC IT</h4>
+      <ul>
+        <li><code>SMTP_HOST</code> — e.g. <code>smtp.bgcc.ae</code> or <code>smtp.office365.com</code></li>
+        <li><code>SMTP_PORT</code> — typically 587 (STARTTLS) or 465 (TLS)</li>
+        <li><code>SMTP_USER</code> — the account SAMS will authenticate as (e.g. <code>sams-noreply@bgcc.ae</code>)</li>
+        <li><code>SMTP_PASSWORD</code> — app password / SMTP password for the above account</li>
+        <li><code>SMTP_FROM</code> — the visible "From" address recipients will see</li>
+        <li>(Optional) <code>SMTP_USE_TLS</code> / <code>SMTP_STARTTLS</code> flag depending on the server</li>
+      </ul>
+      <h4>What's already built (waiting on creds)</h4>
+      <p>Backend has <code>services/email_service.py</code> wired into the workflow — on every <em>submit / return / approve / send-to-subcontractor / comment-added</em>, it attempts an <code>aiosmtplib</code> send and silently swallows transport failures so the workflow keeps moving even if mail is down. As soon as the env vars are in place, every event automatically starts producing email.</p>
+      <h4>Steps to enable once BGCC provides credentials</h4>
       <ol>
-        <li>On the VPS: edit <code>/var/www/sams/backend/.env</code> and add <code>SMTP_HOST=smtp.gmail.com</code> (or your provider), <code>SMTP_PORT=587</code>, <code>SMTP_USER=…</code>, <code>SMTP_PASSWORD=…</code>, <code>SMTP_FROM=noreply@bgcc.ae</code>.</li>
+        <li>Append the values above to <code>/var/www/sams/backend/.env</code> on the VPS.</li>
         <li><code>sudo supervisorctl restart sams-api</code>.</li>
         <li>Create a draft and Submit for Review — PD should receive an email within ~5 seconds.</li>
+        <li>(Optional) Send a test email via Python REPL to confirm the credentials before going live: <code>python -m scripts.send_test_email pd@bgcc.ae</code>.</li>
       </ol>
-      <p><strong>Alternative</strong>: in-app notification system (websockets + notifications table). Bigger build, no SMTP dependency. Estimate ~3 days.</p>
+      <h4>Alternative if BGCC does not have SMTP available</h4>
+      <p>In-app notification system (websockets + a <code>notifications</code> table + bell-icon dropdown on the AppLayout). ~3 days of work. We can pursue this in parallel if BGCC IT cannot provision an SMTP account; recipients see notifications on next login rather than via email.</p>
     </td>
   </tr>
 
   <tr>
     <td class="sino">26</td>
     <td>Admin Dashboards</td>
-    <td>Two options: Bank Guarantee Cheque / Company Undated Security Cheque. Admin selects one to continue.</td>
-    <td class="rev-comment">Step 1 → Completed in Step 3.</td>
+    <td class="orig">Two options: Bank Guarantee Cheque / Company Undated Security Cheque. Admin selects one to continue.</td>
+    <td><div class="new-comment plain">Step 1 → Completed in Step 3.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1</td>
+    <td class="ref-cell">Round 1</td>
     <td class="resolution">
-      <p>Field <strong>C14 Performance Security Type</strong> added to Conditions catalog via migration <code>002_user_feedback_round1.py</code>. Renders as a dropdown on Step 3 of the wizard with the two BGCC options. Selected value flows into the Conditions PDF clause 3.4.2 and the Appendix Performance Security row.</p>
+      <p>Field <strong>C14 Performance Security Type</strong> added via migration <code>002_user_feedback_round1.py</code>. Renders as a dropdown on Step 3 with the two BGCC options. Selected value flows into the Conditions PDF clause 3.4.2 and the Appendix Performance Security row.</p>
     </td>
   </tr>
 
   <tr>
     <td class="sino">27</td>
     <td>Admin Dashboards</td>
-    <td>Thousands/Millions Separator: 1,000,000 (comma).</td>
-    <td class="rev-comment">No new comment.</td>
+    <td class="orig">Thousands / Millions Separator: 1,000,000 (comma).</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1 + Phase 2</td>
-    <td class="resolution">
-      <p>Frontend: <code>formatNumber()</code> in <code>frontend/src/lib/formatNumber.ts</code> (Wizard preview, AppendixBuilder, AppendixView, Compare sidebar). Backend PDF: <code>_format_money()</code> in <code>docx_pdf_service.py</code> applied to MONEY_FIELDS = {F08, C03, C11, A07, A09, A10, A20, A21}.</p>
-    </td>
+    <td class="ref-cell">Round 1 + Phase 2</td>
+    <td class="resolution"><p>Frontend: <code>formatNumber()</code> in <code>frontend/src/lib/formatNumber.ts</code>. Backend PDF: <code>_format_money()</code> in <code>docx_pdf_service.py</code> applied to MONEY_FIELDS = {F08, C03, C11, A07, A09, A10, A20, A21}.</p></td>
   </tr>
 
   <tr>
     <td class="sino">28</td>
     <td>Admin Dashboards</td>
-    <td>Decimal Separator: 12.5 (dot).</td>
-    <td class="rev-comment">No new comment.</td>
+    <td class="orig">Decimal Separator: 12.5 (dot).</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1</td>
-    <td class="resolution">
-      <p>Same money helper preserves a dot as the decimal separator (en-US locale). 12.5 renders as <code>12.50</code> (with trailing 00) when formatted as currency, or verbatim as free text when not a numeric field.</p>
-    </td>
+    <td class="ref-cell">Round 1</td>
+    <td class="resolution"><p>Money helper preserves a dot as the decimal separator (en-US locale). <code>12.5</code> renders as <code>12.50</code> when formatted as currency, or verbatim as free text otherwise.</p></td>
   </tr>
 
   <tr>
     <td class="sino">29</td>
     <td>Admin Dashboards</td>
-    <td>'Back' button alongside 'Next' on the Agreement Creation Wizard.</td>
-    <td class="rev-comment">No new comment.</td>
+    <td class="orig">'Back' button alongside 'Next' on the Agreement Creation Wizard.</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1</td>
-    <td class="resolution">
-      <p>Back button shown on Steps 2, 3, 4 and 5 in <code>frontend/src/pages/AgreementCreate.tsx</code>. Step 1 has no Back since there's no previous step.</p>
-    </td>
+    <td class="ref-cell">Round 1</td>
+    <td class="resolution"><p>Back button shown on Steps 2, 3, 4 and 5 in <code>frontend/src/pages/AgreementCreate.tsx</code>.</p></td>
   </tr>
 
   <tr>
     <td class="sino">30</td>
     <td>Admin Dashboards</td>
-    <td>In the Agreement Creation Wizard, <strong>Step 2: Sub-Contractor Company Name is displayed again? Please clarify</strong>.</td>
-    <td class="rev-comment">Status flagged (yellow — needs clarification).</td>
+    <td class="orig">In the Agreement Creation Wizard, <strong>Step 2: Sub-Contractor Company Name is displayed again? Please clarify.</strong></td>
+    <td><div class="new-comment">Status flagged (yellow — needs clarification).</div></td>
     <td class="status"><span class="pill clarify">CLARIFY</span></td>
-    <td>Phase 1 partial</td>
+    <td class="ref-cell">Phase 1</td>
     <td class="resolution">
       <h4>Status</h4>
-      <p>Round 1 (2026-05-11) dropped F02–F08 from Step 2 via the <code>STEP1_DUPLICATE_F_FIELDS</code> filter — the Subcontractor company name is no longer rendered as an input on Step 2. Phase 1 (2026-05-16) additionally rewrote Step 2's heading + description to remove the word "Subcontractor", which appears to have been the source of the visual confusion.</p>
-      <h4>What's on Step 2 now</h4>
+      <p>Round 1 (2026-05-11) dropped F02–F08 from Step 2 via the <code>STEP1_DUPLICATE_F_FIELDS</code> filter. Phase 1 (2026-05-16) additionally rewrote Step 2's heading + description to remove the word "Subcontractor".</p>
+      <h4>Current Step 2 contents</h4>
       <ul>
         <li>F01 — Day of signing (date)</li>
         <li>F09 — Scope Title (text)</li>
         <li>Description: "Only the agreement-specific fields below are requested here. The project details, subcontractor identity, employer and contract price you entered in Step 1 are already attached to this draft and are <strong>not</strong> shown again."</li>
       </ul>
-      <h4>Action needed</h4>
-      <div class="scenario"><strong>BGCC re-test:</strong> log in as admin, go to Dashboard → "New Agreement" → fill Step 1 fully → click Next. Step 2 should now show only "Day of signing" and "Scope Title". Confirm whether the duplication concern is resolved.</div>
+      <div class="verify"><strong>BGCC re-test:</strong> log in as admin → Dashboard → New Agreement → fill Step 1 fully → click Next. Step 2 should now show only "Day of signing" and "Scope Title". Confirm duplication concern is resolved.</div>
     </td>
   </tr>
 
   <tr>
     <td class="sino">31</td>
     <td>Admin Dashboards</td>
-    <td>Step 3: C05 Interim Payment Days — option to enter free text (e.g. "7 days / 60 days PDC").</td>
-    <td class="rev-comment">C05-Interim Payment Days.</td>
+    <td class="orig">Step 3: C05 Interim Payment Days — option to enter free text (e.g. "7 days / 60 days PDC").</td>
+    <td><div class="new-comment plain">C05-Interim Payment Days.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1</td>
-    <td class="resolution">
-      <p>Migration <code>002_user_feedback_round1.py</code> flips C05's <code>input_type</code> from <code>number</code> to <code>text</code>. Admin can type "60 days PDC", "30 days from Taking-Over", or just "60" — renders verbatim.</p>
-    </td>
+    <td class="ref-cell">Round 1</td>
+    <td class="resolution"><p>Migration <code>002_user_feedback_round1.py</code> flips C05's <code>input_type</code> from <code>number</code> to <code>text</code>. Admin can type "60 days PDC", "30 days from Taking-Over", or just "60" — renders verbatim.</p></td>
   </tr>
 
   <tr>
     <td class="sino">32</td>
     <td>Admin Dashboards</td>
-    <td>Step 3: C06 &amp; C07 Retention Days — same free-text option.</td>
-    <td class="rev-comment">(Same note as 31.)</td>
+    <td class="orig">Step 3: C06 &amp; C07 Retention Days — same free-text option.</td>
+    <td><div class="new-comment plain">(Same note as 31.)</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1</td>
-    <td class="resolution">
-      <p>Same migration: C06 / C07 <code>input_type</code> → <code>text</code>.</p>
-    </td>
+    <td class="ref-cell">Round 1</td>
+    <td class="resolution"><p>Same migration: C06 / C07 <code>input_type</code> → <code>text</code>.</p></td>
   </tr>
 
   <tr>
     <td class="sino">33</td>
     <td>Admin Dashboards</td>
-    <td>Please <strong>Elaborate further the Masters Section</strong>.</td>
-    <td class="rev-comment">Status: not completed (in 16.05 review).</td>
+    <td class="orig">Please <strong>Elaborate further the Masters Section.</strong></td>
+    <td><div class="new-comment">Status: not completed (in 16.05 review).</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 1</td>
+    <td class="ref-cell">Phase 1</td>
     <td class="resolution">
       <h4>What changed</h4>
-      <p>The collapsible help panel on <code>/masters</code> page expanded from 4 short sections to a full A-to-Z guide. Open <code>frontend/src/pages/MasterTemplates.tsx</code> → top of the page → click the "About the Masters section — full guide" disclosure.</p>
-      <h4>Topics covered</h4>
+      <p>The collapsible help panel on <code>/masters</code> expanded from 4 short sections to a full A-to-Z guide. Open the page → top → click the disclosure titled "About the Masters section — full guide (open me before you change anything)".</p>
+      <h4>Topics covered (each explained in-app)</h4>
       <ol>
-        <li>What is the Masters section + why it matters</li>
-        <li>The three template types (F / C / A) with a reference table</li>
-        <li>Template Versions + how the audit trail works</li>
-        <li>Field Catalog attributes (Field ID, Label, Clause number, Input type, auto_source_field_id, show_in_appendix, is_required, default_value)</li>
-        <li>{{FIELD_ID}} placeholder mechanics</li>
-        <li>Appendix overrides (auto vs locked rows)</li>
-        <li><strong>Worked scenario</strong> — adding a new "Performance Bond Type" dropdown clause end-to-end (edit HTML → add C14 field → Save As New Version → verify in fresh agreement → confirm historic agreements unchanged)</li>
-        <li>Things to be careful about (never change Field IDs, prefer deactivation over deletion, etc.)</li>
+        <li><strong>What is the Masters section?</strong> — explains that every SCA is built from three master templates (Form of Subcontract Agreement, Conditions of Subcontract Agreement, Appendix to the Subcontract Agreement), and that this page is where admin maintains the parent template, not any specific agreement.</li>
+        <li><strong>Why this matters</strong> — three load-bearing reasons: (a) admin never re-types legal boilerplate, only fills <code>[Insert]</code>-style slots called <em>fields</em>; (b) when legal updates a clause, you change it ONCE in the master and every future agreement uses the new wording — old agreements stay frozen on whichever version they were created from; (c) the wizard, the workflow PDF preview, and the final signed PDF all read from the masters — there is no other source of truth.</li>
+        <li><strong>The three template types</strong> — reference table mapping each template type to the field-ID range it owns: <strong>Form</strong> = F01–F09 (party names, project, scope, price + signature block), <strong>Conditions</strong> = C01–C14 (the 14 clause sections: scope details, payment terms, retention, programme, defects, LDs, variations, insurance, etc.), <strong>Appendix</strong> = A01–A23 (the summary table of every variable, mostly auto-pulled from F/C fields).</li>
+        <li><strong>Template Versions — how the audit trail works</strong> — each master keeps a version history. Exactly one version per type is <em>active</em> at any time; older versions stay queryable forever so any agreement created against them can still regenerate its PDF as it was first issued. Clicking <em>Save As New Version</em> inserts a new row, auto-flips the previous active to <em>archived</em>, and re-points future agreements to the new version — without touching historic agreements.</li>
+        <li><strong>Field Catalog attributes</strong> — every field has: <em>Field ID</em> (permanent code, never changes), <em>Label</em> (admin-facing display text, free to edit), <em>Clause number</em> (cross-ref to the legal clause for the deviation report), <em>Input type</em> (text / textarea / number / date / dropdown / multifield), <em>auto_source_field_id</em> (when set, this field auto-pulls from the named source — e.g. A07 sources F08), <em>show_in_appendix</em>, <em>is_required</em> (blocks Submit for Review until filled), <em>default_value</em> (pre-fills the wizard input).</li>
+        <li><strong>{{FIELD_ID}} placeholder mechanics</strong> — inside the master HTML/docx you write <code>{{F02}}</code>, <code>{{C03}}</code>, etc. wherever the rendered PDF should substitute the agreement-specific value. The engine walks the field catalog and replaces every <code>{{FIELD_ID}}</code> with the entered value, HTML-escaped, with numeric fields auto-formatted as <code>1,000,000.00</code>. Tokens with no matching field stay in the output so stray <code>{{F99}}</code> typos are visible immediately.</li>
+        <li><strong>Appendix overrides — auto vs locked rows</strong> — explains item 35: most appendix rows auto-derive from their source (A07 from F08, etc.); admin clicks <em>Edit</em> on a row to lock a custom value (then future source changes leave it alone); clicks <em>Reset to Auto</em> to re-link to source.</li>
+        <li><strong>A simple scenario — adding a new clause</strong> — step-by-step worked example: legal asks for a new "Performance Bond Type" dropdown in Conditions. Walks (1) open Conditions current version, (2) paste new paragraph with <code>{{C14}}</code> placeholder, (3) Add Field in catalog with Field ID = C14, input_type = dropdown, options = ["Bank Guarantee", "Company Undated Cheque"], (4) mark show_in_appendix=true if it should also appear in the Appendix, (5) Save As New Version, (6) create a test agreement — Step 3 now shows the new dropdown, value lands at <code>{{C14}}</code> in the PDF, (7) open an older agreement — still shows previous version without the new clause.</li>
+        <li><strong>Things to be careful about</strong> — never change an existing Field ID (use a new ID + deprecate old); removing a field that historic agreements reference renders empty values (prefer deactivation); the first letter of Field ID is load-bearing (F = Form template, C = Conditions, A = Appendix); editing template HTML is non-destructive — use <em>Save As New Version</em> rather than overwriting.</li>
       </ol>
     </td>
   </tr>
@@ -671,46 +824,43 @@
   <tr>
     <td class="sino">34</td>
     <td>Admin Dashboards</td>
-    <td>RESOLUTION ENHANCEMENT: side-by-side table during finalization showing ORIGINAL SCA CLAUSE vs SECOND PARTY COMMENTS.</td>
-    <td class="rev-comment">No new comment.</td>
+    <td class="orig">RESOLUTION ENHANCEMENT: side-by-side table during finalization showing ORIGINAL SCA CLAUSE vs SECOND PARTY COMMENTS.</td>
+    <td><div class="new-comment plain">No new comment.</div></td>
     <td class="status"><span class="pill completed">COMPLETED</span></td>
-    <td>Round 1</td>
-    <td class="resolution">
-      <p><code>frontend/src/pages/CommentsResolution.tsx</code> renders per-row cards with the Original SCA Clause (amber) and the Second Party Comment (sky) side-by-side, plus AI / PD / OM / Final response panels beneath. Backed by <code>comments_resolution_sheets.original_clause_text</code> column (migration 002).</p>
-    </td>
+    <td class="ref-cell">Round 1</td>
+    <td class="resolution"><p><code>frontend/src/pages/CommentsResolution.tsx</code> renders per-row cards with the Original SCA Clause (amber) and the Second Party Comment (sky) side-by-side, plus AI / PD / OM / Final response panels. Backed by <code>comments_resolution_sheets.original_clause_text</code> (migration 002).</p></td>
   </tr>
 
   <tr>
     <td class="sino">35</td>
     <td>Admin Dashboards</td>
-    <td>Manual A-field overrides shall NOT be retained. An Edit option must be provided to allow modification when needed. The current override shall be removed from Step 4 (e.g. clause 3.4.6, 3.4.7).</td>
-    <td class="rev-comment">Status: not completed (in 16.05 review).</td>
+    <td class="orig">Manual A-field overrides shall NOT be retained. An Edit option must be provided to allow modification when needed. The current override shall be removed from Step 4 (e.g. clause 3.4.6, 3.4.7).</td>
+    <td><div class="new-comment">Status: not completed (in 16.05 review).</div></td>
     <td class="status"><span class="pill resolved">RESOLVED</span></td>
-    <td>Phase 1</td>
+    <td class="ref-cell">Phase 1</td>
     <td class="resolution">
       <h4>Behaviour change</h4>
-      <p>Before: typing an A-field value made it "sticky" — future cascades from F/C wouldn't overwrite it. After: A-fields with an <code>auto_source_field_id</code> always re-derive from their source on every update, UNLESS admin explicitly locks the row via the Edit flow.</p>
+      <p>Before: typing an A-field made it "sticky" — future cascades from F/C wouldn't overwrite. After: A-fields with an <code>auto_source_field_id</code> always re-derive on every update, UNLESS admin explicitly locks the row via the Edit flow.</p>
       <h4>Mechanism</h4>
       <ul>
-        <li>New <code>is_manual_override</code> boolean column on <code>agreement_field_values</code> (migration <code>003_manual_override_flag.py</code>).</li>
-        <li><code>services/agreement_service.update_agreement_fields</code> rewrites cascade logic: always recompute unless locked; backend guard drops drive-by writes that would clobber a locked row.</li>
-        <li><code>PUT /api/agreements/{id}/fields</code> accepts an <code>overrides: {field_id: true|false}</code> map alongside <code>values</code>.</li>
-        <li>AppendixBuilder UI: per-row <strong>Edit</strong> button locks the override (amber "override" badge appears); <strong>Reset to Auto</strong> button clears the lock and re-pulls from source.</li>
-        <li>3 new pytest cases cover: re-derive on source change (no override), lock holds through source change, reset-to-auto.</li>
+        <li>New <code>is_manual_override</code> column on <code>agreement_field_values</code> (migration <code>003_manual_override_flag.py</code>).</li>
+        <li><code>services/agreement_service.update_agreement_fields</code> rewrites cascade logic + drops drive-by writes that would clobber a locked row.</li>
+        <li><code>PUT /api/agreements/{id}/fields</code> accepts an <code>overrides: {field_id: true|false}</code> map.</li>
+        <li>AppendixBuilder UI: per-row <strong>Edit</strong> button locks the override; <strong>Reset to Auto</strong> clears the lock.</li>
+        <li>3 new pytest cases cover re-derive / lock holds / reset-to-auto.</li>
       </ul>
-      <h4>Scenario</h4>
-      <div class="scenario"><strong>Clause 3.4.6 (Interim Payment Days = C05 → A12):</strong> Admin enters C05 = "60 days PDC" → A12 auto-fills with "60 days PDC". Admin clicks Edit on A12 row, changes to "45 days PDC", saves — A12 now LOCKED with amber badge. Admin later changes C05 to "30 days PDC" — A12 stays at "45 days PDC" (override holds). Admin clicks Reset to Auto on A12 — A12 immediately becomes "30 days PDC" (cascaded from current C05).</div>
+      <div class="scenario"><strong>Scenario — Clause 3.4.6 (C05 → A12):</strong> Admin enters C05 = "60 days PDC" → A12 auto-fills with "60 days PDC". Admin clicks <strong>Edit</strong> on A12, changes to "45 days PDC", saves — A12 LOCKED with amber badge. Admin later changes C05 to "30 days PDC" — A12 stays at "45 days PDC". Admin clicks <strong>Reset to Auto</strong> — A12 immediately becomes "30 days PDC".</div>
     </td>
   </tr>
 
-  <tr class="section"><td colspan="7">WIZARD SCREENSHOTS (36–41) — no action items</td></tr>
+  <tr class="section"><td colspan="7">Wizard screenshots (36–41) — reference only</td></tr>
   <tr>
     <td class="sino">36–41</td>
     <td>Wizard</td>
-    <td>Step 1–5 wizard summary screenshots.</td>
-    <td class="rev-comment">Reference only.</td>
+    <td class="orig">Step 1–5 wizard summary screenshots.</td>
+    <td><div class="new-comment plain">Reference only.</div></td>
     <td class="status"><span class="pill info">REFERENCE</span></td>
-    <td>—</td>
+    <td class="ref-cell">—</td>
     <td class="resolution">
       <p>No action items. All five wizard steps remain working as designed: Step 1 (Project + Subcontractor + manual A-fields), Step 2 (Form header — only F01 + F09 now), Step 3 (Conditions C01–C14), Step 4 (Appendix Builder), Step 5 (review summary + submit).</p>
     </td>
@@ -719,43 +869,39 @@
   </tbody>
 </table>
 
-<h2>Summary</h2>
-<ul>
-  <li><strong>Resolved this round (Rev 01):</strong> items 1, 2, 3, 4–16 (umbrella), 17, 23, 30 (pending re-test), 33, 35 — <strong>11 items</strong>.</li>
-  <li><strong>Completed in round 1 (still good):</strong> items 18, 19, 20, 21, 22, 24, 26, 27, 28, 29, 31, 32, 34 — <strong>13 items</strong>.</li>
-  <li><strong>Deferred:</strong> 25 (notifications — needs SMTP creds).</li>
-  <li><strong>Reference only:</strong> 36–41 (wizard screenshots).</li>
-</ul>
-
-<h2>Branch state on <code>feat/rev01-pdf-fidelity</code></h2>
-<ul>
-  <li><code>a370953</code> fix: lock /document for non-admin; clear leftover Insert markers</li>
-  <li><code>dc1e0ec</code> feat(document): open /document to reviewers in read-only mode</li>
-  <li><code>67e5d22</code> fix(rbac): relax read-only GETs to any-auth so reviewers can open Compare</li>
-  <li><code>1982c82</code> feat(compare): open Compare view to GM-PD-OM-Accounts-Admin</li>
-  <li><code>1b922e2</code> fix(pdf): order /pdf/master/preview before /pdf/{agreement_id}/preview</li>
-  <li><code>8591fdc</code> feat(revisions): accept/reject workflow + RBAC + audit (Phase 4 v2.1)</li>
-  <li><code>d43bfd8</code> feat(revisions): inline track-changes in PDF (Phase 4 v2.2)</li>
-  <li><code>0f6f197</code> feat(revisions): per-agreement clause revisions (Phase 4 v2.0)</li>
-  <li><code>3c2e09b</code> feat(compare): side-by-side Compare view (Phase 4 v1)</li>
-  <li><code>1d566eb</code> feat(document): side-by-side Document view with inline PDF + field editor</li>
-  <li><code>a8e6c6d</code> feat(pdf): apply currency formatting to numeric tokens in docx render</li>
-  <li><code>cc12b44</code> fix(pdf): body font is Tahoma (per docx styles.xml), not TNR</li>
-  <li><code>14155f6</code> fix(pdf): give LibreOffice a writable per-render profile dir</li>
-  <li><code>219e912</code> feat(pdf): exact 42-page replica via tokenized BGCC docx</li>
-  <li><code>38d1a27</code> feat(pdf): switch render pipeline to docx + LibreOffice for true replica</li>
-  <li><code>2dd5a3b</code> feat(pdf): match 42-page BGCC source layout (TOC, Annexures, fonts)</li>
-  <li><code>96dd4e0</code> chore(pdf): switch templates from A4 to US Letter</li>
-  <li><code>c1e287d</code> chore(ops): add idempotent VPS font install script</li>
-  <li><code>52f3923</code> feat(agreements): reference format SAG-{YEAR}-{SITE_NO}-{REF_NO}</li>
-  <li><code>861b2b9</code> feat(ui+pdf): render dates as "05th May 2026"</li>
-  <li><code>43359be</code> fix(wizard): clarify Step 2 heading</li>
-  <li><code>702febc</code> feat(appendix): A-fields always re-derive; explicit Edit locks the row</li>
-  <li><code>1fa6134</code> docs(masters): expand help panel with A-to-Z guide</li>
-</ul>
+<div class="summary">
+  <h2>Summary at a glance</h2>
+  <div class="summary-grid">
+    <div>
+      <span class="count">11</span>
+      <div class="label">Resolved this round</div>
+      <div class="items">Items 1, 2, 3, 4–16 (umbrella), 17, 23, 33, 35</div>
+    </div>
+    <div>
+      <span class="count">13</span>
+      <div class="label">Completed round 1</div>
+      <div class="items">Items 18, 19, 20, 21, 22, 24, 26, 27, 28, 29, 31, 32, 34</div>
+    </div>
+    <div>
+      <span class="count">1</span>
+      <div class="label">Deferred</div>
+      <div class="items">Item 25 (notifications — needs SMTP credentials)</div>
+    </div>
+    <div>
+      <span class="count">1</span>
+      <div class="label">Clarify by re-test</div>
+      <div class="items">Item 30 (Step 2 wording — re-test the latest alpha)</div>
+    </div>
+    <div>
+      <span class="count">6</span>
+      <div class="label">Reference</div>
+      <div class="items">Items 36–41 (wizard screenshots, no action)</div>
+    </div>
+  </div>
+</div>
 
 <div class="footer">
-  Generated by Claude Opus 4.7 (1M context). To save as PDF, open this file in your browser and choose "Print → Save as PDF" (A3 landscape recommended).
+  Generated by Claude Opus 4.7 (1M context) · feat/rev01-pdf-fidelity · 17 May 2026
 </div>
 
 </body>
