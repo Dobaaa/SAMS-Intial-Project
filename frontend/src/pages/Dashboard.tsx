@@ -305,6 +305,13 @@ export default function Dashboard() {
                         Edit
                       </Link>
                     )}
+                    <Link
+                      to={`/agreements/${a.id}/document`}
+                      className="rounded-lg border border-sky-200 px-2 py-1 text-sky-700 hover:bg-sky-50"
+                      title="Open Document view — side-by-side PDF preview with inline field editor"
+                    >
+                      Document
+                    </Link>
                     {(a.status === "under_drafting" ||
                       a.status === "under_bgcc_revision" ||
                       a.status === "under_internal_review") &&
