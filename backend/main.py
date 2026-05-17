@@ -9,6 +9,7 @@ from routers.agreements import router as agreements_router, subcontractors_route
 from routers.ai import router as ai_router
 from routers.archive import router as archive_router
 from routers.auth import router as auth_router
+from routers.clause_revisions import router as clause_revisions_router
 from routers.comments import router as comments_router
 from routers.masters import router as masters_router
 from routers.pdf import router as pdf_router
@@ -51,6 +52,7 @@ app.include_router(subcontractors_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
 app.include_router(archive_router, prefix="/api")
 app.include_router(comments_router, prefix="/api")
+app.include_router(clause_revisions_router, prefix="/api")
 app.include_router(pdf_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
 app.include_router(resolution_router, prefix="/api")

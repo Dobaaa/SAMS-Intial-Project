@@ -240,6 +240,7 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
     agreement is permanently tied to the docx file that was active when it
     was created (the actual docx bytes live in backend/masters/).
     """
+    from models.agreement import AgreementClauseRevision, ClauseRevisionStatus
     from services.docx_pdf_service import render_agreement_docx_to_pdf
 
     agreement = await _load_agreement_bundle(db, agreement_id)
@@ -247,6 +248,17 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
         raise ValueError("Agreement not found")
 
     value_map = _collect_field_values(agreement.field_values)
+
+    # Phase 4 v2.0 — fold accepted clause revisions into the render. Pending
+    # revisions are NOT applied here; they render as Word track-changes in
+    # v2.2 (and only when the caller asks for the with_changes variant).
+    rev_res = await db.execute(
+        select(AgreementClauseRevision).where(
+            AgreementClauseRevision.agreement_id == agreement.id,
+            AgreementClauseRevision.status == ClauseRevisionStatus.accepted.value,
+        )
+    )
+    accepted = [(r.clause_hash, r.modified_text) for r in rev_res.scalars().all()]
 
     agreement_dir = UPLOADS_DIR / agreement.reference_number
     agreement_dir.mkdir(parents=True, exist_ok=True)
@@ -256,7 +268,9 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
     # Render into the same dir as the final PDF so cleanup is one rmdir.
     work_dir = agreement_dir / f"_render_{timestamp}"
     try:
-        pdf_bytes = render_agreement_docx_to_pdf(value_map, work_dir)
+        pdf_bytes = render_agreement_docx_to_pdf(
+            value_map, work_dir, accepted_revisions=accepted
+        )
     finally:
         # Best-effort cleanup of the intermediate docx + LibreOffice work files.
         if work_dir.exists():

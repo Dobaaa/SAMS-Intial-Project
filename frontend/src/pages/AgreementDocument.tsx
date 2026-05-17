@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 
 import AppendixBuilder from "../components/AppendixBuilder";
+import ClauseRevisionsPanel from "../components/ClauseRevisionsPanel";
 import FieldInput from "../components/FieldInput";
 import { useToast } from "../components/Toast";
 import { api } from "../lib/api";
@@ -393,6 +394,31 @@ export default function AgreementDocument() {
               >
                 {regenerating ? "Regenerating…" : "Refresh preview"}
               </button>
+            </section>
+
+            {/* Clause revisions — Phase 4 v2.0 */}
+            <section className="rounded-xl border border-sky-100 bg-white p-3 shadow-sm">
+              <h2 className="text-sm font-semibold text-sky-900">
+                Clause revisions
+              </h2>
+              <p className="mb-3 text-xs text-sky-700">
+                Per-agreement edits to the master template prose. Each
+                revision starts as <em>pending</em> and applies to the
+                rendered PDF once a reviewer accepts it. Withdraw any
+                pending revision to drop it before review.
+              </p>
+              <ClauseRevisionsPanel
+                agreementId={agreementId!}
+                onChange={async () => {
+                  setRegenerating(true);
+                  try {
+                    await api.post(`/pdf/${agreementId}/generate`);
+                    await reloadPdf();
+                  } finally {
+                    setRegenerating(false);
+                  }
+                }}
+              />
             </section>
           </div>
         </div>

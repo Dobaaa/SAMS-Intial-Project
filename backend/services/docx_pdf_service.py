@@ -171,6 +171,7 @@ def render_agreement_docx_to_pdf(
     master_path: Path | None = None,
     libreoffice_bin: str = "libreoffice",
     timeout_seconds: int = 90,
+    accepted_revisions: list[tuple[str, str]] | None = None,
 ) -> bytes:
     """Render the SCA PDF by substituting tokens in the master docx and
     converting via LibreOffice headless.
@@ -186,6 +187,13 @@ def render_agreement_docx_to_pdf(
     master_path:
         Override for the master docx location (defaults to the bundled
         ``backend/masters/sca_master_v1.docx``).
+    accepted_revisions:
+        Phase 4 v2.0 — list of ``(clause_hash, modified_text)`` pairs that
+        replace the matching paragraphs in the master before token
+        substitution. The modified_text is then itself put through token
+        substitution, so it can reference fields the master uses
+        (``{{F02}}``, etc.). Pending revisions are NOT applied here; in
+        v2.2 they render as Word track-changes (<w:ins>/<w:del>).
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -194,6 +202,18 @@ def render_agreement_docx_to_pdf(
         raise FileNotFoundError(f"Master docx not found at {source}")
 
     doc = Document(str(source))
+
+    # 1) Apply accepted clause revisions BEFORE token substitution so the
+    # modified text can contain {{FIELD_ID}} tokens and they'll resolve.
+    if accepted_revisions:
+        # Local import to keep the docx_pdf_service module free of the
+        # revisions-service dependency unless caller actually passes
+        # revisions in.
+        from services.clause_revision_service import apply_accepted_revisions_to_doc
+
+        apply_accepted_revisions_to_doc(doc, accepted_revisions)
+
+    # 2) Token substitution.
     for para in _iter_paragraphs(doc):
         _substitute_in_paragraph(para, values)
 

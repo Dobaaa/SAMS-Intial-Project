@@ -1,0 +1,241 @@
+"""Clause revision endpoints (Phase 4 v2).
+
+  GET    /api/agreements/{id}/clauses
+      List the revisable paragraphs in the master docx (deduped, sorted in
+      document order). Used by the Document view's clause picker.
+
+  GET    /api/agreements/{id}/revisions
+      Every clause revision this agreement carries (any status).
+
+  POST   /api/agreements/{id}/revisions
+      Create a new revision (status=pending). Admin only — reviewers
+      accept/reject in v2.1.
+
+  PATCH  /api/agreements/{id}/revisions/{rev_id}
+      Update the modified_text or change_reason while still pending.
+
+  DELETE /api/agreements/{id}/revisions/{rev_id}
+      Withdraw a pending revision. Accepted/rejected revisions are
+      historical and cannot be deleted (they show up in the audit trail).
+"""
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database import get_db_session
+from middleware.rbac import get_current_user, require_role
+from models.agreement import Agreement, AgreementClauseRevision, ClauseRevisionStatus
+from models.user import RoleEnum, User
+from services.clause_revision_service import (
+    find_master_clause_by_hash,
+    list_master_clauses,
+)
+
+router = APIRouter(tags=["clause-revisions"])
+
+
+# ---------- payload models ----------------------------------------------------
+
+
+class RevisionCreatePayload(BaseModel):
+    clause_hash: str = Field(..., min_length=64, max_length=64)
+    modified_text: str
+    change_reason: str | None = None
+
+
+class RevisionUpdatePayload(BaseModel):
+    modified_text: str | None = None
+    change_reason: str | None = None
+
+
+# ---------- helpers -----------------------------------------------------------
+
+
+async def _get_agreement_or_404(db: AsyncSession, agreement_id: uuid.UUID) -> Agreement:
+    res = await db.execute(select(Agreement).where(Agreement.id == agreement_id))
+    agreement = res.scalar_one_or_none()
+    if not agreement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+    if agreement.is_executed:
+        # Executed agreements are immutable — no new revisions, no edits.
+        # We still allow GET on the list so the executed PDF can show prior
+        # revisions for the audit trail.
+        pass
+    return agreement
+
+
+def _serialise(rev: AgreementClauseRevision) -> dict:
+    return {
+        "id": str(rev.id),
+        "agreement_id": str(rev.agreement_id),
+        "clause_hash": rev.clause_hash,
+        "clause_label": rev.clause_label,
+        "original_text": rev.original_text,
+        "modified_text": rev.modified_text,
+        "change_reason": rev.change_reason,
+        "status": rev.status,
+        "created_by": str(rev.created_by) if rev.created_by else None,
+        "created_at": rev.created_at.isoformat() if rev.created_at else None,
+        "decided_by": str(rev.decided_by) if rev.decided_by else None,
+        "decided_at": rev.decided_at.isoformat() if rev.decided_at else None,
+        "decision_note": rev.decision_note,
+    }
+
+
+# ---------- routes ------------------------------------------------------------
+
+
+@router.get("/agreements/{agreement_id}/clauses")
+async def list_clauses(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
+) -> dict:
+    """Return the master clause catalog, plus any pending revisions on this
+    agreement so the UI can show which clauses already have an open edit."""
+    await _get_agreement_or_404(db, agreement_id)
+
+    clauses = [c.as_dict() for c in list_master_clauses()]
+
+    rev_res = await db.execute(
+        select(AgreementClauseRevision).where(
+            AgreementClauseRevision.agreement_id == agreement_id
+        )
+    )
+    revisions = rev_res.scalars().all()
+    pending_hashes = {r.clause_hash for r in revisions if r.status == ClauseRevisionStatus.pending.value}
+    accepted_hashes = {r.clause_hash for r in revisions if r.status == ClauseRevisionStatus.accepted.value}
+
+    for clause in clauses:
+        clause["has_pending"] = clause["clause_hash"] in pending_hashes
+        clause["has_accepted"] = clause["clause_hash"] in accepted_hashes
+
+    return {"clauses": clauses}
+
+
+@router.get("/agreements/{agreement_id}/revisions")
+async def list_revisions(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
+) -> dict:
+    await _get_agreement_or_404(db, agreement_id)
+    res = await db.execute(
+        select(AgreementClauseRevision)
+        .where(AgreementClauseRevision.agreement_id == agreement_id)
+        .order_by(AgreementClauseRevision.created_at.desc())
+    )
+    return {"revisions": [_serialise(r) for r in res.scalars().all()]}
+
+
+@router.post(
+    "/agreements/{agreement_id}/revisions",
+    dependencies=[Depends(require_role(RoleEnum.admin))],
+)
+async def create_revision(
+    agreement_id: uuid.UUID,
+    payload: RevisionCreatePayload,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(require_role(RoleEnum.admin)),
+) -> dict:
+    agreement = await _get_agreement_or_404(db, agreement_id)
+    if agreement.is_executed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Agreement is locked after execution",
+        )
+
+    clause = find_master_clause_by_hash(payload.clause_hash)
+    if clause is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Clause not found in master template",
+        )
+    if payload.modified_text.strip() == clause.text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Modified text is identical to the original",
+        )
+
+    revision = AgreementClauseRevision(
+        agreement_id=agreement_id,
+        clause_hash=clause.clause_hash,
+        clause_label=clause.clause_label,
+        original_text=clause.text,
+        modified_text=payload.modified_text,
+        change_reason=payload.change_reason,
+        status=ClauseRevisionStatus.pending.value,
+        created_by=current_user.id,
+    )
+    db.add(revision)
+    await db.commit()
+    await db.refresh(revision)
+    return _serialise(revision)
+
+
+@router.patch(
+    "/agreements/{agreement_id}/revisions/{revision_id}",
+    dependencies=[Depends(require_role(RoleEnum.admin))],
+)
+async def update_revision(
+    agreement_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    payload: RevisionUpdatePayload,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(require_role(RoleEnum.admin)),
+) -> dict:
+    res = await db.execute(
+        select(AgreementClauseRevision).where(
+            AgreementClauseRevision.id == revision_id,
+            AgreementClauseRevision.agreement_id == agreement_id,
+        )
+    )
+    rev = res.scalar_one_or_none()
+    if rev is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Revision not found")
+    if rev.status != ClauseRevisionStatus.pending.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only pending revisions can be edited",
+        )
+    if payload.modified_text is not None:
+        rev.modified_text = payload.modified_text
+    if payload.change_reason is not None:
+        rev.change_reason = payload.change_reason
+    await db.commit()
+    await db.refresh(rev)
+    return _serialise(rev)
+
+
+@router.delete(
+    "/agreements/{agreement_id}/revisions/{revision_id}",
+    dependencies=[Depends(require_role(RoleEnum.admin))],
+)
+async def delete_revision(
+    agreement_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(require_role(RoleEnum.admin)),
+) -> dict:
+    res = await db.execute(
+        select(AgreementClauseRevision).where(
+            AgreementClauseRevision.id == revision_id,
+            AgreementClauseRevision.agreement_id == agreement_id,
+        )
+    )
+    rev = res.scalar_one_or_none()
+    if rev is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Revision not found")
+    if rev.status != ClauseRevisionStatus.pending.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Accepted / rejected revisions cannot be deleted",
+        )
+    await db.delete(rev)
+    await db.commit()
+    return {"status": "deleted", "id": str(revision_id)}

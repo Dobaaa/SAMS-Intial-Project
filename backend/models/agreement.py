@@ -125,6 +125,63 @@ class AppendixConfig(Base):
     last_modified_by_user = relationship("User", back_populates="modified_appendix_rows", foreign_keys=[last_modified_by])
 
 
+class ClauseRevisionStatus(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+    rejected = "rejected"
+
+
+class AgreementClauseRevision(Base):
+    """A per-agreement edit to a clause's prose in the master docx.
+
+    Phase 4 v2: admin can revise the text of any paragraph in the SCA for
+    a specific agreement. Each revision is anchored to its original
+    paragraph by a SHA-256 hash of the trimmed/normalised text — robust
+    against the paragraph's position shifting when the master is
+    re-tokenized.
+
+    Workflow:
+      * Admin creates a revision (status = pending).
+      * Reviewer (PD/Accounts/OM/GM) accepts or rejects.
+      * At render time, accepted revisions are applied silently; pending
+        revisions render as Word track-changes (<w:ins>/<w:del>) in v2.2.
+    """
+
+    __tablename__ = "agreement_clause_revisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agreement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agreements.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    clause_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    clause_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_text: Mapped[str] = mapped_column(Text, nullable=False)
+    modified_text: Mapped[str] = mapped_column(Text, nullable=False)
+    change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=ClauseRevisionStatus.pending.value,
+        server_default=ClauseRevisionStatus.pending.value,
+    )
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    agreement = relationship("Agreement")
+    created_by_user = relationship("User", foreign_keys=[created_by])
+    decided_by_user = relationship("User", foreign_keys=[decided_by])
+
+
 @event.listens_for(Agreement.current_status, "set", retval=False)
 def _on_status_change(target: Agreement, value: AgreementStatusEnum, oldvalue: AgreementStatusEnum, initiator):  # type: ignore[no-untyped-def]
     if oldvalue != value:
