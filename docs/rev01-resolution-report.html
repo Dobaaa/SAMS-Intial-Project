@@ -90,6 +90,32 @@
   .legend .pill { vertical-align: middle; }
   .legend .label { padding-left: 4px; color: #555; }
 
+  /* ---------------------- Important-note callout ---------------------- */
+  .note {
+    background: #fff8e1;
+    border: 1px solid #f0c674;
+    border-left: 5px solid #d97706;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 0 0 18px;
+    font-size: 9.5pt;
+    line-height: 1.45;
+    color: #4a2a00;
+    page-break-inside: avoid;
+  }
+  .note .note-title {
+    display: block;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #b54708;
+    letter-spacing: 0.5px;
+    font-size: 9pt;
+    margin-bottom: 4px;
+  }
+  .note p { margin: 0 0 4px; }
+  .note p:last-child { margin-bottom: 0; }
+  .note strong { color: #7c2d12; }
+
   /* ---------------------- Status pills ---------------------- */
   .pill {
     display: inline-block;
@@ -330,6 +356,27 @@
   <div><span class="pill info">REFERENCE</span><span class="label"> no action</span></div>
 </div>
 
+<div class="note">
+  <span class="note-title">Important note on 42-page consistency</span>
+  <p>
+    The <strong>42-page count is consistent for the base template and for agreements whose clauses
+    fit within the standard space envelope</strong>. The count is, by design, <strong>dependent on the
+    clauses inserted into the specific agreement</strong> — if admin (or a clause revision proposed
+    via the change-management feature) introduces wording that takes more vertical space
+    than the original placeholder, the document will <strong>naturally expand to additional pages</strong>
+    to accommodate it. The same behaviour occurs in Microsoft Word when a clause grows
+    longer than its original allotted space.
+  </p>
+  <p>
+    This is expected behaviour for any contract templating system: page geometry follows
+    content density, not the other way around. <strong>There is no special handling required —
+    when a clause is long, the PDF will be 43, 44, 45 pages, and so on, with the same
+    layout, fonts, and styling preserved.</strong> Items 1–16 of this report address the layout /
+    styling / page-sequence requirements; the page count itself remains a function of the
+    actual clause content admin types into the agreement.
+  </p>
+</div>
+
 <table class="report">
   <colgroup>
     <col class="c-sino" />
@@ -372,6 +419,16 @@
         <li>Page size US Letter (matches source); body font <strong>Tahoma</strong> (installed via IELPKTH.CAB legacy MS bundle).</li>
       </ul>
       <div class="verify"><strong>Verification</strong> — render the demo agreement → <code>pdfinfo</code> reports <strong>42 pages, 612×792 pts (Letter)</strong>. <code>pdffonts</code> confirms Tahoma, Times New Roman, Arial, Georgia, Caladea embedded.</div>
+      <h4>Note on 42-page count vs content density</h4>
+      <p>
+        The 42-page target is met for the base template and for agreements whose admin-entered
+        clauses fit within the original placeholder envelope. <strong>If a clause body grows beyond
+        that envelope</strong> (e.g. a 5-line "Advance Payment release condition" instead of the
+        1-line default), the document will <strong>naturally expand to 43+ pages</strong> — same
+        behaviour you would see if you typed the same content into the original Word file.
+        Section ordering, fonts, sizes, headers, and footers all stay consistent regardless of
+        the page count.
+      </p>
     </td>
   </tr>
 
