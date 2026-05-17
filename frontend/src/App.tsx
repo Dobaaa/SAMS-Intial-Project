@@ -30,8 +30,11 @@ export default function App() {
               <Route path="/agreements/new" element={<AgreementCreate />} />
               <Route path="/agreements/:id/edit" element={<AgreementCreate />} />
               <Route path="/agreements/:id/document" element={<AgreementDocument />} />
-              <Route path="/agreements/:id/compare" element={<AgreementCompare />} />
             </Route>
+            {/* Rev 01 item 17-extension: side-by-side comparison + change
+                tracking is available to ALL reviewer roles (GM, PD, OM,
+                Accounts, Admin), not just admin. */}
+            <Route path="/agreements/:id/compare" element={<AgreementCompare />} />
             <Route path="/workflow" element={<WorkflowReview />} />
             <Route path="/resolution" element={<CommentsResolution />} />
             <Route path="/archive" element={<Archive />} />

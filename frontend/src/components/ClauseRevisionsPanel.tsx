@@ -55,6 +55,11 @@ type Props = {
   /** Called whenever a revision is created / updated / deleted so the
    *  parent can trigger a PDF regenerate. */
   onChange?: () => void;
+  /** "edit" (default) shows the clause picker so admin can propose new
+   *  edits; "review" hides the picker and shows just the revisions list
+   *  with accept/reject buttons for reviewers. Used by the Compare view
+   *  to surface revision decisions without the admin-only edit surface. */
+  mode?: "edit" | "review";
 };
 
 const STATUS_BADGE: Record<Revision["status"], string> = {
@@ -63,10 +68,15 @@ const STATUS_BADGE: Record<Revision["status"], string> = {
   rejected: "bg-rose-100 text-rose-900",
 };
 
-export default function ClauseRevisionsPanel({ agreementId, onChange }: Props) {
+export default function ClauseRevisionsPanel({
+  agreementId,
+  onChange,
+  mode = "edit",
+}: Props) {
   const toast = useToast();
   const currentUser = useAuth((s) => s.user);
   const canReview = currentUser ? REVIEWER_ROLES.includes(currentUser.role) : false;
+  const showPicker = mode === "edit";
 
   const [clauses, setClauses] = useState<Clause[]>([]);
   const [revisions, setRevisions] = useState<Revision[]>([]);
@@ -358,7 +368,9 @@ export default function ClauseRevisionsPanel({ agreementId, onChange }: Props) {
         )}
       </div>
 
-      {/* Clause picker */}
+      {/* Clause picker — edit mode only. Review mode hides it because
+          reviewers don't propose new revisions, they decide on existing ones. */}
+      {showPicker && (
       <div className="rounded border border-sky-100 bg-sky-50/30 p-2">
         <h3 className="text-sm font-semibold text-sky-900">Revise a clause</h3>
         <p className="mb-2 text-xs text-sky-700">
@@ -428,6 +440,7 @@ export default function ClauseRevisionsPanel({ agreementId, onChange }: Props) {
           </ul>
         </div>
       </div>
+      )}
 
       {/* Accept / reject confirmation modal */}
       {decision && (

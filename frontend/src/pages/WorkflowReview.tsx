@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import AgreementPdf from "../components/AgreementPdf";
 import AIReviewPanel from "../components/AIReviewPanel";
@@ -203,9 +204,20 @@ export default function WorkflowReview() {
         {details ? (
           <>
             <div className="rounded border p-3">
-              <h2 className="text-lg font-semibold">Agreement Summary</h2>
-              <p>Reference: {details.agreement.reference_number}</p>
-              <p>Status: {details.agreement.current_status}</p>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-semibold">Agreement Summary</h2>
+                  <p>Reference: {details.agreement.reference_number}</p>
+                  <p>Status: {details.agreement.current_status}</p>
+                </div>
+                <Link
+                  to={`/agreements/${details.agreement.id}/compare`}
+                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1 text-sm text-sky-800 hover:bg-sky-100"
+                  title="Open side-by-side comparison: original master vs this agreement, with pending clause revisions you can accept or reject"
+                >
+                  Open Compare view →
+                </Link>
+              </div>
             </div>
 
             {/* Side-by-side review: full SCA PDF on the left, structured

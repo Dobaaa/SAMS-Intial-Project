@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import ClauseRevisionsPanel from "../components/ClauseRevisionsPanel";
 import { api } from "../lib/api";
 import { formatNumber } from "../lib/formatNumber";
 
@@ -244,10 +245,10 @@ export default function AgreementCompare() {
         </div>
       </div>
 
-      {/* Three-pane body: original | revised | diff sidebar */}
+      {/* Three-pane body: original | revised | diff/revisions sidebar */}
       <div className="grid flex-1 grid-cols-12 overflow-hidden">
         {/* Left: ORIGINAL / Base 42 pages */}
-        <div className="col-span-5 flex flex-col border-r border-sky-100 bg-sky-50/30">
+        <div className="col-span-4 flex flex-col border-r border-sky-100 bg-sky-50/30">
           <div className="border-b border-sky-100 bg-sky-100/70 px-3 py-1 text-xs font-semibold text-sky-900">
             ORIGINAL · Base Subcontract Agreement (template)
           </div>
@@ -265,7 +266,7 @@ export default function AgreementCompare() {
         </div>
 
         {/* Middle: REVISED / This agreement */}
-        <div className="col-span-5 flex flex-col border-r border-sky-100 bg-white">
+        <div className="col-span-4 flex flex-col border-r border-sky-100 bg-white">
           <div className="flex items-center justify-between border-b border-amber-100 bg-amber-100/60 px-3 py-1 text-xs font-semibold text-amber-900">
             <span>
               REVISED · {bundle.reference_number}
@@ -297,9 +298,36 @@ export default function AgreementCompare() {
           )}
         </div>
 
-        {/* Right: changes sidebar */}
-        <aside className="col-span-2 overflow-y-auto bg-sky-50/30 p-3">
-          <h2 className="mb-2 text-sm font-semibold text-sky-900">Changes</h2>
+        {/* Right: revisions + field-changes sidebar.
+            Rev 01 item 17-extension: pending clause revisions surface here
+            for ALL reviewer roles (GM, PD, OM, Accounts, Admin) so each can
+            accept/reject without leaving the side-by-side comparison. */}
+        <aside className="col-span-4 overflow-y-auto bg-sky-50/30 p-3">
+          <h2 className="mb-2 text-sm font-semibold text-sky-900">
+            Clause revisions
+          </h2>
+          <p className="mb-3 text-xs text-sky-700">
+            Per-agreement edits proposed by admin. Pending revisions are
+            highlighted inline in the revised PDF when "Show pending changes"
+            is ticked above. Reviewers (PD / Accounts / OM / GM) accept or
+            reject each one here.
+          </p>
+          <div className="mb-4">
+            <ClauseRevisionsPanel
+              agreementId={agreementId!}
+              mode="review"
+              onChange={() => {
+                // After a revision is accepted/rejected/withdrawn, swap the
+                // revised iframe to the latest render so it reflects the
+                // new state without manual refresh.
+                setShowPendingChanges((v) => v); // trigger swap effect
+              }}
+            />
+          </div>
+
+          <h2 className="mb-2 mt-4 text-sm font-semibold text-sky-900">
+            Field values
+          </h2>
           <p className="mb-3 text-xs text-sky-700">
             Field values admin has populated for this agreement. Empty cells
             in the master are shown as <em>—</em>.
