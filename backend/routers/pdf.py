@@ -39,6 +39,44 @@ async def generate_pdf(
     }
 
 
+@router.get("/pdf/master/preview")
+async def preview_master_pdf(
+    _: User = Depends(get_current_user),
+) -> Response:
+    """Return the blank-template PDF — the master docx rendered with all
+    {{FIELD_ID}} tokens substituted with empty strings.
+
+    This is the "Original / Base Version – 42 Pages" referenced in
+    Rev 01 item 17-extension's side-by-side comparison: identical for every
+    agreement, no admin-specific values filled in. The Compare view embeds
+    it on the left, with the agreement's actual PDF on the right.
+
+    Cached in-memory keyed by the master docx mtime — a new tokenized
+    master automatically invalidates the cache without a restart.
+
+    Declared BEFORE the /pdf/{agreement_id}/preview route so FastAPI
+    matches the literal "master" path here rather than trying to parse
+    it as a UUID and erroring with 422.
+    """
+    if not MASTER_DOCX.exists():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Master docx is missing",
+        )
+    mtime = MASTER_DOCX.stat().st_mtime
+    cached = _BLANK_MASTER_CACHE.get(mtime)
+    if cached is None:
+        with tempfile.TemporaryDirectory(prefix="sams_master_") as tmp:
+            cached = render_agreement_docx_to_pdf({}, tmp)
+        _BLANK_MASTER_CACHE.clear()  # drop older entries on regeneration
+        _BLANK_MASTER_CACHE[mtime] = cached
+    return Response(
+        content=cached,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="sca_master.pdf"'},
+    )
+
+
 @router.get("/pdf/{agreement_id}/preview")
 async def preview_pdf(
     agreement_id: uuid.UUID,
@@ -63,40 +101,6 @@ async def preview_pdf(
         content=path.read_bytes(),
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{path.name}"'},
-    )
-
-
-@router.get("/pdf/master/preview")
-async def preview_master_pdf(
-    _: User = Depends(get_current_user),
-) -> Response:
-    """Return the blank-template PDF — the master docx rendered with all
-    {{FIELD_ID}} tokens substituted with empty strings.
-
-    This is the "Original / Base Version – 42 Pages" referenced in
-    Rev 01 item 17-extension's side-by-side comparison: identical for every
-    agreement, no admin-specific values filled in. The Compare view embeds
-    it on the left, with the agreement's actual PDF on the right.
-
-    Cached in-memory keyed by the master docx mtime — a new tokenized
-    master automatically invalidates the cache without a restart.
-    """
-    if not MASTER_DOCX.exists():
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Master docx is missing",
-        )
-    mtime = MASTER_DOCX.stat().st_mtime
-    cached = _BLANK_MASTER_CACHE.get(mtime)
-    if cached is None:
-        with tempfile.TemporaryDirectory(prefix="sams_master_") as tmp:
-            cached = render_agreement_docx_to_pdf({}, tmp)
-        _BLANK_MASTER_CACHE.clear()  # drop older entries on regeneration
-        _BLANK_MASTER_CACHE[mtime] = cached
-    return Response(
-        content=cached,
-        media_type="application/pdf",
-        headers={"Content-Disposition": 'inline; filename="sca_master.pdf"'},
     )
 
 
