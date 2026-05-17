@@ -27,13 +27,29 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import UTC, datetime
+
 from database import get_db_session
 from middleware.rbac import get_current_user, require_role
 from models.agreement import Agreement, AgreementClauseRevision, ClauseRevisionStatus
 from models.user import RoleEnum, User
+from services.audit_service import record_audit
 from services.clause_revision_service import (
     find_master_clause_by_hash,
     list_master_clauses,
+)
+
+# Reviewer roles allowed to accept or reject a clause revision (Rev 01 item
+# 17-extension: "THIS TRACKING WILL APPLY TO GM-PD-OM-ACCOUNTS-ADMIN").
+# Admin is included so the same person who created a revision can withdraw
+# decisions during the drafting phase via DELETE, but cannot self-accept
+# (see _ensure_can_decide below).
+REVIEWER_ROLES = (
+    RoleEnum.admin,
+    RoleEnum.project_director,
+    RoleEnum.accounts,
+    RoleEnum.operation_manager,
+    RoleEnum.gm,
 )
 
 router = APIRouter(tags=["clause-revisions"])
@@ -51,6 +67,10 @@ class RevisionCreatePayload(BaseModel):
 class RevisionUpdatePayload(BaseModel):
     modified_text: str | None = None
     change_reason: str | None = None
+
+
+class RevisionDecisionPayload(BaseModel):
+    decision_note: str | None = None
 
 
 # ---------- helpers -----------------------------------------------------------
@@ -207,6 +227,116 @@ async def update_revision(
         rev.modified_text = payload.modified_text
     if payload.change_reason is not None:
         rev.change_reason = payload.change_reason
+    await db.commit()
+    await db.refresh(rev)
+    return _serialise(rev)
+
+
+async def _load_pending_revision(
+    db: AsyncSession,
+    agreement_id: uuid.UUID,
+    revision_id: uuid.UUID,
+) -> AgreementClauseRevision:
+    res = await db.execute(
+        select(AgreementClauseRevision).where(
+            AgreementClauseRevision.id == revision_id,
+            AgreementClauseRevision.agreement_id == agreement_id,
+        )
+    )
+    rev = res.scalar_one_or_none()
+    if rev is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Revision not found")
+    if rev.status != ClauseRevisionStatus.pending.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Revision is already {rev.status}",
+        )
+    return rev
+
+
+def _ensure_can_decide(rev: AgreementClauseRevision, user: User) -> None:
+    """Reviewer-of-clause-revisions check. Anyone in REVIEWER_ROLES can
+    decide, EXCEPT the user who created the revision — segregation of
+    duties so admin can't rubber-stamp their own edits."""
+    if user.role not in REVIEWER_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your role cannot accept or reject clause revisions",
+        )
+    if rev.created_by == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot accept or reject a revision you created (withdraw it via DELETE instead)",
+        )
+
+
+@router.post("/agreements/{agreement_id}/revisions/{revision_id}/accept")
+async def accept_revision(
+    agreement_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    payload: RevisionDecisionPayload | None = None,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Mark a pending revision as accepted. Applied to subsequent PDF
+    renders of this agreement only (the master template is untouched)."""
+    await _get_agreement_or_404(db, agreement_id)
+    rev = await _load_pending_revision(db, agreement_id, revision_id)
+    _ensure_can_decide(rev, current_user)
+
+    rev.status = ClauseRevisionStatus.accepted.value
+    rev.decided_by = current_user.id
+    rev.decided_at = datetime.now(UTC)
+    rev.decision_note = (payload.decision_note if payload else None)
+
+    await record_audit(
+        db,
+        actor_id=current_user.id,
+        action="clause_revision.accepted",
+        entity_type="agreement_clause_revision",
+        entity_id=rev.id,
+        new_value={
+            "clause_label": rev.clause_label,
+            "agreement_id": str(agreement_id),
+            "decision_note": rev.decision_note,
+        },
+    )
+    await db.commit()
+    await db.refresh(rev)
+    return _serialise(rev)
+
+
+@router.post("/agreements/{agreement_id}/revisions/{revision_id}/reject")
+async def reject_revision(
+    agreement_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    payload: RevisionDecisionPayload | None = None,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Mark a pending revision as rejected. The original master text stays
+    canonical; rejected revision is preserved for the audit trail."""
+    await _get_agreement_or_404(db, agreement_id)
+    rev = await _load_pending_revision(db, agreement_id, revision_id)
+    _ensure_can_decide(rev, current_user)
+
+    rev.status = ClauseRevisionStatus.rejected.value
+    rev.decided_by = current_user.id
+    rev.decided_at = datetime.now(UTC)
+    rev.decision_note = (payload.decision_note if payload else None)
+
+    await record_audit(
+        db,
+        actor_id=current_user.id,
+        action="clause_revision.rejected",
+        entity_type="agreement_clause_revision",
+        entity_id=rev.id,
+        new_value={
+            "clause_label": rev.clause_label,
+            "agreement_id": str(agreement_id),
+            "decision_note": rev.decision_note,
+        },
+    )
     await db.commit()
     await db.refresh(rev)
     return _serialise(rev)

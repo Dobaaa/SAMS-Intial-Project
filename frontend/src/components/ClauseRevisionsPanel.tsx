@@ -15,6 +15,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useToast } from "./Toast";
 import { api } from "../lib/api";
 import { formatDateTime } from "../lib/formatDate";
+import { useAuth, type Role } from "../stores/auth";
+
+const REVIEWER_ROLES: Role[] = [
+  "admin",
+  "project_director",
+  "accounts",
+  "operation_manager",
+  "gm",
+];
 
 type Clause = {
   clause_hash: string;
@@ -56,6 +65,9 @@ const STATUS_BADGE: Record<Revision["status"], string> = {
 
 export default function ClauseRevisionsPanel({ agreementId, onChange }: Props) {
   const toast = useToast();
+  const currentUser = useAuth((s) => s.user);
+  const canReview = currentUser ? REVIEWER_ROLES.includes(currentUser.role) : false;
+
   const [clauses, setClauses] = useState<Clause[]>([]);
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +81,15 @@ export default function ClauseRevisionsPanel({ agreementId, onChange }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [sectionFilter, setSectionFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+
+  // Accept/reject confirmation modal state. Decision note is optional but
+  // strongly encouraged so the audit log has something to read in the
+  // archive view.
+  const [decision, setDecision] = useState<
+    | { rev: Revision; action: "accept" | "reject" }
+    | null
+  >(null);
+  const [decisionNote, setDecisionNote] = useState("");
 
   // ---------------------------- data load ----------------------------
   const reload = async () => {
@@ -175,6 +196,49 @@ export default function ClauseRevisionsPanel({ agreementId, onChange }: Props) {
     }
   };
 
+  const openDecision = (rev: Revision, action: "accept" | "reject") => {
+    setDecision({ rev, action });
+    setDecisionNote("");
+  };
+
+  const cancelDecision = () => {
+    setDecision(null);
+    setDecisionNote("");
+  };
+
+  const submitDecision = async () => {
+    if (!decision) return;
+    setSubmitting(true);
+    try {
+      const endpoint = decision.action === "accept" ? "accept" : "reject";
+      await api.post(
+        `/agreements/${agreementId}/revisions/${decision.rev.id}/${endpoint}`,
+        { decision_note: decisionNote.trim() || null }
+      );
+      toast.success(
+        decision.action === "accept" ? "Revision accepted." : "Revision rejected."
+      );
+      cancelDecision();
+      await reload();
+      onChange?.();
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { detail?: string } } };
+      const detail = apiErr.response?.data?.detail ?? "Failed to record decision.";
+      toast.error(detail);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /** Reviewer can decide IF role is in REVIEWER_ROLES AND they didn't
+   *  author the revision themselves (segregation of duties — mirrored
+   *  in the backend's _ensure_can_decide). */
+  const canDecide = (rev: Revision): boolean => {
+    if (!currentUser || !canReview) return false;
+    if (rev.status !== "pending") return false;
+    return rev.created_by !== currentUser.id;
+  };
+
   // ------------------------------ render -----------------------------
   if (loading) {
     return <div className="text-sm text-sky-700">Loading clauses…</div>;
@@ -250,20 +314,42 @@ export default function ClauseRevisionsPanel({ agreementId, onChange }: Props) {
                 </div>
                 {rev.status === "pending" && (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="rounded border border-sky-300 px-2 py-0.5 text-[11px] text-sky-700 hover:bg-sky-50"
-                      onClick={() => openUpdate(rev)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border border-rose-300 px-2 py-0.5 text-[11px] text-rose-700 hover:bg-rose-50"
-                      onClick={() => void withdraw(rev)}
-                    >
-                      Withdraw
-                    </button>
+                    {currentUser?.id === rev.created_by && (
+                      <>
+                        <button
+                          type="button"
+                          className="rounded border border-sky-300 px-2 py-0.5 text-[11px] text-sky-700 hover:bg-sky-50"
+                          onClick={() => openUpdate(rev)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded border border-rose-300 px-2 py-0.5 text-[11px] text-rose-700 hover:bg-rose-50"
+                          onClick={() => void withdraw(rev)}
+                        >
+                          Withdraw
+                        </button>
+                      </>
+                    )}
+                    {canDecide(rev) && (
+                      <>
+                        <button
+                          type="button"
+                          className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
+                          onClick={() => openDecision(rev, "accept")}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-800 hover:bg-rose-100"
+                          onClick={() => openDecision(rev, "reject")}
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </li>
@@ -342,6 +428,73 @@ export default function ClauseRevisionsPanel({ agreementId, onChange }: Props) {
           </ul>
         </div>
       </div>
+
+      {/* Accept / reject confirmation modal */}
+      {decision && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl">
+            <h3 className="mb-2 text-base font-semibold text-sky-900">
+              {decision.action === "accept" ? "Accept revision" : "Reject revision"}
+            </h3>
+            <div className="mb-3 rounded bg-sky-50 p-2 text-xs text-sky-900">
+              <div className="text-[10px] uppercase text-sky-700">
+                {decision.rev.clause_label}
+              </div>
+              <div className="mt-1 grid grid-cols-1 gap-1">
+                <div className="rounded bg-white p-1">
+                  <span className="text-[10px] uppercase text-sky-600">original</span>
+                  <div className="whitespace-pre-wrap">{decision.rev.original_text}</div>
+                </div>
+                <div className="rounded bg-amber-50 p-1">
+                  <span className="text-[10px] uppercase text-amber-700">modified</span>
+                  <div className="whitespace-pre-wrap text-amber-900">
+                    {decision.rev.modified_text}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <label className="mb-1 block text-xs font-medium text-sky-900">
+              Decision note (optional — visible in the audit log)
+            </label>
+            <textarea
+              className="mb-3 w-full rounded border border-sky-200 p-2 text-sm"
+              rows={3}
+              placeholder={
+                decision.action === "accept"
+                  ? "e.g. Approved by PD on legal review."
+                  : "e.g. Out of scope for this round; revisit in v2."
+              }
+              value={decisionNote}
+              onChange={(e) => setDecisionNote(e.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-sky-300 px-3 py-1 text-sm text-sky-700 hover:bg-sky-50"
+                onClick={cancelDecision}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`rounded px-3 py-1 text-sm font-semibold text-white disabled:opacity-50 ${
+                  decision.action === "accept"
+                    ? "bg-emerald-600 hover:bg-emerald-700"
+                    : "bg-rose-600 hover:bg-rose-700"
+                }`}
+                disabled={submitting}
+                onClick={() => void submitDecision()}
+              >
+                {submitting
+                  ? "Saving…"
+                  : decision.action === "accept"
+                    ? "Confirm accept"
+                    : "Confirm reject"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit modal */}
       {editing && (
