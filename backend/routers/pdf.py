@@ -77,6 +77,63 @@ async def preview_master_pdf(
     )
 
 
+@router.get("/pdf/{agreement_id}/preview/with_changes")
+async def preview_pdf_with_changes(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
+) -> Response:
+    """Render the agreement with pending clause revisions surfaced as
+    Word track-changes (<w:del> + <w:ins>) inside the PDF.
+
+    Phase 4 v2.2 — powers the Compare view's "Show pending changes"
+    toggle. Live render, no caching: the output depends on every pending
+    revision's current modified_text. ~3s per request.
+    """
+    from models.agreement import Agreement, AgreementClauseRevision, ClauseRevisionStatus
+    from services.docx_pdf_service import render_agreement_docx_to_pdf
+    from services.pdf_service import _collect_field_values, _load_agreement_bundle
+
+    agreement = await _load_agreement_bundle(db, str(agreement_id))
+    if agreement is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+
+    value_map = _collect_field_values(agreement.field_values)
+
+    rev_res = await db.execute(
+        select(AgreementClauseRevision).where(
+            AgreementClauseRevision.agreement_id == agreement_id,
+        )
+    )
+    revisions = rev_res.scalars().all()
+    accepted = [
+        (r.clause_hash, r.modified_text)
+        for r in revisions
+        if r.status == ClauseRevisionStatus.accepted.value
+    ]
+    pending = [
+        (r.clause_hash, r.original_text, r.modified_text)
+        for r in revisions
+        if r.status == ClauseRevisionStatus.pending.value
+    ]
+
+    with tempfile.TemporaryDirectory(prefix=f"sams_changes_{agreement_id}_") as tmp:
+        pdf_bytes = render_agreement_docx_to_pdf(
+            value_map,
+            tmp,
+            accepted_revisions=accepted,
+            pending_revisions=pending,
+        )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="sca_{agreement.reference_number}_with_changes.pdf"'
+        },
+    )
+
+
 @router.get("/pdf/{agreement_id}/preview")
 async def preview_pdf(
     agreement_id: uuid.UUID,

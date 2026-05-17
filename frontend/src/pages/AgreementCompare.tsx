@@ -61,6 +61,13 @@ export default function AgreementCompare() {
   const [revisedUrl, setRevisedUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Phase 4 v2.2: when ON, the revised iframe loads
+   *  /preview/with_changes — pending clause revisions render as Word
+   *  track-changes (strikethrough + underline) inline. Defaults OFF so the
+   *  first paint shows accepted-only (cached, instant).
+   */
+  const [showPendingChanges, setShowPendingChanges] = useState(false);
+  const [reloadingRevised, setReloadingRevised] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,12 +107,14 @@ export default function AgreementCompare() {
         setFields(allFields);
 
         // Now the two PDFs. Master is cached server-side keyed by docx mtime.
+        // The revised pane defaults to the cached /preview (accepted only);
+        // the "Show pending changes" toggle below swaps it to the live
+        // /preview/with_changes render.
         const [masterBlob, revisedBlob] = await Promise.all([
           api.get("/pdf/master/preview", { responseType: "blob" }),
           api
             .get(`/pdf/${agreementId}/preview`, { responseType: "blob" })
             .catch(async () => {
-              // If no PDF has been generated yet, force one then retry.
               await api.post(`/pdf/${agreementId}/generate`);
               return api.get(`/pdf/${agreementId}/preview`, {
                 responseType: "blob",
@@ -131,6 +140,44 @@ export default function AgreementCompare() {
       for (const b of blobs) URL.revokeObjectURL(b);
     };
   }, [agreementId]);
+
+  /** Swap the revised iframe between the cached /preview (accepted-only)
+   *  and the live /preview/with_changes (track-changes inline). */
+  useEffect(() => {
+    if (!agreementId) return;
+    let cancelled = false;
+    let createdUrl: string | null = null;
+    async function swap() {
+      setReloadingRevised(true);
+      try {
+        const path = showPendingChanges
+          ? `/pdf/${agreementId}/preview/with_changes`
+          : `/pdf/${agreementId}/preview`;
+        const resp = await api.get(path, { responseType: "blob" });
+        if (cancelled) return;
+        const url = URL.createObjectURL(resp.data as Blob);
+        createdUrl = url;
+        setRevisedUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!cancelled) setReloadingRevised(false);
+      }
+    }
+    // Skip the very first paint — the parallel-load block above already
+    // populated the revised iframe with /preview's cached output.
+    if (revisedUrl) {
+      void swap();
+    }
+    return () => {
+      cancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPendingChanges]);
 
   /** All filled fields, grouped by F / C / A, in catalog order. */
   const diffRows = useMemo(() => {
@@ -219,8 +266,23 @@ export default function AgreementCompare() {
 
         {/* Middle: REVISED / This agreement */}
         <div className="col-span-5 flex flex-col border-r border-sky-100 bg-white">
-          <div className="border-b border-amber-100 bg-amber-100/60 px-3 py-1 text-xs font-semibold text-amber-900">
-            REVISED · {bundle.reference_number}
+          <div className="flex items-center justify-between border-b border-amber-100 bg-amber-100/60 px-3 py-1 text-xs font-semibold text-amber-900">
+            <span>
+              REVISED · {bundle.reference_number}
+              {reloadingRevised && (
+                <span className="ml-2 font-normal text-amber-700">
+                  rendering…
+                </span>
+              )}
+            </span>
+            <label className="flex items-center gap-1 text-[11px] font-normal text-amber-900">
+              <input
+                type="checkbox"
+                checked={showPendingChanges}
+                onChange={(e) => setShowPendingChanges(e.target.checked)}
+              />
+              Show pending changes
+            </label>
           </div>
           {revisedUrl ? (
             <iframe

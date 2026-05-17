@@ -219,5 +219,106 @@ def _rewrite_paragraph(para: Paragraph, new_text: str) -> None:
         r.text = ""
 
 
+# OOXML track-changes namespace constants. <w:del>/<w:ins> are the
+# standard Word revision elements; LibreOffice renders them with
+# strikethrough (delete) and single-underline (insert) inline.
+_WORDML_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
+
+
+def apply_pending_revisions_to_doc(
+    doc,
+    revisions: Iterable[tuple[str, str, str]],
+    *,
+    author: str = "SAMS Reviewer",
+    when: datetime | None = None,
+) -> int:
+    """Wrap each matching paragraph in OOXML track-changes markup.
+
+    ``revisions`` is an iterable of ``(clause_hash, original_text, modified_text)``
+    tuples — typically one per pending ``AgreementClauseRevision``. For
+    each match, the paragraph's existing content (which after upstream
+    accepted-revision processing already equals ``original_text``) is
+    rewrapped as a ``<w:del>`` block, and the modified text is appended
+    as a ``<w:ins>`` block. LibreOffice then renders the strikethrough +
+    underline track-changes pair when the PDF is generated.
+
+    Returns the count of paragraphs that were marked.
+    """
+    from copy import deepcopy
+    from lxml import etree
+
+    rev_map = {h: (orig, mod) for h, orig, mod in revisions}
+    if not rev_map:
+        return 0
+
+    when_iso = (when or _now()).strftime("%Y-%m-%dT%H:%M:%SZ")
+    NS = "{" + _WORDML_NS + "}"
+    marked = 0
+    next_id = 1000  # avoid colliding with any pre-existing w:id values in the master
+
+    for para in _iter_doc_paragraphs_for_apply(doc):
+        h = _hash_clause(para.text or "")
+        if h not in rev_map:
+            continue
+        _, modified_text = rev_map[h]
+        original_text = para.text or ""
+
+        p_el = para._element
+        # Preserve the paragraph properties (alignment, list numbering,
+        # indent) AND the formatting of the first run so the track-changes
+        # spans inherit the same font/size/color as the surrounding clause.
+        pPr = p_el.find(f"{NS}pPr")
+        first_r = p_el.find(f"{NS}r")
+        rPr_template = first_r.find(f"{NS}rPr") if first_r is not None else None
+
+        # Wipe the paragraph's current children except pPr; we'll rebuild
+        # below with the track-changes structure.
+        for child in list(p_el):
+            if child is pPr:
+                continue
+            p_el.remove(child)
+
+        # <w:del id=".." author=".." date=".."> -> <w:r>[<w:rPr/>]<w:delText/></w:r></w:del>
+        del_el = etree.SubElement(
+            p_el,
+            f"{NS}del",
+            {
+                f"{NS}id": str(next_id),
+                f"{NS}author": author,
+                f"{NS}date": when_iso,
+            },
+        )
+        r_del = etree.SubElement(del_el, f"{NS}r")
+        if rPr_template is not None:
+            r_del.append(deepcopy(rPr_template))
+        del_text = etree.SubElement(r_del, f"{NS}delText")
+        del_text.text = original_text
+        del_text.set(_XML_SPACE, "preserve")
+        next_id += 1
+
+        # <w:ins ...> -> <w:r>[<w:rPr/>]<w:t/></w:r></w:ins>
+        ins_el = etree.SubElement(
+            p_el,
+            f"{NS}ins",
+            {
+                f"{NS}id": str(next_id),
+                f"{NS}author": author,
+                f"{NS}date": when_iso,
+            },
+        )
+        r_ins = etree.SubElement(ins_el, f"{NS}r")
+        if rPr_template is not None:
+            r_ins.append(deepcopy(rPr_template))
+        ins_text = etree.SubElement(r_ins, f"{NS}t")
+        ins_text.text = modified_text
+        ins_text.set(_XML_SPACE, "preserve")
+        next_id += 1
+
+        marked += 1
+
+    return marked
+
+
 def _now() -> datetime:
     return datetime.now(UTC)

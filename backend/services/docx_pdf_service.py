@@ -129,39 +129,66 @@ def _iter_paragraphs(doc) -> Iterable[Paragraph]:
                     yield p
 
 
+def _replace_one_value(match: re.Match, values: dict[str, str]) -> str:
+    field_id = match.group(1)
+    raw = values.get(field_id, "")
+    if not raw:
+        return ""
+    if field_id in DATE_FIELDS:
+        return _format_longdate(raw)
+    if field_id in MONEY_FIELDS:
+        return _format_money(raw)
+    return str(raw)
+
+
+# OOXML text-bearing elements: <w:t> (normal run text) and <w:delText>
+# (run text inside a <w:del> track-change). We substitute tokens in both
+# so revisions and the surrounding prose stay consistent.
+_W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_TEXT_TAGS = (f"{_W_NS}t", f"{_W_NS}delText")
+
+
 def _substitute_in_paragraph(para: Paragraph, values: dict[str, str]) -> bool:
     """Replace every ``{{FIELD_ID}}`` token in `para` with its value.
 
-    Collapses run text into the first run so the substitution works even
-    when Word split the token across multiple runs (which happens often
-    if anyone edited the token after typing it). Loses per-run inline
-    formatting within the modified spans — acceptable because tokens are
-    plain text and the surrounding paragraph styling stays on run 0.
+    First pass collapses runs that share a split token (Word splits a typed
+    token across multiple ``<w:r>`` runs if anyone edited the placeholder
+    after typing it). Then a second pass walks every ``<w:t>`` /
+    ``<w:delText>`` text node anywhere in the paragraph tree — including
+    text inside ``<w:del>`` and ``<w:ins>`` track-change wrappers that
+    Phase 4 v2.2 inserts — and substitutes tokens individually so the
+    track-change spans render with concrete values.
     """
-    if not para.runs:
-        return False
-    full = "".join(r.text or "" for r in para.runs)
-    if "{{" not in full:
-        return False
+    p_el = para._element
+    changed = False
 
-    def replace_one(match: re.Match) -> str:
-        field_id = match.group(1)
-        raw = values.get(field_id, "")
-        if not raw:
-            return ""
-        if field_id in DATE_FIELDS:
-            return _format_longdate(raw)
-        if field_id in MONEY_FIELDS:
-            return _format_money(raw)
-        return str(raw)
+    # Pass 1: collapse split tokens at the paragraph-level run sequence
+    # (handles the legacy "Word split {{F02}} into three runs" case for
+    # paragraphs that have NOT been wrapped in track-changes).
+    if para.runs:
+        full = "".join(r.text or "" for r in para.runs)
+        if "{{" in full:
+            new_text = TOKEN_RE.sub(lambda m: _replace_one_value(m, values), full)
+            if new_text != full:
+                para.runs[0].text = new_text
+                for run in para.runs[1:]:
+                    run.text = ""
+                changed = True
 
-    new_text = TOKEN_RE.sub(replace_one, full)
-    if new_text == full:
-        return False
-    para.runs[0].text = new_text
-    for run in para.runs[1:]:
-        run.text = ""
-    return True
+    # Pass 2: any token still present inside a track-change wrapper, or
+    # inside a nested table cell run we missed, gets substituted on the
+    # raw text node so tokens inside <w:del>/<w:ins> resolve too.
+    for tag in _TEXT_TAGS:
+        for t_el in p_el.iter(tag):
+            txt = t_el.text or ""
+            if "{{" not in txt:
+                continue
+            new_txt = TOKEN_RE.sub(lambda m: _replace_one_value(m, values), txt)
+            if new_txt != txt:
+                t_el.text = new_txt
+                changed = True
+
+    return changed
 
 
 def render_agreement_docx_to_pdf(
@@ -172,6 +199,7 @@ def render_agreement_docx_to_pdf(
     libreoffice_bin: str = "libreoffice",
     timeout_seconds: int = 90,
     accepted_revisions: list[tuple[str, str]] | None = None,
+    pending_revisions: list[tuple[str, str, str]] | None = None,
 ) -> bytes:
     """Render the SCA PDF by substituting tokens in the master docx and
     converting via LibreOffice headless.
@@ -192,8 +220,15 @@ def render_agreement_docx_to_pdf(
         replace the matching paragraphs in the master before token
         substitution. The modified_text is then itself put through token
         substitution, so it can reference fields the master uses
-        (``{{F02}}``, etc.). Pending revisions are NOT applied here; in
-        v2.2 they render as Word track-changes (<w:ins>/<w:del>).
+        (``{{F02}}``, etc.).
+    pending_revisions:
+        Phase 4 v2.2 — list of ``(clause_hash, original_text, modified_text)``
+        tuples. Each target paragraph is wrapped with OOXML
+        ``<w:del>``/``<w:ins>`` track-change markers; LibreOffice renders
+        them inline as strikethrough + underline. Tokens inside the
+        original/modified text are substituted by the iter-based pass in
+        ``_substitute_in_paragraph`` so the track-change spans show
+        concrete values.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -205,15 +240,28 @@ def render_agreement_docx_to_pdf(
 
     # 1) Apply accepted clause revisions BEFORE token substitution so the
     # modified text can contain {{FIELD_ID}} tokens and they'll resolve.
-    if accepted_revisions:
+    if accepted_revisions or pending_revisions:
         # Local import to keep the docx_pdf_service module free of the
         # revisions-service dependency unless caller actually passes
         # revisions in.
-        from services.clause_revision_service import apply_accepted_revisions_to_doc
+        from services.clause_revision_service import (
+            apply_accepted_revisions_to_doc,
+            apply_pending_revisions_to_doc,
+        )
 
-        apply_accepted_revisions_to_doc(doc, accepted_revisions)
+        if accepted_revisions:
+            apply_accepted_revisions_to_doc(doc, accepted_revisions)
 
-    # 2) Token substitution.
+        # 2) Pending revisions get wrapped in <w:del>/<w:ins>. Done AFTER
+        # accepted so an accepted revision on the same paragraph wins
+        # (which the data layer makes impossible anyway — at most one
+        # pending per clause — but we're defensive).
+        if pending_revisions:
+            apply_pending_revisions_to_doc(doc, pending_revisions)
+
+    # 3) Token substitution — iter-based so it descends into the
+    # <w:del>/<w:ins> blocks just inserted and resolves tokens in the
+    # revision text spans too.
     for para in _iter_paragraphs(doc):
         _substitute_in_paragraph(para, values)
 

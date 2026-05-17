@@ -259,6 +259,56 @@ async def test_reviewer_rejects_with_note(client, authed_client, project_directo
     assert body["decision_note"] == "Out of scope for this round"
 
 
+async def test_with_changes_pdf_embeds_pending_revisions(
+    authed_client, admin_user, db_session
+):
+    """Phase 4 v2.2: the /preview/with_changes endpoint should render the
+    pending revision's modified text inside the PDF AND keep the original
+    text (as a <w:del> strikethrough that LibreOffice rasterises). Both
+    strings have to appear in the extracted text so the side-by-side
+    Compare view actually shows what changed."""
+    import subprocess
+    import tempfile
+
+    await _seed_active_templates(authed_client)
+    agreement = await _create_agreement(authed_client)
+
+    # Populate F-fields so the rendered PDF has agreement-specific values.
+    await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={"values": {"F02": "Test Subco Ltd", "F08": "1,234,567.00"}},
+    )
+
+    # Create a pending revision against a known clause.
+    clauses = (await authed_client.get(f"/api/agreements/{agreement['id']}/clauses")).json()["clauses"]
+    target = clauses[15]
+    await authed_client.post(
+        f"/api/agreements/{agreement['id']}/revisions",
+        json={
+            "clause_hash": target["clause_hash"],
+            "modified_text": "[TRACK CHANGES MARKER] " + target["text"],
+        },
+    )
+
+    resp = await authed_client.get(
+        f"/api/pdf/{agreement['id']}/preview/with_changes"
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"] == "application/pdf"
+
+    # Persist + run pdftotext to peek inside.
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        f.write(resp.content)
+        pdf_path = f.name
+    text = subprocess.check_output(["pdftotext", "-layout", pdf_path, "-"]).decode()
+    assert "[TRACK CHANGES MARKER]" in text, "pending revision text missing from with_changes PDF"
+    # Both branches present: deletion (original) AND insertion (modified)
+    # render in the PDF when track-changes is on. pdftotext can't see the
+    # strikethrough style but DOES extract the deleted text.
+    head = target["text"][:25]
+    assert head in text, "original (deletion) text missing from with_changes PDF"
+
+
 async def test_cannot_decide_an_already_decided_revision(
     client, authed_client, project_director_user
 ):
