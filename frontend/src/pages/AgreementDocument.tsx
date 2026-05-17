@@ -20,6 +20,7 @@ import ClauseRevisionsPanel from "../components/ClauseRevisionsPanel";
 import FieldInput from "../components/FieldInput";
 import { useToast } from "../components/Toast";
 import { api } from "../lib/api";
+import { useAuth } from "../stores/auth";
 
 type MasterField = {
   id: string;
@@ -77,6 +78,11 @@ const STATUSES_LOCKED_FOR_EDIT = new Set([
 export default function AgreementDocument() {
   const { id: agreementId } = useParams<{ id: string }>();
   const toast = useToast();
+  const currentUser = useAuth((s) => s.user);
+  /** Only admin can edit field values from this view. PD/Accounts/OM/GM
+   *  see the same PDF + field list + revisions panel read-only — they do
+   *  their workflow on /workflow and /compare. */
+  const isAdmin = currentUser?.role === "admin";
 
   const [bundle, setBundle] = useState<AgreementBundle | null>(null);
   const [fields, setFields] = useState<MasterField[]>([]);
@@ -89,6 +95,7 @@ export default function AgreementDocument() {
   const [error, setError] = useState<string | null>(null);
 
   const editingLocked =
+    !isAdmin ||
     !bundle ||
     bundle.is_executed ||
     STATUSES_LOCKED_FOR_EDIT.has(bundle.current_status);
@@ -254,7 +261,7 @@ export default function AgreementDocument() {
             Status: <strong>{bundle.current_status}</strong>
             {editingLocked && (
               <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-amber-800">
-                read-only (status locks editing)
+                {isAdmin ? "read-only (status locks editing)" : "read-only (reviewer view)"}
               </span>
             )}
           </p>
@@ -409,6 +416,7 @@ export default function AgreementDocument() {
               </p>
               <ClauseRevisionsPanel
                 agreementId={agreementId!}
+                mode={isAdmin ? "edit" : "review"}
                 onChange={async () => {
                   setRegenerating(true);
                   try {

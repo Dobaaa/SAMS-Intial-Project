@@ -29,11 +29,14 @@ export default function App() {
               <Route path="/masters" element={<MasterTemplates />} />
               <Route path="/agreements/new" element={<AgreementCreate />} />
               <Route path="/agreements/:id/edit" element={<AgreementCreate />} />
-              <Route path="/agreements/:id/document" element={<AgreementDocument />} />
             </Route>
             {/* Rev 01 item 17-extension: side-by-side comparison + change
                 tracking is available to ALL reviewer roles (GM, PD, OM,
-                Accounts, Admin), not just admin. */}
+                Accounts, Admin), not just admin. The Document view is
+                also open to all five; non-admin sees it read-only — the
+                field editor and Save/Regenerate buttons are hidden, and
+                the clause-revisions panel switches to review mode. */}
+            <Route path="/agreements/:id/document" element={<AgreementDocument />} />
             <Route path="/agreements/:id/compare" element={<AgreementCompare />} />
             <Route path="/workflow" element={<WorkflowReview />} />
             <Route path="/resolution" element={<CommentsResolution />} />
