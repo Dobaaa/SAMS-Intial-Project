@@ -65,7 +65,113 @@ APPENDIX_ROW_TOKEN: dict[str, str] = {
 }
 
 
+# Context-anchored token rewrites for the legacy "(……Insert…..)" prose
+# markers that appear inside the Conditions text but were not normalised
+# to {{C##}} tokens. Each tuple is
+# (substring_in_paragraph_text, occurrence_index, token_to_insert).
+# occurrence_index selects WHICH of the parenthetical Insert markers in
+# that paragraph gets replaced (0-based) so a paragraph with two
+# placeholders can have each one mapped to a different field.
+PARENTHETICAL_INSERT = "(……Insert…..)"
+
+CONTEXT_INSERT_TOKEN: list[tuple[str, int, str]] = [
+    # 3.4.1 Advance Payment release condition
+    ("Such advance payment shall be released by the Main Contractor", 0, "{{C04}}"),
+    # 3.4.6 Interim Payment days
+    ("amounts properly due under this Subcontract within", 0, "{{C05}}"),
+    # 3.4.7 1st Half Retention release days
+    ("First instalment (5%) to be released within", 0, "{{C06}}"),
+    # 3.4.7 2nd Half Retention release days
+    ("The Second instalment (5%) to be released", 0, "{{C07}}"),
+    # 4.3 Time for Completion — Project (months) AND completion date
+    ("complete the entire Subcontract Works", 0, "{{C08}}"),
+    ("complete the entire Subcontract Works", 1, "{{A17}}"),
+    # 5 Defects Liability Period (months)
+    ("Months the Defects Liability Period (DLP)", 0, "{{C10}}"),
+    # 6.2 Rate of Liquidated Damages (AED/day)
+    ("UAE per calendar day in part or full day", 0, "{{C11}}"),
+    # 10.1 Insurance submission deadline (days from commencement)
+    ("from the Commencement Date submit to the Main Contractor a copy of the required", 0, "{{C12}}"),
+    # 13.3 Dispute Resolution Jurisdiction
+    ("United Arab Emirates, which shall have full", 0, "{{C13}}"),
+]
+
+
 def _iter_paragraphs(doc: DocxDocument):
+    for p in doc.paragraphs:
+        yield p
+    for tbl in doc.tables:
+        for row in tbl.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    yield p
+
+
+def _apply_contextual_inserts(
+    doc: DocxDocument,
+    rules: list[tuple[str, int, str]],
+) -> int:
+    """Replace specific occurrences of "(……Insert…..)" by paragraph context.
+
+    For each (context_substring, occurrence_index, token) tuple, find a
+    paragraph that contains both the context substring AND the literal
+    "(……Insert…..)" marker, then replace the Nth occurrence (0-based)
+    of that marker with the token. Returns the number of replacements
+    actually applied. Missing matches are reported so we can iterate."""
+    # Group rules by context_substring so we can do per-paragraph
+    # multi-replacement in one pass.
+    by_ctx: dict[str, list[tuple[int, str]]] = {}
+    for ctx, idx, token in rules:
+        by_ctx.setdefault(ctx, []).append((idx, token))
+
+    applied = 0
+    for ctx, ordered_rules in by_ctx.items():
+        target = None
+        for p in _all_paragraphs(doc):
+            text = p.text or ""
+            if ctx in text and PARENTHETICAL_INSERT in text:
+                target = p
+                break
+        if target is None:
+            print(f"    ! context not found: {ctx[:60]!r}")
+            continue
+        full = "".join(r.text or "" for r in target.runs)
+        # Sort by occurrence index so replacements happen left-to-right.
+        ordered_rules.sort()
+        new_text = full
+        cursor = 0
+        for idx, token in ordered_rules:
+            # Find the (idx+1)-th occurrence starting from `cursor`
+            pos = -1
+            occurrences_seen = 0
+            search_from = cursor
+            while True:
+                hit = new_text.find(PARENTHETICAL_INSERT, search_from)
+                if hit == -1:
+                    break
+                if occurrences_seen == 0 and pos == -1:
+                    pos = hit
+                occurrences_seen += 1
+                if occurrences_seen > idx:
+                    pos = hit
+                    break
+                search_from = hit + len(PARENTHETICAL_INSERT)
+            if pos == -1:
+                print(f"    ! marker[{idx}] missing in: {ctx[:60]!r}")
+                continue
+            new_text = new_text[:pos] + token + new_text[pos + len(PARENTHETICAL_INSERT):]
+            cursor = pos + len(token)
+            applied += 1
+        # Collapse into the first run
+        if target.runs:
+            target.runs[0].text = new_text
+            for r in target.runs[1:]:
+                r.text = ""
+    return applied
+
+
+def _all_paragraphs(doc):
+    """Body + table-cell paragraphs in document order."""
     for p in doc.paragraphs:
         yield p
     for tbl in doc.tables:
@@ -209,6 +315,27 @@ def main(input_path: Path) -> None:
     # Split it back into four paragraphs with the same paragraph
     # formatting so the cover renders correctly.
     _split_cover_paragraph(doc)
+
+    # 3. Replace "(……Insert…..)" markers using surrounding-text anchors.
+    # Each paragraph keeps its formatting; we just swap the literal
+    # marker for the right {{C##}} token. Indices are needed because
+    # one paragraph (Time for Completion) carries two placeholders.
+    insert_replaced = _apply_contextual_inserts(doc, CONTEXT_INSERT_TOKEN)
+    print(f"  ✓ contextual Insert markers tokenized: {insert_replaced}")
+
+    # 4. Any remaining bare "(……Insert…..)" cells (e.g. the Milestones
+    # table's free-entry cells) are blanked out so the rendered PDF
+    # doesn't show the literal marker. Admin enters per-agreement
+    # milestone values via the field editor.
+    cleared = 0
+    for p in _all_paragraphs(doc):
+        if p.text.strip() == PARENTHETICAL_INSERT and p.runs:
+            p.runs[0].text = ""
+            for r in p.runs[1:]:
+                r.text = ""
+            cleared += 1
+    if cleared:
+        print(f"  ✓ bare Insert cells blanked: {cleared}")
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(OUTPUT_PATH))

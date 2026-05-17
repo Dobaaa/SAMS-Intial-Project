@@ -296,140 +296,199 @@ export default function AgreementDocument() {
           )}
         </div>
 
-        {/* Right: grouped field editor */}
-        <div className="overflow-y-auto bg-white p-4">
-          <div className="space-y-6">
+        {/* Right pane: editor for admin, read-only summary for reviewers. */}
+        {isAdmin ? (
+          <div className="overflow-y-auto bg-white p-4">
+            <div className="space-y-6">
+              {groupedFields.map(({ group, fields: fs }) => (
+                <section
+                  key={group.prefix}
+                  className="rounded-xl border border-sky-100 bg-white p-3 shadow-sm"
+                >
+                  <h2 className="text-sm font-semibold text-sky-900">{group.title}</h2>
+                  <p className="mb-3 text-xs text-sky-700">{group.blurb}</p>
+                  <div className="space-y-2">
+                    {fs.length === 0 && (
+                      <p className="text-xs text-gray-500">
+                        No fields configured for this section.
+                      </p>
+                    )}
+                    {fs.map((field) => {
+                      const draft = drafts[field.field_id] ?? "";
+                      const committed = values[field.field_id] ?? "";
+                      const dirty = draft !== committed;
+                      return (
+                        <div key={field.id} className="rounded border border-sky-100 p-2">
+                          <label className="mb-1 block text-xs font-medium text-sky-800">
+                            {field.field_id} — {field.field_label}
+                            {field.clause_number && (
+                              <span className="ml-1 text-gray-500">
+                                · clause {field.clause_number}
+                              </span>
+                            )}
+                            {field.is_required && (
+                              <span className="ml-1 text-red-600">*</span>
+                            )}
+                          </label>
+                          <FieldInput
+                            field={field}
+                            value={draft}
+                            onChange={(_, value) => setDraft(field.field_id, value)}
+                          />
+                          {dirty && !editingLocked && (
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                type="button"
+                                className="rounded bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:opacity-50"
+                                disabled={saving !== null}
+                                onClick={() => void saveField(field)}
+                              >
+                                {saving === field.field_id ? "Saving…" : "Save & regenerate"}
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded border border-sky-300 px-3 py-1 text-xs text-sky-700 hover:bg-sky-50"
+                                onClick={() => resetDraft(field.field_id)}
+                              >
+                                Discard
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+
+              {/* Appendix editor reuses the Builder so the override / Reset-to-Auto
+                  semantics match the wizard. AppendixBuilder regenerates itself
+                  via its refreshKey when our drafts state changes. */}
+              <section className="rounded-xl border border-sky-100 bg-white p-3 shadow-sm">
+                <h2 className="text-sm font-semibold text-sky-900">
+                  Appendix rows (A)
+                </h2>
+                <p className="mb-3 text-xs text-sky-700">
+                  Auto-derived from F/C values above. Override any row to lock a
+                  custom value; the cascade will leave it alone on subsequent
+                  edits.
+                </p>
+                <AppendixBuilder
+                  agreementId={agreementId!}
+                  refreshKey={JSON.stringify(values)}
+                />
+                <p className="mt-3 text-xs text-gray-500">
+                  Appendix edits don't auto-trigger a PDF regeneration — use the
+                  "Save & regenerate" button on any field above (or
+                  <span className="font-mono"> Refresh preview</span> below) to
+                  re-render.
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 rounded border border-sky-300 px-3 py-1 text-xs text-sky-700 hover:bg-sky-50 disabled:opacity-50"
+                  disabled={regenerating}
+                  onClick={async () => {
+                    setRegenerating(true);
+                    try {
+                      await api.post(`/pdf/${agreementId}/generate`);
+                      await reloadPdf();
+                      toast.success("PDF regenerated.");
+                    } catch {
+                      toast.error("Failed to regenerate PDF.");
+                    } finally {
+                      setRegenerating(false);
+                    }
+                  }}
+                >
+                  {regenerating ? "Regenerating…" : "Refresh preview"}
+                </button>
+              </section>
+
+              {/* Clause revisions — admin's edit surface for proposing/tracking. */}
+              <section className="rounded-xl border border-sky-100 bg-white p-3 shadow-sm">
+                <h2 className="text-sm font-semibold text-sky-900">
+                  Clause revisions
+                </h2>
+                <p className="mb-3 text-xs text-sky-700">
+                  Per-agreement edits to the master template prose. Each
+                  revision starts as <em>pending</em> and applies to the
+                  rendered PDF once a reviewer accepts it. Withdraw any
+                  pending revision to drop it before review.
+                </p>
+                <ClauseRevisionsPanel
+                  agreementId={agreementId!}
+                  mode="edit"
+                  onChange={async () => {
+                    setRegenerating(true);
+                    try {
+                      await api.post(`/pdf/${agreementId}/generate`);
+                      await reloadPdf();
+                    } finally {
+                      setRegenerating(false);
+                    }
+                  }}
+                />
+              </section>
+            </div>
+          </div>
+        ) : (
+          /* Non-admin: pure read-only field-values summary. No inputs, no
+             editor surfaces, no buttons. Reviewers do their accept/reject
+             work on /agreements/:id/compare, which is linked below. */
+          <div className="overflow-y-auto bg-white p-4">
+            <div className="mb-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <strong>Reviewer view (read-only).</strong> Editing field values
+              and proposing clause revisions are admin-only. To accept or
+              reject pending clause revisions, switch to the side-by-side
+              comparison view.
+              <div className="mt-2">
+                <Link
+                  to={`/agreements/${agreementId}/compare`}
+                  className="inline-block rounded border border-amber-300 bg-white px-3 py-1 text-amber-900 hover:bg-amber-100"
+                >
+                  Open Compare view →
+                </Link>
+              </div>
+            </div>
             {groupedFields.map(({ group, fields: fs }) => (
               <section
                 key={group.prefix}
-                className="rounded-xl border border-sky-100 bg-white p-3 shadow-sm"
+                className="mb-4 rounded-xl border border-sky-100 bg-white p-3 shadow-sm"
               >
                 <h2 className="text-sm font-semibold text-sky-900">{group.title}</h2>
                 <p className="mb-3 text-xs text-sky-700">{group.blurb}</p>
-                <div className="space-y-2">
-                  {fs.length === 0 && (
-                    <p className="text-xs text-gray-500">
-                      No fields configured for this section.
-                    </p>
-                  )}
+                <dl className="space-y-1">
                   {fs.map((field) => {
-                    const draft = drafts[field.field_id] ?? "";
-                    const committed = values[field.field_id] ?? "";
-                    const dirty = draft !== committed;
+                    const v = values[field.field_id] ?? "";
                     return (
-                      <div key={field.id} className="rounded border border-sky-100 p-2">
-                        <label className="mb-1 block text-xs font-medium text-sky-800">
-                          {field.field_id} — {field.field_label}
-                          {field.clause_number && (
-                            <span className="ml-1 text-gray-500">
-                              · clause {field.clause_number}
-                            </span>
+                      <div
+                        key={field.id}
+                        className="grid grid-cols-3 gap-2 rounded border border-sky-50 px-2 py-1 text-xs"
+                      >
+                        <dt className="col-span-1 font-medium text-sky-800">
+                          {field.field_id}
+                          <span className="block text-[10px] font-normal text-gray-500">
+                            {field.field_label}
+                          </span>
+                        </dt>
+                        <dd
+                          className="col-span-2 whitespace-pre-wrap break-words"
+                          style={{ wordBreak: "break-word" }}
+                        >
+                          {v ? (
+                            <span>{v}</span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
                           )}
-                          {field.is_required && (
-                            <span className="ml-1 text-red-600">*</span>
-                          )}
-                        </label>
-                        <FieldInput
-                          field={field}
-                          value={draft}
-                          onChange={(_, value) => setDraft(field.field_id, value)}
-                        />
-                        {dirty && !editingLocked && (
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              type="button"
-                              className="rounded bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:opacity-50"
-                              disabled={saving !== null}
-                              onClick={() => void saveField(field)}
-                            >
-                              {saving === field.field_id ? "Saving…" : "Save & regenerate"}
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded border border-sky-300 px-3 py-1 text-xs text-sky-700 hover:bg-sky-50"
-                              onClick={() => resetDraft(field.field_id)}
-                            >
-                              Discard
-                            </button>
-                          </div>
-                        )}
+                        </dd>
                       </div>
                     );
                   })}
-                </div>
+                </dl>
               </section>
             ))}
-
-            {/* Appendix editor reuses the Builder so the override / Reset-to-Auto
-                semantics match the wizard. AppendixBuilder regenerates itself
-                via its refreshKey when our drafts state changes. */}
-            <section className="rounded-xl border border-sky-100 bg-white p-3 shadow-sm">
-              <h2 className="text-sm font-semibold text-sky-900">
-                Appendix rows (A)
-              </h2>
-              <p className="mb-3 text-xs text-sky-700">
-                Auto-derived from F/C values above. Override any row to lock a
-                custom value; the cascade will leave it alone on subsequent
-                edits.
-              </p>
-              <AppendixBuilder
-                agreementId={agreementId!}
-                refreshKey={JSON.stringify(values)}
-              />
-              <p className="mt-3 text-xs text-gray-500">
-                Appendix edits don't auto-trigger a PDF regeneration — use the
-                "Save & regenerate" button on any field above (or
-                <span className="font-mono"> Refresh preview</span> below) to
-                re-render.
-              </p>
-              <button
-                type="button"
-                className="mt-2 rounded border border-sky-300 px-3 py-1 text-xs text-sky-700 hover:bg-sky-50 disabled:opacity-50"
-                disabled={regenerating}
-                onClick={async () => {
-                  setRegenerating(true);
-                  try {
-                    await api.post(`/pdf/${agreementId}/generate`);
-                    await reloadPdf();
-                    toast.success("PDF regenerated.");
-                  } catch {
-                    toast.error("Failed to regenerate PDF.");
-                  } finally {
-                    setRegenerating(false);
-                  }
-                }}
-              >
-                {regenerating ? "Regenerating…" : "Refresh preview"}
-              </button>
-            </section>
-
-            {/* Clause revisions — Phase 4 v2.0 */}
-            <section className="rounded-xl border border-sky-100 bg-white p-3 shadow-sm">
-              <h2 className="text-sm font-semibold text-sky-900">
-                Clause revisions
-              </h2>
-              <p className="mb-3 text-xs text-sky-700">
-                Per-agreement edits to the master template prose. Each
-                revision starts as <em>pending</em> and applies to the
-                rendered PDF once a reviewer accepts it. Withdraw any
-                pending revision to drop it before review.
-              </p>
-              <ClauseRevisionsPanel
-                agreementId={agreementId!}
-                mode={isAdmin ? "edit" : "review"}
-                onChange={async () => {
-                  setRegenerating(true);
-                  try {
-                    await api.post(`/pdf/${agreementId}/generate`);
-                    await reloadPdf();
-                  } finally {
-                    setRegenerating(false);
-                  }
-                }}
-              />
-            </section>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
