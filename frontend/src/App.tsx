@@ -1,6 +1,7 @@
 import { Navigate, Route, BrowserRouter, Routes } from "react-router-dom";
 
 import { ToastProvider } from "./components/Toast";
+import AgreementCompare from "./pages/AgreementCompare";
 import AgreementCreate from "./pages/AgreementCreate";
 import AgreementDocument from "./pages/AgreementDocument";
 import Archive from "./pages/Archive";
@@ -29,6 +30,7 @@ export default function App() {
               <Route path="/agreements/new" element={<AgreementCreate />} />
               <Route path="/agreements/:id/edit" element={<AgreementCreate />} />
               <Route path="/agreements/:id/document" element={<AgreementDocument />} />
+              <Route path="/agreements/:id/compare" element={<AgreementCompare />} />
             </Route>
             <Route path="/workflow" element={<WorkflowReview />} />
             <Route path="/resolution" element={<CommentsResolution />} />
