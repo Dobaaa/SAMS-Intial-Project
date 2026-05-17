@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db_session
-from middleware.rbac import require_role
+from middleware.rbac import get_current_user, require_role
 from models.master import InputTypeEnum, MasterField, MasterTemplate, TemplateTypeEnum
 from models.user import RoleEnum, User
 from services.audit_service import record_audit
@@ -83,7 +83,7 @@ def _field_to_dict(field: MasterField) -> dict:
     }
 
 
-@router.get("/", dependencies=[Depends(require_role(RoleEnum.admin))])
+@router.get("/", dependencies=[Depends(get_current_user)])
 async def list_templates(db: AsyncSession = Depends(get_db_session)) -> dict:
     grouped = await list_templates_grouped(db)
     return {k: [_template_to_dict(t) for t in v] for k, v in grouped.items()}
@@ -118,7 +118,7 @@ async def create_template(
     return _template_to_dict(template)
 
 
-@router.get("/fields/{template_id}", dependencies=[Depends(require_role(RoleEnum.admin))])
+@router.get("/fields/{template_id}", dependencies=[Depends(get_current_user)])
 async def get_fields(template_id: uuid.UUID, db: AsyncSession = Depends(get_db_session)) -> list[dict]:
     fields = await list_fields_by_template(db, template_id)
     return [_field_to_dict(field) for field in fields]

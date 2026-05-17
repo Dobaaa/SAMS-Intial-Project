@@ -266,10 +266,11 @@ async def get_fields(
     return {"values": values}
 
 
-@router.get("/{agreement_id}", dependencies=[Depends(require_role(RoleEnum.admin))])
+@router.get("/{agreement_id}")
 async def get_agreement(
     agreement_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
 ) -> dict:
     """One-call hydrate for the wizard's edit-existing-draft flow.
 
