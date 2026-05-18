@@ -16,12 +16,15 @@ code. This script applies the surgical fixes in one reproducible pass:
   the cell text to interpolate ``{{A16}}`` (Project), ``{{A17}}``
   (Subcontract Works) and ``{{A18}}`` (Milestones).
 
-* **Performance Security amount** — the Appendix row at clause 3.4.2
-  hardcoded ``"10% of the Contract Price / … AED"`` with no token, so
-  the cascaded A10 value (F08 * 10%, or admin's manual override) never
-  reached the PDF. Rewrite the cell to ``"10% of the Contract Price\n
-  {{A10}} AED"``. A10 is in ``MONEY_FIELDS`` so it renders with
-  thousands separators and two decimal places.
+* **Performance Security %** + **Maximum LDs %** — A10 (Performance
+  Security) and A21 (Maximum LDs) are percentage inputs, but their
+  Appendix rows used to hardcode ``"10% of the Contract Price / … AED"``.
+  Rewrite both rows to interpolate the entered percentage **and** an
+  AED amount derived from F08 via the new ``{{A10_AMOUNT}}`` /
+  ``{{A21_AMOUNT}}`` synthetic tokens (computed in
+  ``services.pdf_service._inject_percentage_amounts`` and rendered as
+  money). Final cell text reads e.g. ``"10% of the Contract Price\n
+  850,000.00 AED"`` for F08=8.5M with A10=10.
 
 * **Item 11** — Sub-clause 3.4(e) "Retention Money and Final Payment"
   was meant to start on a fresh page, but the client reverted the
@@ -132,8 +135,21 @@ def patch_appendix(doc) -> None:
         elif label == "performance security":
             _set_cell_text(
                 row.cells[2],
-                "10% of the Contract Price\n{{A10}} AED",
+                "{{A10}}% of the Contract Price\n{{A10_AMOUNT}} AED",
             )
+
+    # Maximum Liquidated Damages lives in Table 3 (the "Defects Liability /
+    # LDs / Insurance / Dispute" table), not Table 2. Same percentage-+-amount
+    # treatment as Performance Security.
+    if len(doc.tables) > 3:
+        max_lds_table = doc.tables[3]
+        for row in max_lds_table.rows:
+            label = row.cells[0].text.strip().lower()
+            if label == "maximum liquidated damages":
+                _set_cell_text(
+                    row.cells[2],
+                    "{{A21}}% of the Contract Price\n{{A21_AMOUNT}} AED",
+                )
 
 
 def patch_clause_3_4_e_pagebreak(doc) -> None:
@@ -275,7 +291,12 @@ def main() -> None:
             for cell in row.cells:
                 for p in cell.paragraphs:
                     found.update(re.findall(r"\{\{([A-Z][A-Z0-9_]*)\}\}", p.text))
-    required = {"A05", "A06", "A10", "A16", "A17", "A18", "REFERENCE"}
+    required = {
+        "A05", "A06", "A10", "A10_AMOUNT",
+        "A16", "A17", "A18",
+        "A21", "A21_AMOUNT",
+        "REFERENCE",
+    }
     missing = required - found
     if missing:
         raise SystemExit(

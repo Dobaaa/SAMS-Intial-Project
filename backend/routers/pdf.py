@@ -101,6 +101,8 @@ async def preview_pdf_with_changes(
     value_map = _collect_field_values(agreement.field_values)
     if agreement.reference_number:
         value_map["REFERENCE"] = agreement.reference_number
+    from services.pdf_service import _inject_percentage_amounts
+    _inject_percentage_amounts(value_map)
 
     rev_res = await db.execute(
         select(AgreementClauseRevision).where(

@@ -182,17 +182,17 @@ async def update_agreement_fields(
         row = current_map.get(field_id)
         return bool(row and row.is_manual_override)
 
-    # Special compute: F08 -> C03 = 10% (Advance Payment), F08 -> A10 = 10%
-    # (Performance Security AED). Always recompute unless the target is
-    # explicitly locked or sent in the payload.
+    # Special compute: F08 -> C03 = 10% (Advance Payment AED). Always
+    # recompute unless the target is explicitly locked or sent in the
+    # payload. A10 used to ride this cascade as the Performance Security
+    # AED amount, but Rev 02 reclassified A10 as a percentage input —
+    # the AED amount is now derived at render time via the {{A10_AMOUNT}}
+    # synthetic token in services.pdf_service._inject_percentage_amounts.
     if effective.get("F08"):
         ten_pct = _advance_payment_from_price(effective["F08"])
-        if ten_pct is not None:
-            for target in ("C03", "A10"):
-                if target in values or _is_locked(target):
-                    continue
-                values[target] = ten_pct
-                effective[target] = ten_pct
+        if ten_pct is not None and "C03" not in values and not _is_locked("C03"):
+            values["C03"] = ten_pct
+            effective["C03"] = ten_pct
 
     # Generic cascade: for every MasterField with auto_source_field_id, copy
     # the source value into the target on every update — overriding any prior

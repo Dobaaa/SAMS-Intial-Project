@@ -64,10 +64,17 @@ MONEY_FIELDS: set[str] = {
     "C11",  # Rate of Liquidated Damages (AED/day)
     "A07",  # Subcontract Price (mirror)
     "A09",  # Advance Payment (mirror)
-    "A10",  # Performance Security amount (mirror)
     "A20",  # Rate of LDs (mirror)
-    "A21",  # Maximum LDs (10% default)
+    # Synthetic tokens (computed at render time as F08 * <pct>/100). Live
+    # in MONEY_FIELDS so they pick up the thousands-separator + 2dp
+    # formatting like any other AED value.
+    "A10_AMOUNT",
+    "A21_AMOUNT",
 }
+# A10 (Performance Security %) and A21 (Maximum LDs %) are percentages,
+# NOT money — admin enters "10" / "5" / "15" and the Appendix row computes
+# the AED amount via the {{A10_AMOUNT}} / {{A21_AMOUNT}} synthetic tokens
+# above.
 
 # Field IDs whose substituted value should render bold so it visually
 # matches the hardcoded "M/s. Bhatia General Contracting Co. (L.L.C.)"

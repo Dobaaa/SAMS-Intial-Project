@@ -189,6 +189,37 @@ def _collect_field_values(field_values: list[AgreementFieldValue]) -> dict[str, 
     return {item.field_id: item.entered_value or "" for item in field_values}
 
 
+def _percentage_of(percentage: str | None, base: str | None) -> str:
+    """Compute ``base * (percentage / 100)`` as a raw numeric string.
+
+    Returns ``""`` if either input is missing or not numeric. Caller
+    (the docx pipeline) takes care of money formatting via MONEY_FIELDS,
+    so we just emit a plain number like ``"850000.00"``.
+    """
+    if not percentage or not base:
+        return ""
+    try:
+        p = float(str(percentage).replace("%", "").replace(",", "").strip())
+        b = float(str(base).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return ""
+    return f"{b * p / 100.0:.2f}"
+
+
+def _inject_percentage_amounts(value_map: dict[str, str]) -> None:
+    """Insert ``A10_AMOUNT`` and ``A21_AMOUNT`` synthetic tokens into the
+    map so the Performance Security and Maximum Liquidated Damages
+    Appendix rows can render both the entered percentage and the
+    corresponding AED amount (``F08 * pct / 100``).
+
+    Empty/non-numeric inputs collapse to ``""`` which renders as an empty
+    cell — same behaviour as any missing token.
+    """
+    f08 = value_map.get("F08", "")
+    value_map["A10_AMOUNT"] = _percentage_of(value_map.get("A10"), f08)
+    value_map["A21_AMOUNT"] = _percentage_of(value_map.get("A21"), f08)
+
+
 def _appendix_rows(
     appendix_config: list[AppendixConfig],
     field_values: dict[str, str],
@@ -254,6 +285,7 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
     # placeholder.
     if agreement.reference_number:
         value_map["REFERENCE"] = agreement.reference_number
+    _inject_percentage_amounts(value_map)
 
     # Phase 4 v2.0 — fold accepted clause revisions into the render. Pending
     # revisions are NOT applied here; they render as Word track-changes in
