@@ -168,20 +168,48 @@ _COVER_ROWS = (
 )
 
 
-def _make_cover_table_xml():
-    """Build a 3-row, 2-column borderless table for the cover page entries.
+# Cover-page run typography (matches the original master's three cover-
+# label paragraphs verbatim — Times New Roman 11pt, white text overlaid on
+# the cover's branded backdrop). Kept verbatim so the new table-based
+# layout is visually indistinguishable from the prior paragraph layout
+# apart from how wrapped values flow.
+_COVER_RUN_FONT = "Times New Roman"
+_COVER_RUN_COLOR = "FFFFFF"
+_COVER_RUN_SZ = "22"  # half-points; 22 = 11pt
 
-    Each row holds (bold label) | (value with token). Column widths are
-    fixed in twentieths-of-a-point: 2880 (2") + 6480 (4.5") = 9360 twips =
-    6.5", matching the body width on a US Letter page with 1" side margins.
+# Table column widths, in twentieths-of-a-point (twips, 1440 = 1 inch).
+# Label column ~1.6" + value column ~2.4" = ~4 inches total, matching
+# the original paragraph's left-aligned cover column (the originals used
+# w:ind right=4358 to keep text inside a ~3.5" left-side column on top
+# of the cover artwork).
+_COVER_LABEL_W = "2304"  # 1.6"
+_COVER_VALUE_W = "3456"  # 2.4"
+_COVER_TABLE_W = "5760"  # sum
+_COVER_TABLE_INDENT = "262"  # mirrors the original w:ind left=262
+
+
+def _make_cover_table_xml():
+    """Build a 3-row, 2-column borderless table for the cover-page entries.
+
+    Each row holds (label) | (value with token). Cells inherit the
+    original cover styling (Times New Roman 11pt, white text) so they
+    sit cleanly over the existing cover backdrop. The whole table is
+    narrower than the body width — only ~4" — to stay inside the
+    cover's left-side column where the original labels lived.
     """
     tbl = OxmlElement("w:tbl")
 
     tbl_pr = OxmlElement("w:tblPr")
     tbl_w = OxmlElement("w:tblW")
-    tbl_w.set(qn("w:w"), "9360")
+    tbl_w.set(qn("w:w"), _COVER_TABLE_W)
     tbl_w.set(qn("w:type"), "dxa")
     tbl_pr.append(tbl_w)
+    # Indent the table so its left edge sits where the original
+    # paragraphs sat (w:ind left=262 in the master).
+    tbl_indent = OxmlElement("w:tblInd")
+    tbl_indent.set(qn("w:w"), _COVER_TABLE_INDENT)
+    tbl_indent.set(qn("w:type"), "dxa")
+    tbl_pr.append(tbl_indent)
     tbl_borders = OxmlElement("w:tblBorders")
     for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
         b = OxmlElement(f"w:{side}")
@@ -194,7 +222,7 @@ def _make_cover_table_xml():
     tbl.append(tbl_pr)
 
     tbl_grid = OxmlElement("w:tblGrid")
-    for w in ("2880", "6480"):
+    for w in (_COVER_LABEL_W, _COVER_VALUE_W):
         gc = OxmlElement("w:gridCol")
         gc.set(qn("w:w"), w)
         tbl_grid.append(gc)
@@ -202,9 +230,9 @@ def _make_cover_table_xml():
 
     for label, value in _COVER_ROWS:
         tr = OxmlElement("w:tr")
-        for cell_text, width, bold in (
-            (label, "2880", True),
-            (value, "6480", False),
+        for cell_text, width in (
+            (label, _COVER_LABEL_W),
+            (value, _COVER_VALUE_W),
         ):
             tc = OxmlElement("w:tc")
             tc_pr = OxmlElement("w:tcPr")
@@ -217,17 +245,16 @@ def _make_cover_table_xml():
             p = OxmlElement("w:p")
             r = OxmlElement("w:r")
             r_pr = OxmlElement("w:rPr")
-            # Cover-page typography: Tahoma 11pt (matches master's Normal
-            # style; sz is half-points, so 22 = 11pt).
             r_fonts = OxmlElement("w:rFonts")
-            r_fonts.set(qn("w:ascii"), "Tahoma")
-            r_fonts.set(qn("w:hAnsi"), "Tahoma")
+            r_fonts.set(qn("w:ascii"), _COVER_RUN_FONT)
+            r_fonts.set(qn("w:hAnsi"), _COVER_RUN_FONT)
             r_pr.append(r_fonts)
+            color = OxmlElement("w:color")
+            color.set(qn("w:val"), _COVER_RUN_COLOR)
+            r_pr.append(color)
             sz = OxmlElement("w:sz")
-            sz.set(qn("w:val"), "22")
+            sz.set(qn("w:val"), _COVER_RUN_SZ)
             r_pr.append(sz)
-            if bold:
-                r_pr.append(OxmlElement("w:b"))
             r.append(r_pr)
             t = OxmlElement("w:t")
             t.set(qn("xml:space"), "preserve")
