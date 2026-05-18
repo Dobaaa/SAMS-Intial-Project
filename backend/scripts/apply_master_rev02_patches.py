@@ -178,13 +178,13 @@ _COVER_RUN_COLOR = "FFFFFF"
 _COVER_RUN_SZ = "22"  # half-points; 22 = 11pt
 
 # Table column widths, in twentieths-of-a-point (twips, 1440 = 1 inch).
-# Label column ~1.6" + value column ~2.4" = ~4 inches total, matching
-# the original paragraph's left-aligned cover column (the originals used
-# w:ind right=4358 to keep text inside a ~3.5" left-side column on top
-# of the cover artwork).
-_COVER_LABEL_W = "2304"  # 1.6"
-_COVER_VALUE_W = "3456"  # 2.4"
-_COVER_TABLE_W = "5760"  # sum
+# Label column ~1.9" + value column ~3.1" = ~5 inches total. The original
+# paragraph constrained text via w:ind right=4358 (≈3.3" usable width);
+# we keep the table within that left-side column, just a hair wider so
+# common values like the subcontractor company name fit on one line.
+_COVER_LABEL_W = "2736"  # 1.9"
+_COVER_VALUE_W = "4464"  # 3.1"
+_COVER_TABLE_W = "7200"  # sum (5")
 _COVER_TABLE_INDENT = "262"  # mirrors the original w:ind left=262
 
 
