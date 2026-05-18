@@ -32,6 +32,15 @@ code. This script applies the surgical fixes in one reproducible pass:
   the break is kept in this module for future re-enablement, but is
   no longer called from ``main()``.
 
+* **Cover page layout** — the three label paragraphs
+  ("The Project", "Subcontractor Name", "Scope Title") used a
+  tab-stop between label and colon, and when the value wrapped, the
+  continuation line fell back to the left margin (looked broken).
+  Replace the three paragraphs with a 3-row borderless 2-column
+  table — label cell ~2 inches wide and bold, value cell takes the
+  remaining width — so each entry stays a coherent row and wrapped
+  values indent under the value column.
+
 * **Header stamp** — every page's running header reads
   "BGCC P-XXX / SCA#-ZZZ" as a static placeholder. Replace it with a
   ``{{REFERENCE}}`` token so the rendered PDF stamps the agreement's
@@ -152,6 +161,117 @@ def patch_appendix(doc) -> None:
                 )
 
 
+_COVER_ROWS = (
+    ("The Project:", "{{F06}}"),
+    ("Subcontractor Name:", "{{F02}}"),
+    ("Scope Title:", "{{F09}}"),
+)
+
+
+def _make_cover_table_xml():
+    """Build a 3-row, 2-column borderless table for the cover page entries.
+
+    Each row holds (bold label) | (value with token). Column widths are
+    fixed in twentieths-of-a-point: 2880 (2") + 6480 (4.5") = 9360 twips =
+    6.5", matching the body width on a US Letter page with 1" side margins.
+    """
+    tbl = OxmlElement("w:tbl")
+
+    tbl_pr = OxmlElement("w:tblPr")
+    tbl_w = OxmlElement("w:tblW")
+    tbl_w.set(qn("w:w"), "9360")
+    tbl_w.set(qn("w:type"), "dxa")
+    tbl_pr.append(tbl_w)
+    tbl_borders = OxmlElement("w:tblBorders")
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        b = OxmlElement(f"w:{side}")
+        b.set(qn("w:val"), "nil")
+        tbl_borders.append(b)
+    tbl_pr.append(tbl_borders)
+    tbl_layout = OxmlElement("w:tblLayout")
+    tbl_layout.set(qn("w:type"), "fixed")
+    tbl_pr.append(tbl_layout)
+    tbl.append(tbl_pr)
+
+    tbl_grid = OxmlElement("w:tblGrid")
+    for w in ("2880", "6480"):
+        gc = OxmlElement("w:gridCol")
+        gc.set(qn("w:w"), w)
+        tbl_grid.append(gc)
+    tbl.append(tbl_grid)
+
+    for label, value in _COVER_ROWS:
+        tr = OxmlElement("w:tr")
+        for cell_text, width, bold in (
+            (label, "2880", True),
+            (value, "6480", False),
+        ):
+            tc = OxmlElement("w:tc")
+            tc_pr = OxmlElement("w:tcPr")
+            tc_w = OxmlElement("w:tcW")
+            tc_w.set(qn("w:w"), width)
+            tc_w.set(qn("w:type"), "dxa")
+            tc_pr.append(tc_w)
+            tc.append(tc_pr)
+
+            p = OxmlElement("w:p")
+            r = OxmlElement("w:r")
+            r_pr = OxmlElement("w:rPr")
+            # Cover-page typography: Tahoma 11pt (matches master's Normal
+            # style; sz is half-points, so 22 = 11pt).
+            r_fonts = OxmlElement("w:rFonts")
+            r_fonts.set(qn("w:ascii"), "Tahoma")
+            r_fonts.set(qn("w:hAnsi"), "Tahoma")
+            r_pr.append(r_fonts)
+            sz = OxmlElement("w:sz")
+            sz.set(qn("w:val"), "22")
+            r_pr.append(sz)
+            if bold:
+                r_pr.append(OxmlElement("w:b"))
+            r.append(r_pr)
+            t = OxmlElement("w:t")
+            t.set(qn("xml:space"), "preserve")
+            t.text = cell_text
+            r.append(t)
+            p.append(r)
+            tc.append(p)
+            tr.append(tc)
+        tbl.append(tr)
+
+    return tbl
+
+
+def patch_cover_page_layout(doc) -> None:
+    """Rev 02 styling fix: replace the three cover-page label paragraphs
+    with a borderless 2-column table so each entry stays one logical
+    row and wrapped values indent under the value column instead of
+    falling back to the left margin.
+    """
+    targets: list = []
+    seen = set()
+    for p in doc.paragraphs:
+        text = p.text.strip()
+        for label in ("The Project", "Subcontractor Name", "Scope Title"):
+            if text.startswith(label) and label not in seen:
+                targets.append(p)
+                seen.add(label)
+                break
+        if len(seen) == 3:
+            break
+    if len(targets) != 3:
+        raise RuntimeError(
+            "Could not locate all 3 cover-page label paragraphs "
+            f"(found {len(targets)})."
+        )
+
+    parent = targets[0]._element.getparent()
+    insert_at = list(parent).index(targets[0]._element)
+    parent.insert(insert_at, _make_cover_table_xml())
+
+    for p in targets:
+        parent.remove(p._element)
+
+
 def patch_clause_3_4_e_pagebreak(doc) -> None:
     """Item 11: page-break before "Retention Money and Final Payment"."""
     for p in doc.paragraphs:
@@ -268,6 +388,7 @@ def main() -> None:
 
     doc = Document(str(MASTER_DOCX))
     patch_appendix(doc)
+    patch_cover_page_layout(doc)
     # Item 11 (3.4(e) page break) intentionally skipped — client reverted
     # the request. The helper `patch_clause_3_4_e_pagebreak` is still
     # defined above so it can be re-enabled by adding a single call here.
@@ -275,7 +396,7 @@ def main() -> None:
     doc.save(str(MASTER_DOCX))
     print(
         "python-docx edits applied "
-        "(Appendix + body BGCC stamp → {{REFERENCE}})."
+        "(Appendix + cover layout + body BGCC stamp → {{REFERENCE}})."
     )
 
     patch_footer_stamps(MASTER_DOCX)
