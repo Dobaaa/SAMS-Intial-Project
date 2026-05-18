@@ -353,6 +353,56 @@ gunzip -c /backups/sams_X.sql.gz | psql -U postgres sams_db   # restore
 
 > Append one bullet per session after meaningful work. Keep terse.
 
+- **2026-05-16 / 17 / 18** — **BGCC Rev 01 feedback round (16.05.2026)** — full Rev 01 PDF (`~/Downloads/SAMS Rev 01-16.5.2026.pdf`, 41 numbered items + general umbrella). All work shipped on branch **`feat/rev01-pdf-fidelity`** (off `staging`), 26 commits, head `000bb96`. Deployed live to https://76-13-159-24.sslip.io. **PR not yet opened back to `staging`** — wait for BGCC sign-off on alpha first.
+
+  ### Phase 1 — Foundations (1-2 days)
+  Commits `96dd4e0` (US Letter), `c1e287d` (font install script), `52f3923` (reference format `SAG-{YEAR}-{SITE_NO}-{REF_NO}`), `861b2b9` (long-form date `"05th May 2026"`), `43359be` (Step 2 heading reword), `702febc` (A-field auto-recompute + explicit Edit/Reset with `is_manual_override` flag + migration 003 + 3 new pytest cases), `1fa6134` (Masters help A-Z guide).
+
+  ### Phase 2 — PDF 42-page fidelity, **then pivoted to docx pipeline**
+  Initial Phase 2 was HTML/CSS tuning (`2dd5a3b` + `cc12b44`) — got to 39 pages but the cap was an engine-mismatch ceiling. **Switched architecture** (commits `38d1a27`, `219e912`, `a8e6c6d`, `14155f6`):
+  - Stopped using WeasyPrint+HTML for the SCA render. New pipeline: `python-docx` substitutes `{{F##}}/{{C##}}/{{A##}}` tokens in `backend/masters/sca_master_v1.docx` → `libreoffice --headless --convert-to pdf`. Producer = LibreOffice 24.2.
+  - User provided their hand-tuned 42-page docx (`/home/seif/Downloads/sams_tahoma.docx`). New `backend/scripts/tokenize_master_docx.py` transforms it into the tokenized master: replaces sample values with `{{F##}}` tokens (20 distinct strings), splits collapsed cover paragraph into 4 rows with `:` separators, and runs a context-anchored second pass that substitutes 10 legacy `(……Insert…..)` markers for the right `{{C##}}` token (e.g. C04 advance release, C05 interim days, C10 DLP months, C11 LD rate, C13 jurisdiction). Bare-marker cells in the Milestones table get blanked. **Verified: zero `(……Insert…..)` left in the rendered demo PDF.**
+  - Currency formatting in the docx pipeline via `_format_money` on `MONEY_FIELDS = {F08, C03, C11, A07, A09, A10, A20, A21}`.
+  - LibreOffice needs `-env:UserInstallation=file://<tmp>/_lo_profile` (otherwise dies trying to create `/var/www/.cache/dconf`). Fixed in `services/docx_pdf_service.py`.
+  - **Tahoma installed legally** via Microsoft's IELPKTH.CAB (IE Thai language pack). Script: `sudo bash` of `~/Downloads/IELPKTH.CAB` extract + `install -m 644 tahoma.ttf tahomabd.ttf /usr/share/fonts/truetype/msttcorefonts/` + `fc-cache -f`. Tahoma is the docx's declared body font; without it LibreOffice substitutes Noto Sans (wider) and inflates the page count.
+  - **Final state: alpha renders the demo agreement at 43 pages** with Tahoma embedded. The "+1" vs source 42 was traced to admin-entered free text (A03 "Atkins Middle East Consulting (Lead) / WSP Steel Specialists" was 98 chars vs original 32-char placeholder). User chose to shorten A11 ("Against an Advance Payment Bank Guarantee") on the demo agreement rather than shrink appendix fonts — back to 42 pages. **NB: page count is content-density dependent — long admin-entered clauses naturally push 43/44/45+ pages. Documented in the Rev 01 resolution report.**
+  - `scripts/install-fonts.sh` extended to install LibreOffice + Tahoma (via IELPKTH.CAB download + cabextract) so the VPS bring-up is one command.
+
+  ### Phase 3 — Document view (Rev 01 item 16)
+  Commit `1d566eb` — new page `/agreements/:id/document` with grid 50/50: left iframe shows latest PDF (auto-generates if missing), right pane shows three sections (Form / Conditions / Appendix Builder) with per-field dirty-state "Save & regenerate" buttons. PDF iframe reloads on each save. **Admin only edits; reviewers (PD/Accounts/OM/GM) see a strict read-only field-values summary** (no inputs, no buttons, no AppendixBuilder, no clause-revisions panel) with an "Open Compare view →" CTA — see commits `dc1e0ec`, `a370953`.
+
+  ### Phase 4 — Side-by-side Compare + clause-level track-changes
+  Four slices:
+  - **v1** (`3c2e09b`): new `/agreements/:id/compare` page with grid 4/4/4: ORIGINAL master (`GET /api/pdf/master/preview` — renders master with empty tokens, cached server-side by docx mtime), REVISED agreement, sidebar showing every populated field. Route initially admin-only — fixed in later commits.
+  - **v2.0** (`0f6f197`): per-agreement clause revisions. Migration `004_clause_revisions.py` — new table `agreement_clause_revisions` with `clause_hash` (SHA-256 of normalised paragraph text as stable anchor), `original_text`, `modified_text`, `change_reason`, `status` (pending/accepted/rejected), `decided_by/at/note`. New `services/clause_revision_service.py` (extracts ~523 clauses from master, dedupes, tags section). New `routers/clause_revisions.py` (GET clauses + GET/POST/PATCH/DELETE revisions). New `frontend/src/components/ClauseRevisionsPanel.tsx` — searchable clause picker + revisions list + edit modal. Slotted into Document view.
+  - **v2.1** (`8591fdc`): accept/reject workflow. New endpoints `POST /revisions/{id}/accept|reject` with optional decision_note. **REVIEWER_ROLES** = (admin, project_director, accounts, operation_manager, gm). **Segregation of duties**: creator cannot self-accept (use Withdraw via DELETE). audit_log writes on every decision. Frontend accept/reject buttons appear on pending revisions when current user is in REVIEWER_ROLES AND not the creator. Decision modal previews original + modified text. 7 new pytest cases.
+  - **v2.2** (`d43bfd8`): inline track-changes in PDF. New `_apply_pending_revisions_to_doc` in clause_revision_service wraps target paragraphs with OOXML `<w:del>` + `<w:ins>` markup (LibreOffice renders strikethrough + underline + change-bar). New endpoint `GET /api/pdf/{id}/preview/with_changes` (live render, no cache). Token substitution upgraded to iter-based pass that descends into `<w:del>/<w:ins>` blocks so tokens inside revisions resolve. Compare view's REVISED pane gains a "Show pending changes" checkbox. Verified end-to-end on alpha — both original (strikethrough) and modified (underline) text present in the with_changes PDF.
+  - **RBAC opened**: commits `1982c82`, `67e5d22`, `dc1e0ec` move `/agreements/:id/compare` and `/agreements/:id/document` out of the admin-only frontend route guard. Backend read-only GETs (`/api/agreements/{id}`, `/api/masters/`, `/api/masters/fields/{tpl}`) relaxed to `get_current_user` (any auth) so non-admin reviewers can hydrate the page. **Write endpoints stay admin-only.** WorkflowReview's Agreement Summary card gained an "Open Compare view →" link so reviewers don't need URLs.
+
+  ### Seeded demo agreement on alpha
+  `f53587ab-7ed2-4ba1-b3bd-f0b547b8cf79` — reference `SAG-2026-319-001`. Full Marina Tower Phase II / Elite Steel Industries data. **4 pending clause revisions seeded** (`grace period`, `DLP 12→18 months`, `confidentiality affiliate carve-out`, `LD 7-day notice`) + **1 already-accepted** ("Site" definition by PD). Open https://76-13-159-24.sslip.io/agreements/f53587ab-7ed2-4ba1-b3bd-f0b547b8cf79/compare to exercise the full feature.
+
+  ### Rev 01 Resolution Report
+  Commits `6853dc5`, `28121f0`, `000bb96` — `docs/rev01-resolution-report.html` + `docs/rev01-resolution-report.pdf`. Mirrors BGCC's Rev 01 PDF column layout + adds a "Detailed Resolution / Steps / Scenario" column for every item. WeasyPrint-rendered to A3 landscape (LibreOffice's writer_web filter mangled the CSS). 8 pages. Includes a prominent amber callout near the top + an embedded note inside the General-Comments umbrella row explaining that **42-page consistency is content-density dependent — long admin-entered clauses naturally expand to 43+ pages, same behaviour as Word**.
+
+  ### Status counts at end of round
+  - **11 RESOLVED** this round: items 1, 2, 3, 4–16 (umbrella), 17, 23, 33, 35.
+  - **13 COMPLETED** in round 1: items 18, 19, 20, 21, 22, 24, 26, 27, 28, 29, 31, 32, 34.
+  - **1 AWAITING BGCC SMTP** (item 25 notifications). Waiting on BGCC IT to provide `SMTP_HOST/PORT/USER/PASSWORD/FROM` for `/var/www/sams/backend/.env`. Backend already wired; will start firing emails on supervisor restart.
+  - **1 CLARIFY** (item 30 — Step 2 sub-contractor name). Round 1 already filtered F02–F08 out of Step 2; Phase 1 rewrote the description. Needs BGCC re-test to close.
+  - **6 REFERENCE-only** (items 36–41, wizard screenshots).
+
+  ### Verification at end of round
+  - **Backend**: `pytest -q` → **33 passed** (25 pre-existing + 7 clause revisions + 1 with_changes integration). One flaky `test_logout_revokes_refresh_token` in full-suite runs (passes in isolation; Redis-mock state interaction, unrelated to Rev 01).
+  - **Frontend**: `npx tsc -b` exit 0; `npm run test:run` → **13 passed**; `npm run build` → clean Vite bundle (1.7 MB unminified, 320 KB gzipped).
+  - **Alpha**: smoke tested as admin + as PD. All four Compare-view endpoints respond 200 for PD; demo agreement renders 42 pages with `Tahoma + TimesNewRoman + Arial + Georgia + Caladea + DejaVu Serif` embedded.
+
+  ### Open items needing user input next session
+  - **Item 25 notifications**: BGCC IT to provide SMTP creds. Until then, no email goes out.
+  - **Item 30**: BGCC re-test latest alpha and confirm the Step 2 duplicate-field concern is resolved.
+  - **PR to `staging`**: user wants to wait for BGCC sign-off on alpha before merging. Branch `feat/rev01-pdf-fidelity` is 26 commits ahead.
+  - **Phase 5 candidates if BGCC requests more**: in-app notifications (alternative to SMTP, ~3 days), milestones table editor (C09 — currently bare in the docx), agreement-level audit log viewer (audit_log table has the data, no UI yet).
+
 - **2026-05-11** — BGCC user-feedback round 1 (see `~/Downloads/SAMS-BGCC Comments-8.05.26.md`). 19 comments triaged; user confirmed scope via AskUserQuestion. Shipped on `staging`:
   - **Schema migration** `002_user_feedback_round1.py`: adds `comments_resolution_sheets.original_clause_text TEXT`, flips `C05/C06/C07` from `number` → `text` so admin can type "60 days PDC", inserts `C14 Performance Security Type` (dropdown: Bank Guarantee Cheque / Company Undated Security Cheque) into every conditions master. Idempotent via `NOT EXISTS`. Seed (`seed_fields.py`) updated to match.
   - **Backend endpoints**: `DELETE /api/agreements/{id}` (admin, restricted to `under_drafting` / `under_bgcc_revision` / `under_internal_review`, no GM approval), `GET /api/subcontractors/?search=…` for the wizard auto-fill picker.
