@@ -36,15 +36,19 @@ type AgreementBundle = {
   values: Record<string, string>;
 };
 
+// Fields whose values are AED amounts and should display with thousands
+// separators in the side-by-side diff. A10 / A21 used to live here when
+// they carried the AED amount, but Rev 02 reclassified them as plain
+// percentage inputs — the AED amount is rendered separately via the
+// {{A10_AMOUNT}} / {{A21_AMOUNT}} synthetic tokens, so don't money-format
+// the % entry itself.
 const NUMERIC_FIELDS = new Set([
   "F08",
   "C03",
   "C11",
   "A07",
   "A09",
-  "A10",
   "A20",
-  "A21",
 ]);
 
 function displayValue(fieldId: string, raw: string | undefined): string {

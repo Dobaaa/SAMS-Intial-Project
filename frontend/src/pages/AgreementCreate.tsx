@@ -114,23 +114,24 @@ export default function AgreementCreate() {
     const isAutoFollow = (target: string, previousSourceVal: string) =>
       (values[target] ?? "") === "" || (values[target] ?? "") === previousSourceVal;
 
-    // Special compute: F08 -> C03 (Advance Payment) and F08 -> A10
-    // (Performance Security) both equal 10% of the subcontract price.
+    // Special compute: F08 -> C03 (Advance Payment) = 10% of the
+    // subcontract price. A10 (Performance Security) used to ride this
+    // cascade too, but Rev 02 reclassified A10 as a percentage input;
+    // the AED amount is now derived at render time via the
+    // {{A10_AMOUNT}} synthetic token, so no frontend cascade for A10.
     if (fieldId === "F08") {
       const pct = tenPercentOf(value);
       const prevPct = tenPercentOf(values.F08 ?? "");
-      for (const target of ["C03", "A10"]) {
-        if ((values[target] ?? "") === "" || values[target] === prevPct) {
-          next[target] = pct;
-        }
+      if ((values.C03 ?? "") === "" || values.C03 === prevPct) {
+        next.C03 = pct;
       }
     }
 
     // Generic cascade driven by master_fields.auto_source_field_id. Two
     // passes so chained sources propagate (F08 -> C03 -> A09: pass 1 fills
-    // C03 from F08, pass 2 fills A09 from C03). The 10% targets handled
-    // above are skipped here so the percentage compute wins.
-    const tenPctTargets = new Set(["C03", "A10"]);
+    // C03 from F08, pass 2 fills A09 from C03). The 10% target handled
+    // above is skipped here so the percentage compute wins.
+    const tenPctTargets = new Set(["C03"]);
     for (let pass = 0; pass < 2; pass++) {
       for (const f of fields) {
         const src = f.auto_source_field_id;
