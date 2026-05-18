@@ -38,6 +38,8 @@ from pathlib import Path
 from typing import Iterable
 
 from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 
 logger = logging.getLogger(__name__)
@@ -67,7 +69,18 @@ MONEY_FIELDS: set[str] = {
     "A21",  # Maximum LDs (10% default)
 }
 
-TOKEN_RE = re.compile(r"\{\{\s*([A-Z][0-9]+)\s*\}\}")
+# Field IDs whose substituted value should render bold so it visually
+# matches the hardcoded "M/s. Bhatia General Contracting Co. (L.L.C.)"
+# party-name styling in the master. Rev 02 item 3 (Subcontractor row in
+# the Appendix) and item 8 (M/s. Microfab in the body) both call for the
+# subcontractor company name to be bold wherever it appears.
+BOLD_FIELDS: set[str] = {"F02"}
+
+# Field tokens (F01/C03/A15) plus a small set of synthetic tokens like
+# {{REFERENCE}} (the agreement's reference stamped into the running header
+# on every page). The regex accepts an uppercase letter followed by any mix
+# of uppercase letters / digits / underscores so both forms match.
+TOKEN_RE = re.compile(r"\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}")
 
 
 def _ordinal_suffix(day: int) -> str:
@@ -129,6 +142,37 @@ def _iter_paragraphs(doc) -> Iterable[Paragraph]:
                     yield p
 
 
+_HEADER_FOOTER_ATTRS = (
+    "header",
+    "first_page_header",
+    "even_page_header",
+    "footer",
+    "first_page_footer",
+    "even_page_footer",
+)
+
+
+def _iter_header_footer_text_elements(doc):
+    """Yield every ``<w:t>`` element inside every section's headers and
+    footers, including those nested inside ``<wps:txbx>`` /
+    ``<v:textbox>`` shapes that python-docx doesn't surface through the
+    ``header.paragraphs`` API. Required so ``{{REFERENCE}}`` placed in the
+    running header stamp gets substituted at render time.
+    """
+    seen: set[int] = set()
+    for section in doc.sections:
+        for attr in _HEADER_FOOTER_ATTRS:
+            hf = getattr(section, attr, None)
+            if hf is None:
+                continue
+            root = hf._element
+            if id(root) in seen:
+                continue
+            seen.add(id(root))
+            for t_el in root.iter(qn("w:t")):
+                yield t_el
+
+
 def _replace_one_value(match: re.Match, values: dict[str, str]) -> str:
     field_id = match.group(1)
     raw = values.get(field_id, "")
@@ -148,36 +192,182 @@ _W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _TEXT_TAGS = (f"{_W_NS}t", f"{_W_NS}delText")
 
 
+_LONGDATE_SPLIT_RE = re.compile(r"^(\d{1,2})(st|nd|rd|th)(\s.*)$")
+
+
+def _split_long_date(value: str) -> tuple[str, str, str] | None:
+    """Split a long-form date like ``"05th May 2026"`` into
+    ``("05", "th", " May 2026")`` so the suffix can be rendered as a
+    superscript run. Returns ``None`` for values that don't match the
+    expected ``DD<suffix> Month YYYY`` shape (e.g. an empty value, or
+    a date the user typed in a non-canonical format).
+    """
+    m = _LONGDATE_SPLIT_RE.match(value)
+    if not m:
+        return None
+    return m.group(1), m.group(2), m.group(3)
+
+
+def _clone_rpr(rpr):
+    """Deep-clone a ``<w:rPr>`` element so each emitted run carries its
+    own copy of the run-properties tree (font, size, color, italic etc.).
+    Returns ``None`` if the source was ``None``.
+    """
+    if rpr is None:
+        return None
+    from copy import deepcopy
+    return deepcopy(rpr)
+
+
+def _add_rpr_style(rpr, *, bold: bool = False, superscript: bool = False):
+    """Layer bold and/or superscript flags onto an existing ``<w:rPr>``.
+
+    Removes any existing ``<w:b>`` / ``<w:vertAlign>`` element first so we
+    don't end up with duplicates if the cloned source already had them.
+    Creates a fresh ``<w:rPr>`` if none was provided.
+    """
+    if rpr is None:
+        rpr = OxmlElement("w:rPr")
+    if bold:
+        for existing in rpr.findall(qn("w:b")):
+            rpr.remove(existing)
+        rpr.append(OxmlElement("w:b"))
+    if superscript:
+        for existing in rpr.findall(qn("w:vertAlign")):
+            rpr.remove(existing)
+        va = OxmlElement("w:vertAlign")
+        va.set(qn("w:val"), "superscript")
+        rpr.append(va)
+    return rpr
+
+
+def _append_text_node(run_el, text: str) -> None:
+    """Append text to a run, converting embedded ``"\\n"`` into ``<w:br/>``
+    soft line breaks so multi-line A05/A06 values render across multiple
+    visible lines without breaking the surrounding paragraph layout.
+    """
+    if not text:
+        return
+    lines = text.split("\n")
+    for idx, line in enumerate(lines):
+        if idx > 0:
+            run_el.append(OxmlElement("w:br"))
+        t = OxmlElement("w:t")
+        t.set(qn("xml:space"), "preserve")
+        t.text = line
+        run_el.append(t)
+
+
+def _emit_styled_run(p_el, base_rpr, text: str, *, bold: bool = False, superscript: bool = False):
+    """Append a fresh ``<w:r>`` to `p_el` with `text`. Clones `base_rpr`
+    so the new run inherits font/size/color from the paragraph's anchor
+    run, then layers bold/superscript on top as requested.
+    """
+    new_r = OxmlElement("w:r")
+    rpr = _clone_rpr(base_rpr)
+    if bold or superscript:
+        rpr = _add_rpr_style(rpr, bold=bold, superscript=superscript)
+    if rpr is not None and len(rpr) > 0:
+        new_r.append(rpr)
+    _append_text_node(new_r, text)
+    p_el.append(new_r)
+
+
+def _set_run_text_with_breaks(run, text: str) -> None:
+    """Write `text` into `run`, converting "\\n" to OOXML ``<w:br/>`` breaks.
+
+    Used so multifield values (A05/A06 communications addresses) entered as
+    multi-line text appear in the PDF as separate lines instead of being
+    collapsed to a single line. ``<w:br/>`` is a soft line break — it stays
+    inside the host paragraph, preserving table-cell layout.
+    """
+    r_el = run._r
+    for child in list(r_el):
+        if child.tag in (qn("w:t"), qn("w:br")):
+            r_el.remove(child)
+    lines = text.split("\n")
+    for idx, line in enumerate(lines):
+        if idx > 0:
+            r_el.append(OxmlElement("w:br"))
+        t = OxmlElement("w:t")
+        t.set(qn("xml:space"), "preserve")
+        t.text = line
+        r_el.append(t)
+
+
 def _substitute_in_paragraph(para: Paragraph, values: dict[str, str]) -> bool:
     """Replace every ``{{FIELD_ID}}`` token in `para` with its value.
 
-    First pass collapses runs that share a split token (Word splits a typed
-    token across multiple ``<w:r>`` runs if anyone edited the placeholder
-    after typing it). Then a second pass walks every ``<w:t>`` /
-    ``<w:delText>`` text node anywhere in the paragraph tree — including
-    text inside ``<w:del>`` and ``<w:ins>`` track-change wrappers that
-    Phase 4 v2.2 inserts — and substitutes tokens individually so the
-    track-change spans render with concrete values.
+    Pass 1 rebuilds the paragraph's top-level run sequence from styled
+    segments so per-field styling can land on substituted values without
+    spilling onto the surrounding prose:
+
+    * ``BOLD_FIELDS`` (F02 — the Subcontractor company name) emit a
+      dedicated bold run, so M/s. Microfab renders bold inline alongside
+      its non-bold surrounding text (Rev 02 items 3 + 8).
+    * ``DATE_FIELDS`` (F01, A15) emit three runs: day digits / ordinal
+      suffix as superscript / rest of the date, so "05th May 2026"
+      renders as "05ᵗʰ May 2026" (Rev 02 item 8).
+
+    Run 0's existing ``<w:rPr>`` is used as the base formatting for every
+    emitted run so font / size / color / paragraph-anchored bold all
+    carry through.
+
+    Pass 2 then walks every ``<w:t>`` / ``<w:delText>`` text node anywhere
+    in the paragraph tree — including text inside ``<w:del>`` / ``<w:ins>``
+    track-change wrappers that Phase 4 v2.2 inserts — and substitutes any
+    leftover tokens individually so revision spans render with concrete
+    values too.
     """
     p_el = para._element
     changed = False
 
-    # Pass 1: collapse split tokens at the paragraph-level run sequence
-    # (handles the legacy "Word split {{F02}} into three runs" case for
-    # paragraphs that have NOT been wrapped in track-changes).
-    if para.runs:
-        full = "".join(r.text or "" for r in para.runs)
+    runs = para.runs
+    if runs:
+        full = "".join(r.text or "" for r in runs)
         if "{{" in full:
-            new_text = TOKEN_RE.sub(lambda m: _replace_one_value(m, values), full)
-            if new_text != full:
-                para.runs[0].text = new_text
-                for run in para.runs[1:]:
-                    run.text = ""
+            matches = list(TOKEN_RE.finditer(full))
+            if matches:
+                base_rpr = _clone_rpr(runs[0]._r.find(qn("w:rPr")))
+
+                # Clear existing top-level runs (track-change wrappers
+                # <w:del>/<w:ins> are not in para.runs, so they survive
+                # untouched for Pass 2 to process).
+                for r in list(runs):
+                    p_el.remove(r._r)
+
+                # Emit segments left-to-right, anchoring each new run on
+                # the cloned base run-properties.
+                pos = 0
+                for m in matches:
+                    if m.start() > pos:
+                        _emit_styled_run(p_el, base_rpr, full[pos : m.start()])
+                    field_id = m.group(1)
+                    value = _replace_one_value(m, values)
+                    bold = field_id in BOLD_FIELDS
+                    if field_id in DATE_FIELDS and value:
+                        parts = _split_long_date(value)
+                        if parts is not None:
+                            day, suffix, rest = parts
+                            _emit_styled_run(p_el, base_rpr, day, bold=bold)
+                            _emit_styled_run(p_el, base_rpr, suffix, bold=bold, superscript=True)
+                            _emit_styled_run(p_el, base_rpr, rest, bold=bold)
+                        else:
+                            _emit_styled_run(p_el, base_rpr, value, bold=bold)
+                    else:
+                        _emit_styled_run(p_el, base_rpr, value, bold=bold)
+                    pos = m.end()
+                if pos < len(full):
+                    _emit_styled_run(p_el, base_rpr, full[pos:])
+
                 changed = True
 
     # Pass 2: any token still present inside a track-change wrapper, or
     # inside a nested table cell run we missed, gets substituted on the
-    # raw text node so tokens inside <w:del>/<w:ins> resolve too.
+    # raw text node so tokens inside <w:del>/<w:ins> resolve too. Newlines
+    # inside <w:del>/<w:ins> spans render as spaces — track-change wrappers
+    # are not the place for multi-line addresses, so a flat substitution is
+    # fine here.
     for tag in _TEXT_TAGS:
         for t_el in p_el.iter(tag):
             txt = t_el.text or ""
@@ -185,7 +375,7 @@ def _substitute_in_paragraph(para: Paragraph, values: dict[str, str]) -> bool:
                 continue
             new_txt = TOKEN_RE.sub(lambda m: _replace_one_value(m, values), txt)
             if new_txt != txt:
-                t_el.text = new_txt
+                t_el.text = new_txt.replace("\n", " ")
                 changed = True
 
     return changed
@@ -264,6 +454,20 @@ def render_agreement_docx_to_pdf(
     # revision text spans too.
     for para in _iter_paragraphs(doc):
         _substitute_in_paragraph(para, values)
+
+    # 4) Headers / footers (including textbox content). The {{REFERENCE}}
+    # token stamped on every page lives inside <wps:txbx> shapes that the
+    # body-paragraph walker doesn't reach. Substitute directly on each
+    # <w:t> element under every section's header/footer.
+    for t_el in _iter_header_footer_text_elements(doc):
+        txt = t_el.text or ""
+        if "{{" not in txt:
+            continue
+        new_txt = TOKEN_RE.sub(lambda m: _replace_one_value(m, values), txt)
+        if new_txt != txt:
+            # Headers/footers are single-line — drop any embedded newlines
+            # that a value (e.g. an A05 address) might accidentally carry.
+            t_el.text = new_txt.replace("\n", " ")
 
     intermediate_docx = output_dir / "rendered.docx"
     doc.save(str(intermediate_docx))

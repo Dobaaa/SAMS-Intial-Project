@@ -248,6 +248,12 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
         raise ValueError("Agreement not found")
 
     value_map = _collect_field_values(agreement.field_values)
+    # Synthetic token: every page's running header carries {{REFERENCE}}
+    # so the rendered PDF stamps the live agreement reference (e.g.
+    # SAG-2026-319-001) in place of the original "BGCC P-XXX / SCA#-ZZZ"
+    # placeholder.
+    if agreement.reference_number:
+        value_map["REFERENCE"] = agreement.reference_number
 
     # Phase 4 v2.0 — fold accepted clause revisions into the render. Pending
     # revisions are NOT applied here; they render as Word track-changes in

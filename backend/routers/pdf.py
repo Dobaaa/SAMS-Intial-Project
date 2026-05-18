@@ -99,6 +99,8 @@ async def preview_pdf_with_changes(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
 
     value_map = _collect_field_values(agreement.field_values)
+    if agreement.reference_number:
+        value_map["REFERENCE"] = agreement.reference_number
 
     rev_res = await db.execute(
         select(AgreementClauseRevision).where(
