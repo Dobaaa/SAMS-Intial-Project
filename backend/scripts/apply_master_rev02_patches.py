@@ -175,23 +175,23 @@ _COVER_ROWS = (
 )
 
 
-# Cover-page run typography (matches the original master's three cover-
-# label paragraphs verbatim — Times New Roman 11pt, white text overlaid on
-# the cover's branded backdrop). Kept verbatim so the new table-based
-# layout is visually indistinguishable from the prior paragraph layout
-# apart from how wrapped values flow.
+# Cover-page run typography — Times New Roman, white text (overlaid on
+# the cover's branded backdrop). Size bumped DOWN to 10pt (sz=20) from
+# the master's original 11pt so longer project / scope values fit with
+# less wrapping while still staying inside the cover's left-side
+# column. Font + color match the original master verbatim.
 _COVER_RUN_FONT = "Times New Roman"
 _COVER_RUN_COLOR = "FFFFFF"
-_COVER_RUN_SZ = "22"  # half-points; 22 = 11pt
+_COVER_RUN_SZ = "20"  # half-points; 20 = 10pt
 
 # Table column widths, in twentieths-of-a-point (twips, 1440 = 1 inch).
-# Label column ~1.9" + value column ~3.1" = ~5 inches total. The original
-# paragraph constrained text via w:ind right=4358 (≈3.3" usable width);
-# we keep the table within that left-side column, just a hair wider so
-# common values like the subcontractor company name fit on one line.
-_COVER_LABEL_W = "2736"  # 1.9"
-_COVER_VALUE_W = "4464"  # 3.1"
-_COVER_TABLE_W = "7200"  # sum (5")
+# Label column ~2.0" + value column ~3.5" = ~5.5" total — a little wider
+# than the previous 5" pass so values breathe more without spilling out
+# of the cover's left-side column (original paragraph kept text inside
+# the column via w:ind right=4358 ≈ 3.3").
+_COVER_LABEL_W = "2880"  # 2.0"
+_COVER_VALUE_W = "5040"  # 3.5"
+_COVER_TABLE_W = "7920"  # sum (5.5")
 _COVER_TABLE_INDENT = "262"  # mirrors the original w:ind left=262
 
 
@@ -478,15 +478,15 @@ def main() -> None:
     doc = Document(str(MASTER_DOCX))
     patch_appendix(doc)
     patch_cover_page_layout(doc)
-    patch_remove_form_title_page(doc)
-    # Item 11 (3.4(e) page break) intentionally skipped — client reverted
-    # the request. The helper `patch_clause_3_4_e_pagebreak` is still
-    # defined above so it can be re-enabled by adding a single call here.
+    # Item 11 (3.4(e) page break) and the section-title-page drop are
+    # intentionally skipped — client reverted both. The helpers
+    # `patch_clause_3_4_e_pagebreak` and `patch_remove_form_title_page`
+    # are kept above so either can be re-enabled with a single call here.
     patch_body_stamps(doc)
     doc.save(str(MASTER_DOCX))
     print(
-        "python-docx edits applied (Appendix + cover layout "
-        "+ section-title page drop + body BGCC stamp → {{REFERENCE}})."
+        "python-docx edits applied "
+        "(Appendix + cover layout + body BGCC stamp → {{REFERENCE}})."
     )
 
     patch_footer_stamps(MASTER_DOCX)
