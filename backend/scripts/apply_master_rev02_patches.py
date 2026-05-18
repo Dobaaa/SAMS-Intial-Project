@@ -32,6 +32,13 @@ code. This script applies the surgical fixes in one reproducible pass:
   the break is kept in this module for future re-enablement, but is
   no longer called from ``main()``.
 
+* **Blank section-title page** — between the cover and the actual
+  Form content the master had a dedicated section holding only a
+  "Form of Subcontract Agreement" title and the BGCC subtitle, which
+  rendered as a visually empty page 2. Delete that section's
+  paragraphs (and its terminating sectPr) so the form content's
+  first page becomes page 2 in the rendered PDF.
+
 * **Cover page layout** — the three label paragraphs
   ("The Project", "Subcontractor Name", "Scope Title") used a
   tab-stop between label and colon, and when the value wrapped, the
@@ -299,6 +306,61 @@ def patch_cover_page_layout(doc) -> None:
         parent.remove(p._element)
 
 
+def patch_remove_form_title_page(doc) -> None:
+    """Delete the "Form of Subcontract Agreement" section-title page.
+
+    The master's structure between the cover and the actual Form
+    content is:
+
+        ...Annexures...                       (last cover content)
+        <sectPr nextPage>                     (ends Section 1 = cover)
+        Bhatia General Contracting Co. L.L.C. (BGCC     ← P20
+        (10 blank paragraphs)
+        Form of Subcontract Agreement
+        (10 blank paragraphs)
+        {{REFERENCE}}\\tPage 1 of 41 <sectPr nextPage>  ← P42
+        (2 blank paragraphs)
+        FORM OF SUBCONTRACT AGREEMENT THIS SUBCONTRACT…  ← real form
+
+    The whole Section 2 (P20 through P42 inclusive) is visually a
+    near-blank divider page. We remove every paragraph in that range,
+    including the sectPr-bearing P42, so what was Section 3 (form
+    body) inherits page numbering directly from Section 1's terminator
+    and renders as page 2 of the PDF.
+    """
+    paragraphs = doc.paragraphs
+
+    # Anchor: the paragraph that starts Section 2 content.
+    start_idx = next(
+        (
+            i for i, p in enumerate(paragraphs)
+            if p.text.strip().startswith("Bhatia General Contracting Co.")
+        ),
+        None,
+    )
+    if start_idx is None:
+        raise RuntimeError(
+            "Could not find Section 2 anchor 'Bhatia General Contracting Co.' "
+            "to remove the section-title page."
+        )
+
+    # End: the first paragraph at or after start_idx that carries a sectPr.
+    end_idx = None
+    for i in range(start_idx, len(paragraphs)):
+        sectPr = paragraphs[i]._element.find(".//" + qn("w:sectPr"))
+        if sectPr is not None:
+            end_idx = i
+            break
+    if end_idx is None:
+        raise RuntimeError(
+            "Could not find terminating sectPr for the section-title page."
+        )
+
+    body = paragraphs[start_idx]._element.getparent()
+    for p in paragraphs[start_idx : end_idx + 1]:
+        body.remove(p._element)
+
+
 def patch_clause_3_4_e_pagebreak(doc) -> None:
     """Item 11: page-break before "Retention Money and Final Payment"."""
     for p in doc.paragraphs:
@@ -416,14 +478,15 @@ def main() -> None:
     doc = Document(str(MASTER_DOCX))
     patch_appendix(doc)
     patch_cover_page_layout(doc)
+    patch_remove_form_title_page(doc)
     # Item 11 (3.4(e) page break) intentionally skipped — client reverted
     # the request. The helper `patch_clause_3_4_e_pagebreak` is still
     # defined above so it can be re-enabled by adding a single call here.
     patch_body_stamps(doc)
     doc.save(str(MASTER_DOCX))
     print(
-        "python-docx edits applied "
-        "(Appendix + cover layout + body BGCC stamp → {{REFERENCE}})."
+        "python-docx edits applied (Appendix + cover layout "
+        "+ section-title page drop + body BGCC stamp → {{REFERENCE}})."
     )
 
     patch_footer_stamps(MASTER_DOCX)
