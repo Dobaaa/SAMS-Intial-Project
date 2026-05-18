@@ -16,6 +16,13 @@ code. This script applies the surgical fixes in one reproducible pass:
   the cell text to interpolate ``{{A16}}`` (Project), ``{{A17}}``
   (Subcontract Works) and ``{{A18}}`` (Milestones).
 
+* **Performance Security amount** — the Appendix row at clause 3.4.2
+  hardcoded ``"10% of the Contract Price / … AED"`` with no token, so
+  the cascaded A10 value (F08 * 10%, or admin's manual override) never
+  reached the PDF. Rewrite the cell to ``"10% of the Contract Price\n
+  {{A10}} AED"``. A10 is in ``MONEY_FIELDS`` so it renders with
+  thousands separators and two decimal places.
+
 * **Item 11** — Sub-clause 3.4(e) "Retention Money and Final Payment"
   was meant to start on a fresh page, but the client reverted the
   request after seeing the rendered result. The helper that inserts
@@ -108,6 +115,9 @@ def patch_appendix(doc) -> None:
 
     # Item 2 — Time for Completion + Milestones. Locate by label so the lookup
     # still works after the deletions above shifted indices.
+    # Performance Security — also locate by label here. The row's data cell
+    # held only static "10% of the Contract Price / … AED" text; rewrite to
+    # interpolate {{A10}} (the cascaded AED amount).
     rows = list(appendix.rows)
     for row in rows:
         label = row.cells[0].text.strip().lower()
@@ -119,6 +129,11 @@ def patch_appendix(doc) -> None:
             )
         elif "milestones" in label or "sections" in label:
             _set_cell_text(row.cells[2], "{{A18}}")
+        elif label == "performance security":
+            _set_cell_text(
+                row.cells[2],
+                "10% of the Contract Price\n{{A10}} AED",
+            )
 
 
 def patch_clause_3_4_e_pagebreak(doc) -> None:
@@ -260,7 +275,7 @@ def main() -> None:
             for cell in row.cells:
                 for p in cell.paragraphs:
                     found.update(re.findall(r"\{\{([A-Z][A-Z0-9_]*)\}\}", p.text))
-    required = {"A05", "A06", "A16", "A17", "A18", "REFERENCE"}
+    required = {"A05", "A06", "A10", "A16", "A17", "A18", "REFERENCE"}
     missing = required - found
     if missing:
         raise SystemExit(
