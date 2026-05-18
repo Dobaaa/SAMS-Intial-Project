@@ -17,8 +17,10 @@ code. This script applies the surgical fixes in one reproducible pass:
   (Subcontract Works) and ``{{A18}}`` (Milestones).
 
 * **Item 11** — Sub-clause 3.4(e) "Retention Money and Final Payment"
-  should start on a fresh page to match the BGCC source layout. Insert a
-  page-break paragraph immediately before it.
+  was meant to start on a fresh page, but the client reverted the
+  request after seeing the rendered result. The helper that inserts
+  the break is kept in this module for future re-enablement, but is
+  no longer called from ``main()``.
 
 * **Header stamp** — every page's running header reads
   "BGCC P-XXX / SCA#-ZZZ" as a static placeholder. Replace it with a
@@ -235,12 +237,14 @@ def main() -> None:
 
     doc = Document(str(MASTER_DOCX))
     patch_appendix(doc)
-    patch_clause_3_4_e_pagebreak(doc)
+    # Item 11 (3.4(e) page break) intentionally skipped — client reverted
+    # the request. The helper `patch_clause_3_4_e_pagebreak` is still
+    # defined above so it can be re-enabled by adding a single call here.
     patch_body_stamps(doc)
     doc.save(str(MASTER_DOCX))
     print(
         "python-docx edits applied "
-        "(Appendix + 3.4(e) page break + body BGCC stamp → {{REFERENCE}})."
+        "(Appendix + body BGCC stamp → {{REFERENCE}})."
     )
 
     patch_footer_stamps(MASTER_DOCX)
