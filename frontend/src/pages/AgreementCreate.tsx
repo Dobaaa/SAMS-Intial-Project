@@ -172,6 +172,7 @@ export default function AgreementCreate() {
   const validateStep1 = (): Record<string, string> => {
     const e: Record<string, string> = {};
     if (isBlank(project.project_name)) e["project.project_name"] = "Project name is required.";
+    if (isBlank(project.project_code)) e["project.project_code"] = "Site number is required (used in the reference number).";
     if (isBlank(project.project_location)) e["project.project_location"] = "Project location is required.";
     if (isBlank(project.employer_name)) e["project.employer_name"] = "Employer is required.";
     if (isBlank(subcontractor.company_name)) e["subcontractor.company_name"] = "Subcontractor company name is required.";
@@ -478,8 +479,9 @@ export default function AgreementCreate() {
               {errors["project.project_name"] && <p className="mt-1 text-xs text-red-600">{errors["project.project_name"]}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm">SITE_NO — Site number (used as the {`{SITE_NO}`} part of the reference, e.g. SAG-2026-319-001)</label>
-              <input className="w-full rounded border p-2" value={project.project_code} onChange={(e) => setProject({ ...project, project_code: e.target.value })} />
+              <label className="mb-1 block text-sm">SITE_NO — Site number (used as the {`{SITE_NO}`} part of the reference, e.g. SAG-2026-319-001) <span className="text-red-500">*</span></label>
+              <input className={`w-full rounded border p-2${errors["project.project_code"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_code} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_code"); setProject({ ...project, project_code: e.target.value }); }} />
+              {errors["project.project_code"] && <p className="mt-1 text-xs text-red-600">{errors["project.project_code"]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm">PROJECT_LOCATION — Location <span className="text-red-500">*</span></label>
