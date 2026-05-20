@@ -28,8 +28,8 @@ export default function FieldInput({ field, value, onChange }: Props) {
 
   if (field.field_id === "C14") {
     // Performance Security instrument the subcontractor will provide. Bank
-    // Guarantee is the standard contractual form; Company Undated Security
-    // Cheque is the BGCC-internal alternative for smaller-value subcontracts.
+    // Guarantee is the standard contractual form; Company Security Cheque
+    // is the BGCC-internal alternative for smaller-value subcontracts.
     return (
       <select
         className="w-full rounded border p-2"
@@ -38,7 +38,7 @@ export default function FieldInput({ field, value, onChange }: Props) {
       >
         <option value="">Select security type</option>
         <option value="Bank Guarantee Cheque">Bank Guarantee Cheque</option>
-        <option value="Company Undated Security Cheque">Company Undated Security Cheque</option>
+        <option value="Company Security Cheque">Company Security Cheque</option>
       </select>
     );
   }

@@ -51,7 +51,7 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.conditions, "C12", "10.1", "Insurance submission deadline (days)", InputTypeEnum.number, sort_order=12),
     FieldSeed(TemplateTypeEnum.conditions, "C13", "13.3", "Dispute Resolution Jurisdiction", InputTypeEnum.text, is_required=True, sort_order=13),
     # Performance Security Type: admin picks Bank Guarantee Cheque vs
-    # Company Undated Security Cheque. Cascades into the appendix beneath
+    # Company Security Cheque. Cascades into the appendix beneath
     # A10 (Performance Security amount) for the executed agreement.
     FieldSeed(TemplateTypeEnum.conditions, "C14", "3.4.2", "Performance Security Type", InputTypeEnum.dropdown, is_required=True, appendix_row_label="Performance Security Type", appendix_clause_ref="3.4.2", sort_order=14),
     # Appendix (A01-A23)
