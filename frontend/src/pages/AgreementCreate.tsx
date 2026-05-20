@@ -474,31 +474,31 @@ export default function AgreementCreate() {
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-sky-800">Project</h3>
             <div>
-              <label className="mb-1 block text-sm">PROJECT_NAME — Project name <span className="text-red-500">*</span></label>
+              <label className="mb-1 block text-sm">Project name <span className="text-red-500">*</span></label>
               <input className={`w-full rounded border p-2${errors["project.project_name"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_name} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_name"); setProject({ ...project, project_name: e.target.value }); }} />
               {errors["project.project_name"] && <p className="mt-1 text-xs text-red-600">{errors["project.project_name"]}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm">SITE_NO — Site number (used as the {`{SITE_NO}`} part of the reference, e.g. SAG-2026-319-001) <span className="text-red-500">*</span></label>
+              <label className="mb-1 block text-sm">Site number (used as the {`{SITE_NO}`} part of the reference, e.g. SAG-2026-319-001) <span className="text-red-500">*</span></label>
               <input className={`w-full rounded border p-2${errors["project.project_code"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_code} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_code"); setProject({ ...project, project_code: e.target.value }); }} />
               {errors["project.project_code"] && <p className="mt-1 text-xs text-red-600">{errors["project.project_code"]}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm">PROJECT_LOCATION — Location <span className="text-red-500">*</span></label>
+              <label className="mb-1 block text-sm">Location <span className="text-red-500">*</span></label>
               <input className={`w-full rounded border p-2${errors["project.project_location"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_location} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_location"); setProject({ ...project, project_location: e.target.value }); }} />
               {errors["project.project_location"] && <p className="mt-1 text-xs text-red-600">{errors["project.project_location"]}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm">EMPLOYER_NAME — Employer <span className="text-red-500">*</span></label>
+              <label className="mb-1 block text-sm">Employer <span className="text-red-500">*</span></label>
               <input className={`w-full rounded border p-2${errors["project.employer_name"] ? " border-red-500 bg-red-50" : ""}`} value={project.employer_name} onChange={(e) => { if (e.target.value.trim()) clearError("project.employer_name"); setProject({ ...project, employer_name: e.target.value }); }} />
               {errors["project.employer_name"] && <p className="mt-1 text-xs text-red-600">{errors["project.employer_name"]}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm">ENGINEER_NAME — Engineer / Consultant</label>
+              <label className="mb-1 block text-sm">Engineer / Consultant</label>
               <input className="w-full rounded border p-2" value={project.engineer_name} onChange={(e) => setProject({ ...project, engineer_name: e.target.value })} />
             </div>
             <div>
-              <label className="mb-1 block text-sm">REFERENCE — Reference number override (optional, auto-generated otherwise)</label>
+              <label className="mb-1 block text-sm">Reference number override (optional, auto-generated otherwise)</label>
               <input className="w-full rounded border p-2" value={reference} onChange={(e) => setReference(e.target.value)} />
             </div>
           </section>
@@ -544,24 +544,24 @@ export default function AgreementCreate() {
             )}
 
             <div>
-              <label className="mb-1 block text-sm">SUB_COMPANY — Company name <span className="text-red-500">*</span></label>
+              <label className="mb-1 block text-sm">Company name <span className="text-red-500">*</span></label>
               <input className={`w-full rounded border p-2${errors["subcontractor.company_name"] ? " border-red-500 bg-red-50" : ""}`} value={subcontractor.company_name} onChange={(e) => { if (e.target.value.trim()) clearError("subcontractor.company_name"); setSubcontractor({ ...subcontractor, company_name: e.target.value }); }} />
               {errors["subcontractor.company_name"] && <p className="mt-1 text-xs text-red-600">{errors["subcontractor.company_name"]}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm">SUB_PO_BOX — PO Box</label>
+              <label className="mb-1 block text-sm">PO Box</label>
               <input className="w-full rounded border p-2" value={subcontractor.po_box} onChange={(e) => setSubcontractor({ ...subcontractor, po_box: e.target.value })} />
             </div>
             <div>
-              <label className="mb-1 block text-sm">SUB_TRADE_LICENCE — Trade licence no</label>
+              <label className="mb-1 block text-sm">Trade licence no</label>
               <input className="w-full rounded border p-2" value={subcontractor.trade_licence_no} onChange={(e) => setSubcontractor({ ...subcontractor, trade_licence_no: e.target.value })} />
             </div>
             <div>
-              <label className="mb-1 block text-sm">SUB_CONTACT — Contact person</label>
+              <label className="mb-1 block text-sm">Contact person</label>
               <input className="w-full rounded border p-2" value={subcontractor.contact_person} onChange={(e) => setSubcontractor({ ...subcontractor, contact_person: e.target.value })} />
             </div>
             <div>
-              <label className="mb-1 block text-sm">SUB_EMAIL — Email</label>
+              <label className="mb-1 block text-sm">Email</label>
               <input className="w-full rounded border p-2" value={subcontractor.email} onChange={(e) => setSubcontractor({ ...subcontractor, email: e.target.value })} />
             </div>
           </section>
