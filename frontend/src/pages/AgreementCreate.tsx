@@ -98,7 +98,19 @@ export default function AgreementCreate() {
     }>
   >([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [projectSearch, setProjectSearch] = useState<string>("");
   const projectLocked = Boolean(selectedProjectId) && selectedProjectId !== "others";
+  // Filter the dropdown by site no OR project name (case-insensitive). Always
+  // keep the currently-selected project visible so the picker doesn't blank out.
+  const filteredProjectOptions = projectOptions.filter((p) => {
+    if (p.id === selectedProjectId) return true;
+    const q = projectSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      p.project_code.toLowerCase().includes(q) ||
+      p.project_name.toLowerCase().includes(q)
+    );
+  });
   // Mandatory-field validation errors, keyed by field_id (master fields) or
   // "project.<x>" / "subcontractor.<x>" (Step 1 party inputs). Populated when
   // the user tries to advance/submit with required fields blank; each entry
@@ -534,19 +546,39 @@ export default function AgreementCreate() {
             {!isEditMode && (
               <div className="space-y-1 rounded-lg border border-sky-100 bg-sky-50/50 p-3">
                 <label className="block text-xs font-semibold text-sky-800">Select a project</label>
+                <input
+                  type="text"
+                  className="w-full rounded border p-2 text-sm"
+                  placeholder="Search by site no or project name…"
+                  value={projectSearch}
+                  onChange={(e) => setProjectSearch(e.target.value)}
+                />
                 <select
                   className="w-full rounded border p-2"
                   value={selectedProjectId}
                   onChange={(e) => applyProjectSelection(e.target.value)}
                 >
                   <option value="">— Select a project —</option>
-                  {projectOptions.map((p) => (
+                  {filteredProjectOptions.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.project_code} · {p.project_name}
                     </option>
                   ))}
                   <option value="others">Others (enter manually)</option>
                 </select>
+                {projectSearch.trim() && (() => {
+                  const q = projectSearch.trim().toLowerCase();
+                  const n = projectOptions.filter(
+                    (p) =>
+                      p.project_code.toLowerCase().includes(q) ||
+                      p.project_name.toLowerCase().includes(q)
+                  ).length;
+                  return (
+                    <p className="text-xs text-sky-700">
+                      {n} match{n === 1 ? "" : "es"}{n === 0 ? " — pick “Others” to enter manually" : ""}
+                    </p>
+                  );
+                })()}
                 <p className="text-xs text-sky-700">
                   {projectLocked
                     ? "Project details autofilled from the selected project. Choose “Others” to enter a new project."
