@@ -83,6 +83,22 @@ export default function AgreementCreate() {
     }>
   >([]);
   const [subSearch, setSubSearch] = useState("");
+  // Predefined-project picker (BGCC seeded projects). Selecting one autofills
+  // the project fields + reference; "others" lets the admin type a new project
+  // which is saved to the projects table on draft creation.
+  const [projectOptions, setProjectOptions] = useState<
+    Array<{
+      id: string;
+      project_name: string;
+      project_code: string;
+      project_location: string;
+      employer_name: string;
+      engineer_name: string;
+      reference: string;
+    }>
+  >([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const projectLocked = Boolean(selectedProjectId) && selectedProjectId !== "others";
   // Mandatory-field validation errors, keyed by field_id (master fields) or
   // "project.<x>" / "subcontractor.<x>" (Step 1 party inputs). Populated when
   // the user tries to advance/submit with required fields blank; each entry
@@ -266,7 +282,11 @@ export default function AgreementCreate() {
   const createDraft = async () => {
     if (!passesValidation(validateStep1)) return;
     try {
-      const { data } = await api.post("/agreements/", { project, subcontractor, reference_number: reference || undefined });
+      const { data } = await api.post("/agreements/", {
+        project: { ...project, reference: reference || undefined },
+        subcontractor,
+        reference_number: reference || undefined,
+      });
       setAgreementId(data.id);
       setReference(data.reference_number);
       // Sync F02-F07 from Step 1's project/subcontractor inputs, plus any
@@ -301,6 +321,43 @@ export default function AgreementCreate() {
     void loadTemplateFields();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load saved projects (incl. BGCC predefined) once for the Step 1 dropdown.
+  useEffect(() => {
+    if (isEditMode) return; // picker only makes sense for fresh drafts
+    (async () => {
+      try {
+        const { data } = await api.get("/projects/");
+        setProjectOptions(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.warn("Failed to load projects", err);
+      }
+    })();
+  }, [isEditMode]);
+
+  // Pick a predefined project -> autofill all project fields + reference and
+  // lock them. "others" clears the fields for manual entry; the new project is
+  // saved to the projects table when the draft is created.
+  const applyProjectSelection = (id: string) => {
+    setSelectedProjectId(id);
+    setErrors({});
+    if (id === "others") {
+      setProject({ project_name: "", project_code: "", project_location: "", employer_name: "", engineer_name: "" });
+      setReference("");
+      return;
+    }
+    if (!id) return;
+    const p = projectOptions.find((o) => o.id === id);
+    if (!p) return;
+    setProject({
+      project_name: p.project_name || "",
+      project_code: p.project_code || "",
+      project_location: p.project_location || "",
+      employer_name: p.employer_name || "",
+      engineer_name: p.engineer_name || "",
+    });
+    setReference(p.reference || "");
+  };
 
   // Subcontractor picker: debounce the search input and call the list
   // endpoint so admin can pick an existing subcontractor instead of re-typing
@@ -473,33 +530,58 @@ export default function AgreementCreate() {
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-sky-800">Project</h3>
+
+            {!isEditMode && (
+              <div className="space-y-1 rounded-lg border border-sky-100 bg-sky-50/50 p-3">
+                <label className="block text-xs font-semibold text-sky-800">Select a project</label>
+                <select
+                  className="w-full rounded border p-2"
+                  value={selectedProjectId}
+                  onChange={(e) => applyProjectSelection(e.target.value)}
+                >
+                  <option value="">— Select a project —</option>
+                  {projectOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.project_code} · {p.project_name}
+                    </option>
+                  ))}
+                  <option value="others">Others (enter manually)</option>
+                </select>
+                <p className="text-xs text-sky-700">
+                  {projectLocked
+                    ? "Project details autofilled from the selected project. Choose “Others” to enter a new project."
+                    : "Pick a predefined project to autofill its details, or “Others” to type a new one (it’s saved when you create the draft)."}
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="mb-1 block text-sm">Project name <span className="text-red-500">*</span></label>
-              <input className={`w-full rounded border p-2${errors["project.project_name"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_name} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_name"); setProject({ ...project, project_name: e.target.value }); }} />
+              <input readOnly={projectLocked} className={`w-full rounded border p-2${projectLocked ? " bg-gray-100" : ""}${errors["project.project_name"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_name} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_name"); setProject({ ...project, project_name: e.target.value }); }} />
               {errors["project.project_name"] && <p className="mt-1 text-xs text-red-600">{errors["project.project_name"]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm">Site number (used as the {`{SITE_NO}`} part of the reference, e.g. SAG-2026-319-001) <span className="text-red-500">*</span></label>
-              <input className={`w-full rounded border p-2${errors["project.project_code"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_code} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_code"); setProject({ ...project, project_code: e.target.value }); }} />
+              <input readOnly={projectLocked} className={`w-full rounded border p-2${projectLocked ? " bg-gray-100" : ""}${errors["project.project_code"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_code} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_code"); setProject({ ...project, project_code: e.target.value }); }} />
               {errors["project.project_code"] && <p className="mt-1 text-xs text-red-600">{errors["project.project_code"]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm">Location <span className="text-red-500">*</span></label>
-              <input className={`w-full rounded border p-2${errors["project.project_location"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_location} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_location"); setProject({ ...project, project_location: e.target.value }); }} />
+              <input readOnly={projectLocked} className={`w-full rounded border p-2${projectLocked ? " bg-gray-100" : ""}${errors["project.project_location"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_location} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_location"); setProject({ ...project, project_location: e.target.value }); }} />
               {errors["project.project_location"] && <p className="mt-1 text-xs text-red-600">{errors["project.project_location"]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm">Employer <span className="text-red-500">*</span></label>
-              <input className={`w-full rounded border p-2${errors["project.employer_name"] ? " border-red-500 bg-red-50" : ""}`} value={project.employer_name} onChange={(e) => { if (e.target.value.trim()) clearError("project.employer_name"); setProject({ ...project, employer_name: e.target.value }); }} />
+              <input readOnly={projectLocked} className={`w-full rounded border p-2${projectLocked ? " bg-gray-100" : ""}${errors["project.employer_name"] ? " border-red-500 bg-red-50" : ""}`} value={project.employer_name} onChange={(e) => { if (e.target.value.trim()) clearError("project.employer_name"); setProject({ ...project, employer_name: e.target.value }); }} />
               {errors["project.employer_name"] && <p className="mt-1 text-xs text-red-600">{errors["project.employer_name"]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm">Engineer / Consultant</label>
-              <input className="w-full rounded border p-2" value={project.engineer_name} onChange={(e) => setProject({ ...project, engineer_name: e.target.value })} />
+              <input readOnly={projectLocked} className={`w-full rounded border p-2${projectLocked ? " bg-gray-100" : ""}`} value={project.engineer_name} onChange={(e) => setProject({ ...project, engineer_name: e.target.value })} />
             </div>
             <div>
               <label className="mb-1 block text-sm">Reference number override (optional, auto-generated otherwise)</label>
-              <input className="w-full rounded border p-2" value={reference} onChange={(e) => setReference(e.target.value)} />
+              <input readOnly={projectLocked} className={`w-full rounded border p-2${projectLocked ? " bg-gray-100" : ""}`} value={reference} onChange={(e) => setReference(e.target.value)} />
             </div>
           </section>
 

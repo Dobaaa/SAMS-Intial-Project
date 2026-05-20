@@ -23,6 +23,32 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agreements", tags=["agreements"])
 subcontractors_router = APIRouter(prefix="/subcontractors", tags=["subcontractors"])
+projects_router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+@projects_router.get("/")
+async def list_projects(
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
+) -> list[dict]:
+    """Return saved projects (incl. BGCC predefined ones) so the wizard can
+    offer a dropdown that autofills name / site no / location / employer /
+    engineer / reference. Ordered by name for predictable picker UX."""
+    from models.agreement import Project
+
+    res = await db.execute(select(Project).order_by(Project.project_name.asc()))
+    return [
+        {
+            "id": str(p.id),
+            "project_name": p.project_name,
+            "project_code": p.project_code,
+            "project_location": p.project_location or "",
+            "employer_name": p.employer_name or "",
+            "engineer_name": p.engineer_name or "",
+            "reference": p.reference or "",
+        }
+        for p in res.scalars().all()
+    ]
 
 
 @subcontractors_router.get("/")
@@ -67,6 +93,7 @@ class ProjectPayload(BaseModel):
     project_location: str | None = None
     employer_name: str | None = None
     engineer_name: str | None = None
+    reference: str | None = None
 
 
 class SubcontractorPayload(BaseModel):

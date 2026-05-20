@@ -29,6 +29,9 @@ class Project(Base):
     project_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     employer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     engineer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Predefined per-project reference template (e.g. "SAG-BGCC-QS-2026-319-SXX").
+    # Autofilled into the wizard when a saved project is picked from the dropdown.
+    reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
