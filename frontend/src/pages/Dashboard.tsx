@@ -57,6 +57,17 @@ export default function Dashboard() {
   const [loadError, setLoadError] = useState<string>("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  // Click a project or subcontractor name in the table to group the list down
+  // to that project / subcontractor. Cleared via the chip above the table.
+  const [group, setGroup] = useState<{ type: "project" | "subcontractor"; value: string } | null>(null);
+
+  const displayedAgreements = group
+    ? agreements.filter((a) =>
+        group.type === "project"
+          ? (a.project_name ?? "") === group.value
+          : (a.subcontractor_name ?? "") === group.value
+      )
+    : agreements;
 
   const loadAll = async () => {
     try {
@@ -260,6 +271,20 @@ export default function Dashboard() {
           <input className="rounded-lg border border-sky-200 p-2" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           <button className="rounded-lg bg-sky-600 px-3 py-2 text-white transition hover:bg-sky-700" onClick={loadAll}>Apply</button>
         </div>
+        {group && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2 text-sm text-sky-800">
+            <span>
+              Showing agreements for {group.type === "project" ? "project" : "subcontractor"}:{" "}
+              <strong>{group.value}</strong> ({displayedAgreements.length})
+            </span>
+            <button
+              className="rounded-full bg-sky-200 px-2 py-0.5 text-xs font-semibold hover:bg-sky-300"
+              onClick={() => setGroup(null)}
+            >
+              Clear ✕
+            </button>
+          </div>
+        )}
         <table className="w-full border-collapse overflow-hidden rounded-lg border border-sky-100">
           <thead>
             <tr className="bg-sky-50 text-sky-900">
@@ -272,7 +297,7 @@ export default function Dashboard() {
             </tr>
           </thead>
           <tbody>
-            {agreements.map((a) => (
+            {displayedAgreements.map((a) => (
               <tr key={a.id}>
                 <td className="border border-sky-100 p-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -288,8 +313,32 @@ export default function Dashboard() {
                     )}
                   </div>
                 </td>
-                <td className="border border-sky-100 p-2">{a.project_name}</td>
-                <td className="border border-sky-100 p-2">{a.subcontractor_name}</td>
+                <td className="border border-sky-100 p-2">
+                  {a.project_name ? (
+                    <button
+                      className="text-left text-sky-700 underline-offset-2 hover:underline"
+                      onClick={() => setGroup({ type: "project", value: a.project_name! })}
+                      title="Show all agreements for this project"
+                    >
+                      {a.project_name}
+                    </button>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+                <td className="border border-sky-100 p-2">
+                  {a.subcontractor_name ? (
+                    <button
+                      className="text-left text-sky-700 underline-offset-2 hover:underline"
+                      onClick={() => setGroup({ type: "subcontractor", value: a.subcontractor_name! })}
+                      title="Show all agreements for this subcontractor"
+                    >
+                      {a.subcontractor_name}
+                    </button>
+                  ) : (
+                    "-"
+                  )}
+                </td>
                 <td className="border border-sky-100 p-2">{a.status_label}</td>
                 <td className="border border-sky-100 p-2">{a.status_updated_on ? formatDateTime(a.status_updated_on) : "-"}</td>
                 <td className="border border-sky-100 p-2">
