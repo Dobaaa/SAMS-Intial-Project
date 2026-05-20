@@ -17,7 +17,7 @@ import logging
 from services.agreement_service import create_draft_agreement, submit_for_review, update_agreement_fields
 from services.pdf_service import generate_agreement_pdf
 from services.resolution_service import create_resolution_sheet, record_subcontractor_response
-from services.workflow_engine import resubmit_agreement
+from services.workflow_engine import all_main_steps_approved, resubmit_agreement
 
 log = logging.getLogger(__name__)
 
@@ -531,6 +531,13 @@ async def send_to_subcontractor(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
 
     if agreement.current_status == AgreementStatusEnum.under_internal_review:
+        # Flat review model: forwarding is gated on every reviewer role
+        # (PD, Accounts, OM, GM) having approved.
+        if not await all_main_steps_approved(db, agreement.id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All reviewer roles (PD, Accounts, OM, GM) must approve before forwarding to the subcontractor.",
+            )
         agreement.current_status = AgreementStatusEnum.draft_forwarded_to_subcontractor
     elif agreement.current_status == AgreementStatusEnum.under_bgcc_revision:
         agreement.current_status = AgreementStatusEnum.under_subcontractor_signature

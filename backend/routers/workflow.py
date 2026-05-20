@@ -10,6 +10,7 @@ from middleware.rbac import get_current_user
 from models.user import User
 from models.workflow import WorkflowStep
 from services.workflow_engine import (
+    add_comment,
     approve_step,
     get_pending_for_role,
     get_workflow_agreement_summary,
@@ -46,6 +47,30 @@ async def approve_workflow_step(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this role")
     await approve_step(db, step, current_user)
     return {"status": "approved"}
+
+
+@router.post("/{step_id}/comment")
+async def comment_workflow_step(
+    step_id: uuid.UUID,
+    payload: ReturnPayload,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Flat-model review comment: non-blocking. The reviewer for this step
+    records a comment visible to all roles without approving and without
+    bouncing the agreement back to Admin."""
+    step_res = await db.execute(select(WorkflowStep).where(WorkflowStep.id == step_id))
+    step = step_res.scalar_one_or_none()
+    if not step:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow step not found")
+    if step.role_required != current_user.role:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this role")
+
+    try:
+        comment = await add_comment(db, step, current_user, payload.comment_text, payload.clause_reference)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"status": "commented", "comment_id": str(comment.id)}
 
 
 @router.post("/{step_id}/return")

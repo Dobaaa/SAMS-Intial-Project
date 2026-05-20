@@ -235,16 +235,30 @@ async def test_submit_creates_four_workflow_steps(authed_client, admin_user):
 
 
 @pytest.mark.asyncio
-async def test_send_to_subcontractor_transitions_from_internal_review(authed_client, admin_user):
-    """After the main chain finishes, POST /send-to-subcontractor flips status."""
+async def test_send_to_subcontractor_transitions_from_internal_review(authed_client, admin_user, db_session):
+    """After every reviewer role approves, POST /send-to-subcontractor flips status."""
+    import uuid
+
+    from sqlalchemy import select
+
+    from models.workflow import WorkflowStep, WorkflowStepStatusEnum
+
     await _seed_active_templates(authed_client)
     agreement = await _create_agreement(authed_client)
     await authed_client.post(f"/api/agreements/{agreement['id']}/submit")
 
-    # Shortcut: manually flip through workflow approvals via the model layer
-    # isn't available through HTTP without role-specific users, so just push
-    # the agreement into under_internal_review (which it already is) and test
-    # the transition.
+    # Flat review model gates forwarding on all reviewer roles approving.
+    # HTTP approval needs role-specific users (covered in test_workflow), so
+    # here we approve every main-chain step directly at the model layer.
+    steps = (
+        await db_session.execute(
+            select(WorkflowStep).where(WorkflowStep.agreement_id == uuid.UUID(agreement["id"]))
+        )
+    ).scalars().all()
+    for s in steps:
+        s.status = WorkflowStepStatusEnum.approved
+    await db_session.commit()
+
     resp = await authed_client.post(f"/api/agreements/{agreement['id']}/send-to-subcontractor")
     assert resp.status_code == 200
     assert resp.json()["agreement_status"] == "draft_forwarded_to_subcontractor"

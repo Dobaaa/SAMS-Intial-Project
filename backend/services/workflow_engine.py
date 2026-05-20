@@ -42,20 +42,17 @@ async def get_pending_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
 
     pending_items: list[dict] = []
     for step in steps:
-        if step.step_order > 1:
-            # Stay within the same chain (main vs resolution); both share
-            # the workflow_steps table so step_order=1 alone matches two rows.
-            is_resolution = _is_resolution_step(step)
+        # Main review chain is FLAT/parallel: every reviewer role (PD,
+        # Accounts, OM, GM) sees the agreement as soon as it's submitted,
+        # with no ordering dependency. The resolution chain (OM -> GM) stays
+        # sequential, so only resolution steps are gated on the prior step.
+        if _is_resolution_step(step) and step.step_order > 1:
             prev_res = await db.execute(
                 select(WorkflowStep).where(
                     and_(
                         WorkflowStep.agreement_id == step.agreement_id,
                         WorkflowStep.step_order == step.step_order - 1,
-                        (
-                            WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES)
-                            if is_resolution
-                            else ~WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES)
-                        ),
+                        WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES),
                     )
                 )
             )
@@ -101,30 +98,38 @@ async def _notify_admins_agreement_ready_to_forward(
         )
 
 
-async def approve_step(db: AsyncSession, step: WorkflowStep, actor: User) -> None:
-    step.status = WorkflowStepStatusEnum.approved
-    step.acted_by = actor.id
-    step.acted_at = datetime.now(UTC)
+async def all_main_steps_approved(db: AsyncSession, agreement_id) -> bool:
+    """True when every reviewer role's main-chain step is approved.
 
-    agreement = await db.get(Agreement, step.agreement_id)
-    is_resolution = _is_resolution_step(step)
-    # Main chain has 4 steps; resolution chain has 2 (OM -> GM).
-    last_order = 2 if is_resolution else 4
+    The flat review model completes only when PD, Accounts, OM and GM have all
+    approved. Resolution steps (a separate sequential chain) are excluded.
+    """
+    res = await db.execute(
+        select(WorkflowStep).where(
+            and_(
+                WorkflowStep.agreement_id == agreement_id,
+                ~WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES),
+            )
+        )
+    )
+    steps = res.scalars().all()
+    return bool(steps) and all(s.status == WorkflowStepStatusEnum.approved for s in steps)
 
-    # Notify the next role for mid-chain approvals (both kinds).
+
+async def _handle_resolution_approval(
+    db: AsyncSession, step: WorkflowStep, agreement: Agreement | None
+) -> None:
+    """Resolution chain (OM -> GM) stays sequential: notify the next role on
+    mid-chain approval, and on the final (GM) approval flag Admin that the
+    revised agreement is ready to send back to the subcontractor."""
+    last_order = 2
     if step.step_order < last_order:
         next_res = await db.execute(
             select(WorkflowStep).where(
                 and_(
                     WorkflowStep.agreement_id == step.agreement_id,
                     WorkflowStep.step_order == step.step_order + 1,
-                    # Stay within the same chain so resolution-OM's "next"
-                    # doesn't accidentally pick up a stale main-chain step.
-                    (
-                        WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES)
-                        if is_resolution
-                        else ~WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES)
-                    ),
+                    WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES),
                 )
             )
         )
@@ -143,18 +148,27 @@ async def approve_step(db: AsyncSession, step: WorkflowStep, actor: User) -> Non
                         "Please review and take action."
                     ),
                 )
-
-    # Terminal approvals.
     if agreement and step.step_order == last_order:
-        if is_resolution:
-            # Resolution cycle complete -- Admin can now send the revised
-            # agreement to the subcontractor. Status stays under_bgcc_revision
-            # until Admin triggers POST /api/agreements/{id}/send-to-subcontractor.
-            pass
-        else:
-            # Main chain GM approval.
-            agreement.gm_approval_date = date.today()
-            agreement.current_status = AgreementStatusEnum.under_internal_review
+        agreement.status_updated_on = datetime.now(UTC)
+        await _notify_admins_agreement_ready_to_forward(db, agreement)
+
+
+async def approve_step(db: AsyncSession, step: WorkflowStep, actor: User) -> None:
+    step.status = WorkflowStepStatusEnum.approved
+    step.acted_by = actor.id
+    step.acted_at = datetime.now(UTC)
+
+    agreement = await db.get(Agreement, step.agreement_id)
+
+    if _is_resolution_step(step):
+        await _handle_resolution_approval(db, step, agreement)
+    elif agreement and await all_main_steps_approved(db, agreement.id):
+        # Flat parallel review complete: every reviewer role has approved, so
+        # the agreement is ready for Admin to forward to the subcontractor.
+        # Status stays under_internal_review until Admin triggers
+        # POST /api/agreements/{id}/send-to-subcontractor.
+        agreement.gm_approval_date = date.today()
+        agreement.current_status = AgreementStatusEnum.under_internal_review
         agreement.status_updated_on = datetime.now(UTC)
         await _notify_admins_agreement_ready_to_forward(db, agreement)
 
@@ -205,6 +219,55 @@ async def return_step(
             body=(
                 f"Agreement returned by: {actor.name}\n"
                 f"Step: {step.step_name}\n"
+                f"Comment: {comment.comment_text}\n"
+                f"Clause Reference: {clause_reference or 'N/A'}"
+            ),
+        )
+
+    await db.commit()
+    await db.refresh(comment)
+    return comment
+
+
+async def add_comment(
+    db: AsyncSession,
+    step: WorkflowStep,
+    actor: User,
+    comment_text: str,
+    clause_reference: str | None = None,
+) -> WorkflowComment:
+    """Flat-model review comment — NON-blocking.
+
+    Records a comment against the reviewer's step so it's visible to every
+    role, but deliberately does NOT touch the step status or the agreement
+    status. The reviewer can still approve later, no chain restart is
+    triggered, and other reviewers can approve in parallel. Admin is notified
+    so they can resolve the comment.
+    """
+    if not comment_text.strip():
+        raise ValueError("comment_text cannot be empty")
+
+    comment = WorkflowComment(
+        workflow_step_id=step.id,
+        agreement_id=step.agreement_id,
+        original_author_id=actor.id,
+        last_edited_by_id=actor.id,
+        comment_text=comment_text.strip(),
+        clause_reference=clause_reference,
+    )
+    db.add(comment)
+    await db.flush()
+
+    agreement = await db.get(Agreement, step.agreement_id)
+    admin_result = await db.execute(
+        select(User).where(User.role == RoleEnum.admin, User.is_active.is_(True))
+    )
+    for admin in admin_result.scalars().all():
+        await send_email(
+            to_email=admin.email,
+            subject=f"SAMS Review Comment - {agreement.reference_number if agreement else step.agreement_id}",
+            body=(
+                f"New review comment by {actor.name} ({step.role_required.value}).\n"
                 f"Comment: {comment.comment_text}\n"
                 f"Clause Reference: {clause_reference or 'N/A'}"
             ),
@@ -280,6 +343,7 @@ async def get_workflow_agreement_summary(db: AsyncSession, agreement_id: str) ->
     comments_result = await db.execute(
         select(WorkflowComment)
         .where(WorkflowComment.agreement_id == agreement.id)
+        .options(selectinload(WorkflowComment.original_author))
         .order_by(WorkflowComment.created_at.asc())
     )
     comments = comments_result.scalars().all()
@@ -300,6 +364,8 @@ async def get_workflow_agreement_summary(db: AsyncSession, agreement_id: str) ->
                 "clause_reference": c.clause_reference,
                 "status": c.status.value,
                 "created_at": c.created_at.isoformat() if c.created_at else None,
+                "author_name": c.original_author.name if c.original_author else None,
+                "author_role": c.original_author.role.value if c.original_author else None,
             }
             for c in comments
         ],

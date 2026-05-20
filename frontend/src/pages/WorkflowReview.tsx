@@ -48,6 +48,8 @@ type WorkflowAgreementDetails = {
     clause_reference?: string | null;
     status: string;
     created_at?: string | null;
+    author_name?: string | null;
+    author_role?: string | null;
   }>;
 };
 
@@ -152,28 +154,33 @@ export default function WorkflowReview() {
     }
   };
 
-  const returnForFix = async () => {
+  // Flat-model review comment: non-blocking. Records the comment for all
+  // roles to see; the agreement is NOT bounced to Admin and this reviewer's
+  // step stays pending so they can still approve later.
+  const addComment = async () => {
     if (!selectedStepId || busy) return;
     if (!commentText.trim()) {
-      toast.error("A comment is required to return the agreement.");
+      toast.error("Please enter a comment.");
       return;
     }
     setBusy(true);
     try {
       const ref = details?.agreement.reference_number ?? "";
-      await api.post(`/workflow/${selectedStepId}/return`, {
+      const agreementId = details?.agreement.id;
+      await api.post(`/workflow/${selectedStepId}/comment`, {
         comment_text: commentText,
         clause_reference: clauseReference || undefined,
       });
-      toast.success(`Returned ${ref} to admin with comment.`);
+      toast.success(`Comment added to ${ref}. All reviewers can see it.`);
       setCommentText("");
       setClauseReference("");
-      setSelectedStepId("");
-      setDetails(null);
-      await loadPending();
+      if (agreementId) {
+        const detailsResp = await api.get(`/workflow/agreements/${agreementId}`);
+        setDetails(detailsResp.data);
+      }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
-      toast.error(e?.response?.data?.detail ?? "Failed to return. See console for details.");
+      toast.error(e?.response?.data?.detail ?? "Failed to add comment. See console for details.");
       console.error(err);
     } finally {
       setBusy(false);
@@ -297,25 +304,41 @@ export default function WorkflowReview() {
 
             <div className="rounded border p-3">
               <h3 className="mb-2 text-lg font-semibold">All Comments</h3>
+              <p className="mb-2 text-xs text-gray-500">
+                Every role reviews in parallel and sees all comments below.
+              </p>
               <div className="space-y-2">
-                {details.comments.map((comment) => (
-                  <div key={comment.id} className="rounded border p-2">
-                    <div className="text-sm">{comment.comment_text}</div>
-                    <div className="text-xs text-gray-500">
-                      Clause: {comment.clause_reference || "N/A"} | Status: {comment.status}
+                {details.comments.length === 0 ? (
+                  <p className="text-sm text-gray-500">No comments yet.</p>
+                ) : (
+                  details.comments.map((comment) => (
+                    <div key={comment.id} className="rounded border p-2">
+                      <div className="mb-0.5 text-xs font-semibold text-sky-800">
+                        {comment.author_name ?? "Unknown"}
+                        {comment.author_role ? ` · ${humanRole(comment.author_role)}` : ""}
+                      </div>
+                      <div className="text-sm">{comment.comment_text}</div>
+                      <div className="text-xs text-gray-500">
+                        Clause: {comment.clause_reference || "N/A"} | Status: {comment.status}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
 
             <div className="rounded border p-3">
               <h3 className="mb-2 text-lg font-semibold">Review Action</h3>
+              <p className="mb-2 text-xs text-gray-500">
+                Add a comment (visible to all roles, non-blocking) or approve. The
+                agreement can be forwarded to the subcontractor only once every
+                reviewer role has approved.
+              </p>
               <div className="grid gap-2">
                 <textarea
                   className="rounded border p-2"
                   rows={3}
-                  placeholder="Comment (required for return)"
+                  placeholder="Comment (required to add a comment)"
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
                 />
@@ -336,9 +359,9 @@ export default function WorkflowReview() {
                   <button
                     className="rounded bg-amber-700 px-3 py-2 text-white disabled:opacity-50"
                     disabled={busy}
-                    onClick={returnForFix}
+                    onClick={addComment}
                   >
-                    {busy ? "Working…" : "Return with Comment"}
+                    {busy ? "Working…" : "Add Comment"}
                   </button>
                 </div>
               </div>
