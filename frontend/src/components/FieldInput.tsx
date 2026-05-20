@@ -8,13 +8,17 @@ type Props = {
   field: FieldDef;
   value: string;
   onChange: (fieldId: string, value: string) => void;
+  invalid?: boolean;
 };
 
-export default function FieldInput({ field, value, onChange }: Props) {
+export default function FieldInput({ field, value, onChange, invalid = false }: Props) {
+  // Red border + tint when the field is flagged as a missing mandatory input
+  // by the wizard's validation (see AgreementCreate).
+  const cls = `w-full rounded border p-2${invalid ? " border-red-500 bg-red-50" : ""}`;
   if (field.field_id === "C02") {
     return (
       <select
-        className="w-full rounded border p-2"
+        className={cls}
         value={value}
         onChange={(e) => onChange(field.field_id, e.target.value)}
       >
@@ -32,7 +36,7 @@ export default function FieldInput({ field, value, onChange }: Props) {
     // is the BGCC-internal alternative for smaller-value subcontracts.
     return (
       <select
-        className="w-full rounded border p-2"
+        className={cls}
         value={value}
         onChange={(e) => onChange(field.field_id, e.target.value)}
       >
@@ -47,7 +51,7 @@ export default function FieldInput({ field, value, onChange }: Props) {
     return (
       <input
         type="date"
-        className="w-full rounded border p-2"
+        className={cls}
         value={value}
         onChange={(e) => onChange(field.field_id, e.target.value)}
       />
@@ -58,7 +62,7 @@ export default function FieldInput({ field, value, onChange }: Props) {
     return (
       <input
         type="number"
-        className="w-full rounded border p-2"
+        className={cls}
         value={value}
         onChange={(e) => onChange(field.field_id, e.target.value)}
       />
@@ -68,7 +72,7 @@ export default function FieldInput({ field, value, onChange }: Props) {
   if (field.input_type === "textarea" || field.input_type === "multifield" || field.input_type === "table") {
     return (
       <textarea
-        className="w-full rounded border p-2"
+        className={cls}
         value={value}
         onChange={(e) => onChange(field.field_id, e.target.value)}
         rows={3}
@@ -79,7 +83,7 @@ export default function FieldInput({ field, value, onChange }: Props) {
   return (
     <input
       type="text"
-      className="w-full rounded border p-2"
+      className={cls}
       value={value}
       onChange={(e) => onChange(field.field_id, e.target.value)}
     />

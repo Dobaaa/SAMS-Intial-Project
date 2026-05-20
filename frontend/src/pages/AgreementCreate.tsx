@@ -83,6 +83,19 @@ export default function AgreementCreate() {
     }>
   >([]);
   const [subSearch, setSubSearch] = useState("");
+  // Mandatory-field validation errors, keyed by field_id (master fields) or
+  // "project.<x>" / "subcontractor.<x>" (Step 1 party inputs). Populated when
+  // the user tries to advance/submit with required fields blank; each entry
+  // clears as soon as its field is filled.
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const clearError = (key: string) =>
+    setErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
 
   // Step 2 only asks for header-level F fields that AREN'T already collected
   // as project/subcontractor in Step 1 (see STEP1_DUPLICATE_F_FIELDS above).
@@ -106,6 +119,7 @@ export default function AgreementCreate() {
   );
 
   const onChangeValue = (fieldId: string, value: string) => {
+    if (value.trim()) clearError(fieldId);
     const next = { ...values, [fieldId]: value };
 
     // A field is "auto-following" its source if it's empty OR still equals
@@ -148,6 +162,61 @@ export default function AgreementCreate() {
     }
 
     setValues(next);
+  };
+
+  const isBlank = (v?: string) => !v || !v.trim();
+
+  // Step 1's Project + Subcontractor inputs map to required Form fields
+  // (F06/F07/F05/F02). They're plain inputs (not FieldInput), so they're
+  // validated by their own keys rather than via the master-field list.
+  const validateStep1 = (): Record<string, string> => {
+    const e: Record<string, string> = {};
+    if (isBlank(project.project_name)) e["project.project_name"] = "Project name is required.";
+    if (isBlank(project.project_location)) e["project.project_location"] = "Project location is required.";
+    if (isBlank(project.employer_name)) e["project.employer_name"] = "Employer is required.";
+    if (isBlank(subcontractor.company_name)) e["subcontractor.company_name"] = "Subcontractor company name is required.";
+    for (const f of manualAppendixFields) {
+      if (f.is_required && isBlank(values[f.field_id])) {
+        e[f.field_id] = `${f.field_id} — ${f.field_label} is required.`;
+      }
+    }
+    return e;
+  };
+
+  // Generic required-field check over a list of master fields (Steps 2 & 3).
+  const validateFieldList = (list: MasterField[]): Record<string, string> => {
+    const e: Record<string, string> = {};
+    for (const f of list) {
+      if (f.is_required && isBlank(values[f.field_id])) {
+        e[f.field_id] = `${f.field_id} — ${f.field_label} is required.`;
+      }
+    }
+    return e;
+  };
+
+  // Full sweep used at submit time so the Review step lists every outstanding
+  // mandatory field, regardless of which step it lives on.
+  const validateAll = (): Record<string, string> => ({
+    ...validateStep1(),
+    ...validateFieldList(formFields),
+    ...validateFieldList(conditionFields),
+  });
+
+  // Run `validator`; if anything is missing, surface it and stop. Returns true
+  // when the caller is clear to proceed.
+  const passesValidation = (validator: () => Record<string, string>): boolean => {
+    const found = validator();
+    setErrors(found);
+    if (Object.keys(found).length > 0) {
+      toast.error("Please fill all mandatory fields highlighted below.");
+      return false;
+    }
+    return true;
+  };
+
+  const goToStep = (n: number) => {
+    setErrors({});
+    setStep(n);
   };
 
   const loadTemplateFields = async () => {
@@ -194,6 +263,7 @@ export default function AgreementCreate() {
   };
 
   const createDraft = async () => {
+    if (!passesValidation(validateStep1)) return;
     try {
       const { data } = await api.post("/agreements/", { project, subcontractor, reference_number: reference || undefined });
       setAgreementId(data.id);
@@ -302,6 +372,7 @@ export default function AgreementCreate() {
   // advance to Step 2. Skips the POST /agreements/ used for fresh drafts.
   const saveStep1Edit = async () => {
     if (!agreementId) return;
+    if (!passesValidation(validateStep1)) return;
     try {
       await api.patch(`/agreements/${agreementId}/parties`, { project, subcontractor });
       const payload: Record<string, string> = { ...buildStep1FieldSync() };
@@ -340,6 +411,7 @@ export default function AgreementCreate() {
 
   const submitForReview = async () => {
     if (!agreementId) return;
+    if (!passesValidation(validateAll)) return;
     try {
       await saveFields();
       await api.post(`/agreements/${agreementId}/submit`);
@@ -350,6 +422,23 @@ export default function AgreementCreate() {
       toast.error(e?.response?.data?.detail ?? "Failed to submit for review. See console for details.");
       console.error(err);
     }
+  };
+
+  const renderErrorBanner = () => {
+    const msgs = Object.values(errors);
+    if (msgs.length === 0) return null;
+    return (
+      <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+        <p className="mb-1 font-semibold">
+          {msgs.length} mandatory field{msgs.length > 1 ? "s" : ""} still need attention:
+        </p>
+        <ul className="ml-5 list-disc space-y-0.5">
+          {msgs.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      </div>
+    );
   };
 
   return (
@@ -379,23 +468,28 @@ export default function AgreementCreate() {
             {isEditMode && <span className="ml-2 text-xs font-normal text-sky-600">(editing)</span>}
           </h2>
 
+          {renderErrorBanner()}
+
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-sky-800">Project</h3>
             <div>
-              <label className="mb-1 block text-sm">PROJECT_NAME — Project name</label>
-              <input className="w-full rounded border p-2" value={project.project_name} onChange={(e) => setProject({ ...project, project_name: e.target.value })} />
+              <label className="mb-1 block text-sm">PROJECT_NAME — Project name <span className="text-red-500">*</span></label>
+              <input className={`w-full rounded border p-2${errors["project.project_name"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_name} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_name"); setProject({ ...project, project_name: e.target.value }); }} />
+              {errors["project.project_name"] && <p className="mt-1 text-xs text-red-600">{errors["project.project_name"]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm">SITE_NO — Site number (used as the {`{SITE_NO}`} part of the reference, e.g. SAG-2026-319-001)</label>
               <input className="w-full rounded border p-2" value={project.project_code} onChange={(e) => setProject({ ...project, project_code: e.target.value })} />
             </div>
             <div>
-              <label className="mb-1 block text-sm">PROJECT_LOCATION — Location</label>
-              <input className="w-full rounded border p-2" value={project.project_location} onChange={(e) => setProject({ ...project, project_location: e.target.value })} />
+              <label className="mb-1 block text-sm">PROJECT_LOCATION — Location <span className="text-red-500">*</span></label>
+              <input className={`w-full rounded border p-2${errors["project.project_location"] ? " border-red-500 bg-red-50" : ""}`} value={project.project_location} onChange={(e) => { if (e.target.value.trim()) clearError("project.project_location"); setProject({ ...project, project_location: e.target.value }); }} />
+              {errors["project.project_location"] && <p className="mt-1 text-xs text-red-600">{errors["project.project_location"]}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm">EMPLOYER_NAME — Employer</label>
-              <input className="w-full rounded border p-2" value={project.employer_name} onChange={(e) => setProject({ ...project, employer_name: e.target.value })} />
+              <label className="mb-1 block text-sm">EMPLOYER_NAME — Employer <span className="text-red-500">*</span></label>
+              <input className={`w-full rounded border p-2${errors["project.employer_name"] ? " border-red-500 bg-red-50" : ""}`} value={project.employer_name} onChange={(e) => { if (e.target.value.trim()) clearError("project.employer_name"); setProject({ ...project, employer_name: e.target.value }); }} />
+              {errors["project.employer_name"] && <p className="mt-1 text-xs text-red-600">{errors["project.employer_name"]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm">ENGINEER_NAME — Engineer / Consultant</label>
@@ -448,8 +542,9 @@ export default function AgreementCreate() {
             )}
 
             <div>
-              <label className="mb-1 block text-sm">SUB_COMPANY — Company name</label>
-              <input className="w-full rounded border p-2" value={subcontractor.company_name} onChange={(e) => setSubcontractor({ ...subcontractor, company_name: e.target.value })} />
+              <label className="mb-1 block text-sm">SUB_COMPANY — Company name <span className="text-red-500">*</span></label>
+              <input className={`w-full rounded border p-2${errors["subcontractor.company_name"] ? " border-red-500 bg-red-50" : ""}`} value={subcontractor.company_name} onChange={(e) => { if (e.target.value.trim()) clearError("subcontractor.company_name"); setSubcontractor({ ...subcontractor, company_name: e.target.value }); }} />
+              {errors["subcontractor.company_name"] && <p className="mt-1 text-xs text-red-600">{errors["subcontractor.company_name"]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm">SUB_PO_BOX — PO Box</label>
@@ -482,8 +577,10 @@ export default function AgreementCreate() {
                 <div key={field.id}>
                   <label className="mb-1 block text-sm">
                     {field.field_id} — {field.field_label}
+                    {field.is_required && <span className="text-red-500"> *</span>}
                   </label>
-                  <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
+                  <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} invalid={Boolean(errors[field.field_id])} />
+                  {errors[field.field_id] && <p className="mt-1 text-xs text-red-600">{errors[field.field_id]}</p>}
                 </div>
               ))}
             </section>
@@ -512,21 +609,28 @@ export default function AgreementCreate() {
               No additional Form fields to enter. Click Next to continue.
             </div>
           ) : (
-            formFields.map((field) => (
-              <div key={field.id}>
-                <label className="mb-1 block text-sm">{field.field_id} - {field.field_label}</label>
-                <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
-              </div>
-            ))
+            <>
+              {renderErrorBanner()}
+              {formFields.map((field) => (
+                <div key={field.id}>
+                  <label className="mb-1 block text-sm">
+                    {field.field_id} - {field.field_label}
+                    {field.is_required && <span className="text-red-500"> *</span>}
+                  </label>
+                  <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} invalid={Boolean(errors[field.field_id])} />
+                  {errors[field.field_id] && <p className="mt-1 text-xs text-red-600">{errors[field.field_id]}</p>}
+                </div>
+              ))}
+            </>
           )}
           <div className="flex gap-2">
             <button
               className="rounded-lg border border-sky-300 px-3 py-2 text-sky-700 hover:bg-sky-50"
-              onClick={() => setStep(1)}
+              onClick={() => goToStep(1)}
             >
               Back
             </button>
-            <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { await saveFields(); setStep(3); }}>
+            <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { if (!passesValidation(() => validateFieldList(formFields))) return; await saveFields(); goToStep(3); }}>
               Next
             </button>
           </div>
@@ -535,21 +639,26 @@ export default function AgreementCreate() {
 
       {step === 3 && (
         <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold">Step 3: Conditions Fields (C01-C14)</h2>
+          <h2 className="font-semibold">Step 3: Conditions Fields (C01-C15)</h2>
+          {renderErrorBanner()}
           {conditionFields.map((field) => (
             <div key={field.id}>
-              <label className="mb-1 block text-sm">{field.field_id} - {field.field_label}</label>
-              <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} />
+              <label className="mb-1 block text-sm">
+                {field.field_id} - {field.field_label}
+                {field.is_required && <span className="text-red-500"> *</span>}
+              </label>
+              <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} invalid={Boolean(errors[field.field_id])} />
+              {errors[field.field_id] && <p className="mt-1 text-xs text-red-600">{errors[field.field_id]}</p>}
             </div>
           ))}
           <div className="flex gap-2">
             <button
               className="rounded-lg border border-sky-300 px-3 py-2 text-sky-700 hover:bg-sky-50"
-              onClick={() => setStep(2)}
+              onClick={() => goToStep(2)}
             >
               Back
             </button>
-            <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { await saveFields(); setStep(4); }}>
+            <button className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700" onClick={async () => { if (!passesValidation(() => validateFieldList(conditionFields))) return; await saveFields(); goToStep(4); }}>
               Next
             </button>
           </div>
@@ -574,7 +683,7 @@ export default function AgreementCreate() {
           <div className="flex gap-2">
             <button
               className="rounded-lg border border-sky-300 px-3 py-2 text-sky-700 hover:bg-sky-50"
-              onClick={() => setStep(3)}
+              onClick={() => goToStep(3)}
             >
               Back
             </button>
@@ -582,7 +691,7 @@ export default function AgreementCreate() {
               className="rounded-lg bg-sky-600 px-3 py-2 text-white hover:bg-sky-700"
               onClick={async () => {
                 await saveFields();
-                setStep(5);
+                goToStep(5);
               }}
             >
               Next
@@ -594,6 +703,7 @@ export default function AgreementCreate() {
       {step === 5 && (
         <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
           <h2 className="font-semibold">Step 5: Review</h2>
+          {renderErrorBanner()}
           <div className="rounded-lg border border-sky-100 bg-sky-50/50 p-2">Reference Number: {reference || "Auto-generated after draft creation"}</div>
           {fields
             .sort((a, b) => a.sort_order - b.sort_order)
@@ -610,7 +720,7 @@ export default function AgreementCreate() {
           <div className="flex gap-2">
             <button
               className="rounded-lg border border-sky-300 px-3 py-2 text-sky-700 hover:bg-sky-50"
-              onClick={() => setStep(4)}
+              onClick={() => goToStep(4)}
             >
               Back
             </button>
