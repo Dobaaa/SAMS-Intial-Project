@@ -57,17 +57,25 @@ export default function Dashboard() {
   const [loadError, setLoadError] = useState<string>("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  // Click a project or subcontractor name in the table to group the list down
-  // to that project / subcontractor. Cleared via the chip above the table.
-  const [group, setGroup] = useState<{ type: "project" | "subcontractor"; value: string } | null>(null);
+  // Group filters: project name and subcontractor name can each be active and
+  // combine (AND). Set by the dropdowns above the table or by clicking a name
+  // in a row; cleared per-filter via the chips.
+  const [projectFilter, setProjectFilter] = useState<string>("");
+  const [subcontractorFilter, setSubcontractorFilter] = useState<string>("");
 
-  const displayedAgreements = group
-    ? agreements.filter((a) =>
-        group.type === "project"
-          ? (a.project_name ?? "") === group.value
-          : (a.subcontractor_name ?? "") === group.value
-      )
-    : agreements;
+  const displayedAgreements = agreements.filter(
+    (a) =>
+      (!projectFilter || (a.project_name ?? "") === projectFilter) &&
+      (!subcontractorFilter || (a.subcontractor_name ?? "") === subcontractorFilter)
+  );
+
+  // Distinct, sorted names from the loaded list to populate the dropdowns.
+  const projectNames = Array.from(
+    new Set(agreements.map((a) => a.project_name).filter((n): n is string => !!n))
+  ).sort((x, y) => x.localeCompare(y));
+  const subcontractorNames = Array.from(
+    new Set(agreements.map((a) => a.subcontractor_name).filter((n): n is string => !!n))
+  ).sort((x, y) => x.localeCompare(y));
 
   const loadAll = async () => {
     try {
@@ -269,20 +277,53 @@ export default function Dashboard() {
           <input className="rounded-lg border border-sky-200 p-2" placeholder="Reference search" value={reference} onChange={(e) => setReference(e.target.value)} />
           <input className="rounded-lg border border-sky-200 p-2" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           <input className="rounded-lg border border-sky-200 p-2" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          <select
+            className="rounded-lg border border-sky-200 bg-white p-2"
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            title="Filter by project (combines with the subcontractor filter)"
+          >
+            <option value="">All projects</option>
+            {projectNames.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+          <select
+            className="rounded-lg border border-sky-200 bg-white p-2"
+            value={subcontractorFilter}
+            onChange={(e) => setSubcontractorFilter(e.target.value)}
+            title="Filter by subcontractor (combines with the project filter)"
+          >
+            <option value="">All subcontractors</option>
+            {subcontractorNames.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
           <button className="rounded-lg bg-sky-600 px-3 py-2 text-white transition hover:bg-sky-700" onClick={loadAll}>Apply</button>
         </div>
-        {group && (
+        {(projectFilter || subcontractorFilter) && (
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2 text-sm text-sky-800">
-            <span>
-              Showing agreements for {group.type === "project" ? "project" : "subcontractor"}:{" "}
-              <strong>{group.value}</strong> ({displayedAgreements.length})
-            </span>
-            <button
-              className="rounded-full bg-sky-200 px-2 py-0.5 text-xs font-semibold hover:bg-sky-300"
-              onClick={() => setGroup(null)}
-            >
-              Clear ✕
-            </button>
+            <span>Showing {displayedAgreements.length} agreement{displayedAgreements.length === 1 ? "" : "s"} for:</span>
+            {projectFilter && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-sky-200 px-2 py-0.5 text-xs font-semibold">
+                Project: {projectFilter}
+                <button className="hover:text-sky-900" onClick={() => setProjectFilter("")} title="Clear project filter">✕</button>
+              </span>
+            )}
+            {subcontractorFilter && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-sky-200 px-2 py-0.5 text-xs font-semibold">
+                Subcontractor: {subcontractorFilter}
+                <button className="hover:text-sky-900" onClick={() => setSubcontractorFilter("")} title="Clear subcontractor filter">✕</button>
+              </span>
+            )}
+            {projectFilter && subcontractorFilter && (
+              <button
+                className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold underline-offset-2 hover:underline"
+                onClick={() => { setProjectFilter(""); setSubcontractorFilter(""); }}
+              >
+                Clear all
+              </button>
+            )}
           </div>
         )}
         <table className="w-full border-collapse overflow-hidden rounded-lg border border-sky-100">
@@ -317,8 +358,8 @@ export default function Dashboard() {
                   {a.project_name ? (
                     <button
                       className="text-left text-sky-700 underline-offset-2 hover:underline"
-                      onClick={() => setGroup({ type: "project", value: a.project_name! })}
-                      title="Show all agreements for this project"
+                      onClick={() => setProjectFilter(a.project_name!)}
+                      title="Filter to this project (combines with any subcontractor filter)"
                     >
                       {a.project_name}
                     </button>
@@ -330,8 +371,8 @@ export default function Dashboard() {
                   {a.subcontractor_name ? (
                     <button
                       className="text-left text-sky-700 underline-offset-2 hover:underline"
-                      onClick={() => setGroup({ type: "subcontractor", value: a.subcontractor_name! })}
-                      title="Show all agreements for this subcontractor"
+                      onClick={() => setSubcontractorFilter(a.subcontractor_name!)}
+                      title="Filter to this subcontractor (combines with any project filter)"
                     >
                       {a.subcontractor_name}
                     </button>
