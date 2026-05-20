@@ -17,7 +17,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "005_rename_security_cheque_option"
+revision: str = "005_security_cheque_label"
 down_revision: str | None = "004_clause_revisions"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
