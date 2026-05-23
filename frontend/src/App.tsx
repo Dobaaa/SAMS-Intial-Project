@@ -14,6 +14,12 @@ import UserManagement from "./pages/UserManagement";
 import WorkflowReview from "./pages/WorkflowReview";
 import AppLayout from "./routes/AppLayout";
 import RequireAuth from "./routes/RequireAuth";
+import { useAuth } from "./stores/auth";
+
+function DefaultRedirect() {
+  const role = useAuth((s) => s.user?.role);
+  return <Navigate to={role === "admin" ? "/dashboard" : "/reviewer-dashboard"} replace />;
+}
 
 export default function App() {
   return (
@@ -43,7 +49,7 @@ export default function App() {
             <Route path="/workflow" element={<WorkflowReview />} />
             <Route path="/resolution" element={<CommentsResolution />} />
             <Route path="/archive" element={<Archive />} />
-            <Route index element={<Navigate to="/workflow" replace />} />
+            <Route index element={<DefaultRedirect />} />
           </Route>
         </Route>
 
