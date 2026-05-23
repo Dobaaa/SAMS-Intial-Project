@@ -43,7 +43,9 @@ function statusBadge(status: string) {
           ? "bg-amber-100 text-amber-700 border-amber-200"
           : "bg-gray-100 text-gray-600 border-gray-200";
   return (
-    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${colour}`}>
+    <span
+      className={`inline-block whitespace-nowrap rounded-md border px-2 py-1 text-[11px] font-semibold leading-tight ${colour}`}
+    >
       {label}
     </span>
   );
@@ -52,18 +54,18 @@ function statusBadge(status: string) {
 function stepBadge(stepStatus: string) {
   if (stepStatus === "approved")
     return (
-      <span className="rounded-full bg-green-600 px-2 py-0.5 text-[10px] font-bold text-white">
+      <span className="inline-block whitespace-nowrap rounded-md bg-green-600 px-2 py-1 text-[11px] font-bold leading-tight text-white">
         ✓ Approved
       </span>
     );
   if (stepStatus === "pending")
     return (
-      <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-white">
+      <span className="inline-block whitespace-nowrap rounded-md bg-amber-400 px-2 py-1 text-[11px] font-bold leading-tight text-white">
         Pending
       </span>
     );
   return (
-    <span className="rounded-full bg-gray-300 px-2 py-0.5 text-[10px] font-bold text-gray-700">
+    <span className="inline-block whitespace-nowrap rounded-md bg-gray-300 px-2 py-1 text-[11px] font-bold leading-tight text-gray-700">
       {stepStatus}
     </span>
   );
@@ -211,8 +213,8 @@ export default function ReviewerDashboard() {
                 <th className="border-b p-3 font-semibold">Reference</th>
                 <th className="border-b p-3 font-semibold">Project</th>
                 <th className="border-b p-3 font-semibold">Subcontractor</th>
-                <th className="border-b p-3 font-semibold">Agreement Status</th>
-                <th className="border-b p-3 font-semibold">My Step</th>
+                <th className="w-52 border-b p-3 font-semibold">Agreement Status</th>
+                <th className="w-28 border-b p-3 font-semibold">My Step</th>
                 <th className="border-b p-3 font-semibold">Actions</th>
               </tr>
             </thead>
