@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 
 import AgreementPdf from "../components/AgreementPdf";
 import AIReviewPanel from "../components/AIReviewPanel";
-import AppendixView from "../components/AppendixView";
 import { humanRole } from "../lib/roles";
 import { useToast } from "../components/Toast";
 import WorkflowTimeline from "../components/WorkflowTimeline";
@@ -668,16 +667,10 @@ export default function WorkflowReview() {
 
               {/* ── Tab 3: Document ── */}
               {activeTab === "document" && (
-                <div className="grid gap-3 xl:grid-cols-2">
-                  <AgreementPdf
-                    agreementId={details.agreement.id}
-                    referenceNumber={details.agreement.reference_number}
-                  />
-                  <AppendixView
-                    agreementId={details.agreement.id}
-                    referenceNumber={details.agreement.reference_number}
-                  />
-                </div>
+                <AgreementPdf
+                  agreementId={details.agreement.id}
+                  referenceNumber={details.agreement.reference_number}
+                />
               )}
 
               {/* ── Tab 3: AI Review ── */}
