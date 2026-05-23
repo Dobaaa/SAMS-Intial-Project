@@ -26,6 +26,36 @@ def _step_to_dict(step: WorkflowStep) -> dict:
     }
 
 
+async def get_all_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
+    """All steps for this role (pending + approved + returned) with enriched
+    agreement info (project / subcontractor names). Used by the reviewer
+    sidebar and reviewer dashboard so agreements remain visible after approval.
+    """
+    result = await db.execute(
+        select(WorkflowStep)
+        .where(WorkflowStep.role_required == role)
+        .options(
+            selectinload(WorkflowStep.agreement).selectinload(Agreement.project),
+            selectinload(WorkflowStep.agreement).selectinload(Agreement.subcontractor),
+        )
+        .order_by(WorkflowStep.created_at.desc())
+    )
+    steps = result.scalars().all()
+    return [
+        {
+            "step": _step_to_dict(step),
+            "agreement": {
+                "id": str(step.agreement.id),
+                "reference_number": step.agreement.reference_number,
+                "current_status": step.agreement.current_status.value,
+                "project_name": step.agreement.project.project_name if step.agreement.project else None,
+                "subcontractor_name": step.agreement.subcontractor.company_name if step.agreement.subcontractor else None,
+            },
+        }
+        for step in steps
+    ]
+
+
 async def get_pending_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
     result = await db.execute(
         select(WorkflowStep)

@@ -7,6 +7,7 @@ import AgreementDocument from "./pages/AgreementDocument";
 import Archive from "./pages/Archive";
 import CommentsResolution from "./pages/CommentsResolution";
 import Dashboard from "./pages/Dashboard";
+import ReviewerDashboard from "./pages/ReviewerDashboard";
 import Login from "./pages/Login";
 import MasterTemplates from "./pages/MasterTemplates";
 import UserManagement from "./pages/UserManagement";
@@ -38,6 +39,7 @@ export default function App() {
                 the clause-revisions panel switches to review mode. */}
             <Route path="/agreements/:id/document" element={<AgreementDocument />} />
             <Route path="/agreements/:id/compare" element={<AgreementCompare />} />
+            <Route path="/reviewer-dashboard" element={<ReviewerDashboard />} />
             <Route path="/workflow" element={<WorkflowReview />} />
             <Route path="/resolution" element={<CommentsResolution />} />
             <Route path="/archive" element={<Archive />} />

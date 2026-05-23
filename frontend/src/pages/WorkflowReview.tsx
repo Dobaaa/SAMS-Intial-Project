@@ -12,7 +12,7 @@ import { useAuth } from "../stores/auth";
 
 // ─── Domain types ───────────────────────────────────────────────────────────
 
-type PendingItem = {
+type ReviewItem = {
   step: {
     id: string;
     agreement_id: string;
@@ -25,6 +25,8 @@ type PendingItem = {
     id: string;
     reference_number: string;
     current_status: string;
+    project_name?: string | null;
+    subcontractor_name?: string | null;
   };
 };
 
@@ -96,6 +98,7 @@ type RoleCommentCellProps = {
   comments: WorkflowComment[];
   isMyRole: boolean;
   myStepId: string | null;
+  isApproved: boolean;
   onAddComment: (fieldId: string, text: string, stepId: string) => Promise<void>;
 };
 
@@ -105,6 +108,7 @@ function RoleCommentCell({
   comments,
   isMyRole,
   myStepId,
+  isApproved,
   onAddComment,
 }: RoleCommentCellProps) {
   const [draft, setDraft] = useState("");
@@ -115,16 +119,20 @@ function RoleCommentCell({
   );
 
   return (
-    <td className="min-w-[160px] max-w-[220px] border-l p-2 align-top text-xs">
+    <td
+      className={`min-w-[160px] max-w-[220px] border-l p-2 align-top text-xs ${
+        isApproved ? "bg-green-50/40" : ""
+      }`}
+    >
       <div className="space-y-1">
         {cellComments.map((c) => (
           <div
             key={c.id}
-            className="rounded border border-amber-200 bg-amber-50 p-1.5 text-gray-700"
+            className="rounded border border-red-200 bg-red-50 p-1.5 text-red-700"
           >
-            <p className="break-words leading-snug">{c.comment_text}</p>
+            <p className="break-words leading-snug font-medium">{c.comment_text}</p>
             {c.created_at && (
-              <p className="mt-0.5 text-gray-400">
+              <p className="mt-0.5 text-red-400">
                 {new Date(c.created_at).toLocaleDateString()}
               </p>
             )}
@@ -169,7 +177,7 @@ export default function WorkflowReview() {
   const toast = useToast();
   const role = useAuth((s) => s.user?.role ?? null);
 
-  const [pending, setPending] = useState<PendingItem[]>([]);
+  const [myReviews, setMyReviews] = useState<ReviewItem[]>([]);
   const [selectedStepId, setSelectedStepId] = useState<string>("");
   const [details, setDetails] = useState<WorkflowAgreementDetails | null>(null);
   const [fieldMatrix, setFieldMatrix] = useState<FieldRow[]>([]);
@@ -207,11 +215,11 @@ export default function WorkflowReview() {
     }
   };
 
-  const loadPending = async () => {
-    const { data } = await api.get("/workflow/pending");
-    setPending(data);
+  const loadMyReviews = async () => {
+    const { data } = await api.get("/workflow/my-agreements");
+    setMyReviews(data);
     if (data.length > 0 && !selectedStepId) {
-      const first = data[0] as PendingItem;
+      const first = data[0] as ReviewItem;
       setSelectedStepId(first.step.id);
       await loadDetails(first.agreement.id);
       await loadFieldMatrix(first.agreement.id);
@@ -219,10 +227,10 @@ export default function WorkflowReview() {
   };
 
   useEffect(() => {
-    void loadPending();
+    void loadMyReviews();
   }, []);
 
-  const selectPending = async (item: PendingItem) => {
+  const selectReview = async (item: ReviewItem) => {
     setSelectedStepId(item.step.id);
     setAnalysis(null);
     setSummary(null);
@@ -276,10 +284,10 @@ export default function WorkflowReview() {
       const ref = details?.agreement.reference_number ?? "";
       await api.post(`/workflow/${selectedStepId}/approve`);
       toast.success(`Approved ${ref}.`);
-      setSelectedStepId("");
-      setDetails(null);
-      setFieldMatrix([]);
-      await loadPending();
+      // Keep the agreement selected (visible) — just reload to reflect new step status.
+      const agreementId = details?.agreement.id;
+      await loadMyReviews();
+      if (agreementId) await loadDetails(agreementId);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
       toast.error(e?.response?.data?.detail ?? "Failed to approve.");
@@ -332,6 +340,7 @@ export default function WorkflowReview() {
 
   // Step that belongs to the current logged-in role (for posting comments)
   const myStep = details?.steps.find((s) => s.role_required === role) ?? null;
+  const myStepApproved = myStep?.status === "approved";
 
   // Group fields by prefix (F = Form, C = Conditions)
   const formFields = fieldMatrix.filter((f) => f.field_id.startsWith("F"));
@@ -341,24 +350,49 @@ export default function WorkflowReview() {
 
   return (
     <div className="grid grid-cols-12 gap-4 p-4">
-      {/* Sidebar: pending agreements */}
+      {/* Sidebar: all my review agreements */}
       <aside className="col-span-2 rounded border p-3">
-        <h2 className="mb-3 text-lg font-semibold">My Pending</h2>
+        <h2 className="mb-3 text-lg font-semibold">My Agreements</h2>
         <div className="space-y-2">
-          {pending.map((item) => (
-            <button
-              key={item.step.id}
-              className={`w-full rounded border p-2 text-left text-sm ${
-                selectedStepId === item.step.id ? "bg-sky-50 border-sky-300" : ""
-              }`}
-              onClick={() => selectPending(item)}
-            >
-              <div className="font-medium">{item.agreement.reference_number}</div>
-              <div className="text-xs text-gray-500">
-                {item.step.step_name} · {humanRole(item.step.role_required)}
-              </div>
-            </button>
-          ))}
+          {myReviews.length === 0 && (
+            <p className="text-xs text-gray-400">No agreements assigned to your role.</p>
+          )}
+          {myReviews.map((item) => {
+            const isApproved = item.step.status === "approved";
+            const isSelected = selectedStepId === item.step.id;
+            return (
+              <button
+                key={item.step.id}
+                className={`w-full rounded border p-2 text-left text-sm transition-colors ${
+                  isSelected
+                    ? "border-sky-300 bg-sky-50"
+                    : isApproved
+                      ? "border-green-200 bg-green-50 hover:bg-green-100"
+                      : "hover:bg-gray-50"
+                }`}
+                onClick={() => selectReview(item)}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="font-medium text-xs">{item.agreement.reference_number}</span>
+                  {isApproved ? (
+                    <span className="rounded-full bg-green-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                      ✓
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                      Pending
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 text-xs text-gray-500 truncate">
+                  {item.agreement.project_name ?? item.step.step_name}
+                </div>
+                <div className="text-[10px] text-gray-400 capitalize">
+                  {item.agreement.current_status.replace(/_/g, " ")}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </aside>
 
@@ -427,21 +461,37 @@ export default function WorkflowReview() {
                             <th className="w-48 border p-2 font-semibold">Clause</th>
                             <th className="w-52 border p-2 font-semibold">Original (Master)</th>
                             <th className="w-52 border p-2 font-semibold">Amended (Agreement)</th>
-                            {REVIEWER_ROLES.map((r) => (
-                              <th
-                                key={r.role}
-                                className={`min-w-[160px] border p-2 font-semibold ${
-                                  r.role === role ? "bg-sky-50 text-sky-700" : ""
-                                }`}
-                              >
-                                {r.short}
-                                {r.role === role && (
-                                  <span className="ml-1 text-[10px] font-normal text-sky-500">
-                                    (you)
-                                  </span>
-                                )}
-                              </th>
-                            ))}
+                            {REVIEWER_ROLES.map((r) => {
+                              const roleStep = details.steps.find(
+                                (s) => s.role_required === r.role,
+                              );
+                              const approved = roleStep?.status === "approved";
+                              const isMe = r.role === role;
+                              return (
+                                <th
+                                  key={r.role}
+                                  className={`min-w-[160px] border p-2 font-semibold ${
+                                    approved
+                                      ? "bg-green-50 text-green-700"
+                                      : isMe
+                                        ? "bg-sky-50 text-sky-700"
+                                        : ""
+                                  }`}
+                                >
+                                  {r.short}
+                                  {approved && (
+                                    <span className="ml-1 text-[10px] font-bold text-green-600">
+                                      ✓
+                                    </span>
+                                  )}
+                                  {isMe && !approved && (
+                                    <span className="ml-1 text-[10px] font-normal text-sky-500">
+                                      (you)
+                                    </span>
+                                  )}
+                                </th>
+                              );
+                            })}
                           </tr>
                         </thead>
                         <tbody>
@@ -461,6 +511,7 @@ export default function WorkflowReview() {
                                   key={field.field_id}
                                   field={field}
                                   comments={details.comments}
+                                  steps={details.steps}
                                   currentRole={role}
                                   myStepId={myStep?.id ?? null}
                                   onAddComment={addClauseComment}
@@ -485,6 +536,7 @@ export default function WorkflowReview() {
                                   key={field.field_id}
                                   field={field}
                                   comments={details.comments}
+                                  steps={details.steps}
                                   currentRole={role}
                                   myStepId={myStep?.id ?? null}
                                   onAddComment={addClauseComment}
@@ -501,6 +553,7 @@ export default function WorkflowReview() {
                                 key={field.field_id}
                                 field={field}
                                 comments={details.comments}
+                                steps={details.steps}
                                 currentRole={role}
                                 myStepId={myStep?.id ?? null}
                                 onAddComment={addClauseComment}
@@ -652,13 +705,19 @@ export default function WorkflowReview() {
                         onChange={(e) => setClauseReference(e.target.value)}
                       />
                       <div className="flex gap-2">
-                        <button
-                          className="rounded bg-green-700 px-4 py-2 text-white disabled:opacity-50"
-                          disabled={busy}
-                          onClick={approve}
-                        >
-                          {busy ? "Working…" : "Approve"}
-                        </button>
+                        {myStepApproved ? (
+                          <span className="rounded bg-green-100 border border-green-300 px-4 py-2 text-sm font-medium text-green-700">
+                            ✓ Approved
+                          </span>
+                        ) : (
+                          <button
+                            className="rounded bg-green-700 px-4 py-2 text-white disabled:opacity-50"
+                            disabled={busy}
+                            onClick={approve}
+                          >
+                            {busy ? "Working…" : "Approve"}
+                          </button>
+                        )}
                         <button
                           className="rounded bg-amber-700 px-4 py-2 text-white disabled:opacity-50"
                           disabled={busy}
@@ -689,6 +748,7 @@ export default function WorkflowReview() {
 type FieldMatrixRowProps = {
   field: FieldRow;
   comments: WorkflowComment[];
+  steps: WorkflowStep[];
   currentRole: string | null;
   myStepId: string | null;
   onAddComment: (fieldId: string, text: string, stepId: string) => Promise<void>;
@@ -697,6 +757,7 @@ type FieldMatrixRowProps = {
 function FieldMatrixRow({
   field,
   comments,
+  steps,
   currentRole,
   myStepId,
   onAddComment,
@@ -739,17 +800,21 @@ function FieldMatrixRow({
       </td>
 
       {/* One column per reviewer role */}
-      {REVIEWER_ROLES.map((r) => (
-        <RoleCommentCell
-          key={r.role}
-          fieldId={field.field_id}
-          roleKey={r.role}
-          comments={comments}
-          isMyRole={r.role === currentRole}
-          myStepId={myStepId}
-          onAddComment={onAddComment}
-        />
-      ))}
+      {REVIEWER_ROLES.map((r) => {
+        const roleStep = steps.find((s) => s.role_required === r.role);
+        return (
+          <RoleCommentCell
+            key={r.role}
+            fieldId={field.field_id}
+            roleKey={r.role}
+            comments={comments}
+            isMyRole={r.role === currentRole}
+            myStepId={myStepId}
+            isApproved={roleStep?.status === "approved"}
+            onAddComment={onAddComment}
+          />
+        );
+      })}
     </tr>
   );
 }

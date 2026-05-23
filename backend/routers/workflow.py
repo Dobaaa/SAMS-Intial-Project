@@ -12,6 +12,7 @@ from models.workflow import WorkflowStep
 from services.workflow_engine import (
     add_comment,
     approve_step,
+    get_all_for_role,
     get_pending_for_role,
     get_workflow_agreement_summary,
     return_step,
@@ -31,6 +32,17 @@ async def get_pending_workflows(
     current_user: User = Depends(get_current_user),
 ) -> list[dict]:
     return await get_pending_for_role(db, current_user.role)
+
+
+@router.get("/my-agreements")
+async def get_my_agreements(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    """All steps (pending + approved + returned) for this reviewer's role,
+    with enriched agreement info. Used by the sidebar and reviewer dashboard
+    so agreements remain visible after approval."""
+    return await get_all_for_role(db, current_user.role)
 
 
 @router.post("/{step_id}/approve")
