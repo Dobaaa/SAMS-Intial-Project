@@ -104,3 +104,54 @@ async def get_workflow_agreement(
     if not data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
     return data
+
+
+@router.get("/agreements/{agreement_id}/fields")
+async def get_workflow_agreement_fields(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
+) -> dict:
+    """Field matrix for the clause review tab.
+
+    Returns all Form + Conditions master fields with their default values and
+    the current agreement values, so every reviewer can see original vs amended
+    side-by-side. Appendix fields are excluded (they are derived, not clauses).
+    Accessible to any authenticated user (reviewer roles need this view).
+    """
+    from models.agreement import Agreement, AgreementFieldValue
+    from models.master import MasterField
+
+    agreement_res = await db.execute(select(Agreement).where(Agreement.id == agreement_id))
+    agreement = agreement_res.scalar_one_or_none()
+    if not agreement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+
+    template_ids = [
+        v for v in [agreement.form_version_id, agreement.conditions_version_id] if v
+    ]
+    field_res = await db.execute(
+        select(MasterField)
+        .where(MasterField.template_id.in_(template_ids))
+        .order_by(MasterField.sort_order.asc())
+    )
+    master_fields = field_res.scalars().all()
+
+    value_res = await db.execute(
+        select(AgreementFieldValue).where(AgreementFieldValue.agreement_id == agreement.id)
+    )
+    values = {r.field_id: (r.entered_value or "") for r in value_res.scalars().all()}
+
+    return {
+        "fields": [
+            {
+                "field_id": f.field_id,
+                "field_label": f.field_label,
+                "clause_number": f.clause_number or "",
+                "input_type": f.input_type.value,
+                "default_value": f.default_value or "",
+                "current_value": values.get(f.field_id, ""),
+            }
+            for f in master_fields
+        ]
+    }

@@ -144,7 +144,18 @@ KVM 1 is fine for alpha demo; recommend KVM 2+ before BGCC's 15 users hit concur
 
 ---
 
-## 11. Session log (most recent first)
+## 11. Workflow preference (permanent)
+
+After every code change, automatically:
+1. Commit (conventional commit, imperative mood, `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`)
+2. Push the current branch to remote (`git push`)
+3. Deploy to alpha (`./scripts/deploy-to-vps.sh` — uses the current branch by default)
+
+No confirmation needed unless the change is destructive to the DB (e.g. dropping columns, irreversible data migrations).
+
+---
+
+## 12. Session log (most recent first)
 
 - **2026-05-20** — **Predefined projects + wizard autofill** on `feat/rev01-pdf-fidelity`, deployed to alpha. From BGCC's `Project Details.xlsx`: seeded 8 fixed projects and added a Step-1 **project dropdown** that autofills name / site no / location / employer / engineer / reference and locks those fields; "Others" clears them for manual entry. Manually-entered "Others" projects are saved to the `projects` table on draft creation (existing dedup by `project_code`). Added nullable `projects.reference` column. Migration `007_predefined_projects` adds the column + seeds the 8 projects (`ON CONFLICT (project_code) DO NOTHING` — note: avoid reusing a named bind param twice under asyncpg, it raises `AmbiguousParameterError`). New `GET /api/projects/` (projects_router) feeds the dropdown; `ProjectPayload.reference` added; create payload sends `project.reference`. 32/33 pytest (1 flake), `tsc -b` clean. **DEFERRED (Task 2):** the same xlsx lists per-project users (QS / SR.QS / PD-PM / ACCOUNTS / OM / GM columns) + a 20-row master user list (rows 11–31) — "users attached to each project" is a follow-up task, not yet started.
 - **2026-05-20** — **Flat/parallel approval workflow** on `feat/rev01-pdf-fidelity`, deployed to alpha. Replaced the sequential PD→Accounts→OM→GM chain with a flat model: on Submit for Review all four reviewer roles see the agreement at once (no ordering gate). Each role approves or adds a **non-blocking** comment (visible to all, no bounce to Admin, no chain restart, commenter's step stays pending). Admin can forward to subcontractor only once **all four roles approve** (`all_main_steps_approved` gate). No schema change (reuses `WorkflowStep`/`WorkflowComment`). Engine: `get_pending_for_role` drops the prev-approval gate for main-chain steps (resolution chain still sequential); `approve_step` split into resolution handler vs main "all-approved → ready"; new `add_comment` (non-blocking) + `POST /workflow/{step}/comment`; summary now returns comment `author_name`/`author_role`. `send_to_subcontractor` gated. Frontend `WorkflowReview.tsx`: "Return"→"Add Comment", shows comment author+role, parallel-model helper text. Tests rewritten (`test_comment_is_nonblocking`, `test_all_roles_must_approve_before_forwarding`, `test_all_roles_see_agreement_in_parallel`); `test_send_to_subcontractor...` approves all steps via the model layer first. 32/33 pytest (1 documented flake), `tsc -b` clean. See domain rule #4. **Note:** `return_step`/`resubmit_agreement`/`/workflow/{id}/return` kept for the resolution path; `under_bgcc_revision` now only reached via subcontractor-comment resolution, not reviewer returns.
