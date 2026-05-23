@@ -167,3 +167,68 @@ async def get_workflow_agreement_fields(
             for f in master_fields
         ]
     }
+
+
+@router.get("/agreements/{agreement_id}/appendix-fields")
+async def get_workflow_agreement_appendix_fields(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
+) -> dict:
+    """Appendix field matrix for the appendix review tab.
+
+    Returns appendix rows (A01–A23, filtered by show_in_appendix) plus C15
+    Optional Terms appended at the end, each with the master default value
+    (original) and the current agreement value. Accessible to any authenticated
+    user.
+    """
+    from models.agreement import Agreement, AgreementFieldValue, AppendixConfig
+    from models.master import MasterField
+
+    agreement_res = await db.execute(select(Agreement).where(Agreement.id == agreement_id))
+    agreement = agreement_res.scalar_one_or_none()
+    if not agreement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+
+    config_res = await db.execute(
+        select(AppendixConfig)
+        .where(AppendixConfig.agreement_id == agreement_id)
+        .order_by(AppendixConfig.sort_order.asc())
+    )
+    configs = config_res.scalars().all()
+
+    master_res = await db.execute(select(MasterField))
+    master_map = {mf.field_id: mf for mf in master_res.scalars().all()}
+
+    value_res = await db.execute(
+        select(AgreementFieldValue).where(AgreementFieldValue.agreement_id == agreement.id)
+    )
+    value_map = {v.field_id: (v.entered_value or "") for v in value_res.scalars().all()}
+
+    rows: list[dict] = []
+    for cfg in configs:
+        mf = master_map.get(cfg.field_id)
+        if not mf or not cfg.show_in_appendix:
+            continue
+        rows.append({
+            "field_id": cfg.field_id,
+            "row_label": mf.appendix_row_label or mf.field_label,
+            "clause_ref": mf.appendix_clause_ref or mf.clause_number or "",
+            "default_value": mf.default_value or "",
+            "current_value": value_map.get(cfg.field_id, ""),
+            "auto_source_field_id": mf.auto_source_field_id,
+        })
+
+    # Append C15 "Optional Terms" — a Conditions field shown as the last appendix row
+    c15 = master_map.get("C15")
+    if c15:
+        rows.append({
+            "field_id": "C15",
+            "row_label": c15.appendix_row_label or "Optional Terms",
+            "clause_ref": c15.appendix_clause_ref or "",
+            "default_value": c15.default_value or "",
+            "current_value": value_map.get("C15", ""),
+            "auto_source_field_id": None,
+        })
+
+    return {"fields": rows}

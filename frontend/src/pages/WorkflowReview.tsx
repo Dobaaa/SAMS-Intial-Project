@@ -70,9 +70,18 @@ type FieldRow = {
   current_value: string;
 };
 
+type AppendixFieldRow = {
+  field_id: string;
+  row_label: string;
+  clause_ref: string;
+  default_value: string;
+  current_value: string;
+  auto_source_field_id?: string | null;
+};
+
 type AIAnalysis = { comparison: unknown; risks: unknown; cached: boolean };
 type AISummary = { data: unknown; cached: boolean };
-type ActiveTab = "clauses" | "document" | "ai" | "action";
+type ActiveTab = "clauses" | "appendix" | "document" | "ai" | "action";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -85,6 +94,7 @@ const REVIEWER_ROLES = [
 
 const TABS: { key: ActiveTab; label: string }[] = [
   { key: "clauses", label: "Clause Review" },
+  { key: "appendix", label: "Appendix Review" },
   { key: "document", label: "Document" },
   { key: "ai", label: "AI Review" },
   { key: "action", label: "Action" },
@@ -182,6 +192,8 @@ export default function WorkflowReview() {
   const [details, setDetails] = useState<WorkflowAgreementDetails | null>(null);
   const [fieldMatrix, setFieldMatrix] = useState<FieldRow[]>([]);
   const [matrixLoading, setMatrixLoading] = useState(false);
+  const [appendixMatrix, setAppendixMatrix] = useState<AppendixFieldRow[]>([]);
+  const [appendixLoading, setAppendixLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("clauses");
 
@@ -215,6 +227,18 @@ export default function WorkflowReview() {
     }
   };
 
+  const loadAppendixMatrix = async (agreementId: string) => {
+    setAppendixLoading(true);
+    try {
+      const { data } = await api.get(`/workflow/agreements/${agreementId}/appendix-fields`);
+      setAppendixMatrix((data.fields as AppendixFieldRow[]) || []);
+    } catch {
+      setAppendixMatrix([]);
+    } finally {
+      setAppendixLoading(false);
+    }
+  };
+
   const loadMyReviews = async () => {
     const { data } = await api.get("/workflow/my-agreements");
     setMyReviews(data);
@@ -223,6 +247,7 @@ export default function WorkflowReview() {
       setSelectedStepId(first.step.id);
       await loadDetails(first.agreement.id);
       await loadFieldMatrix(first.agreement.id);
+      await loadAppendixMatrix(first.agreement.id);
     }
   };
 
@@ -237,6 +262,7 @@ export default function WorkflowReview() {
     setActiveTab("clauses");
     await loadDetails(item.agreement.id);
     await loadFieldMatrix(item.agreement.id);
+    await loadAppendixMatrix(item.agreement.id);
   };
 
   // ── AI actions ──────────────────────────────────────────────────────────────
@@ -566,7 +592,81 @@ export default function WorkflowReview() {
                 </div>
               )}
 
-              {/* ── Tab 2: Document ── */}
+              {/* ── Tab 2: Appendix Review Matrix ── */}
+              {activeTab === "appendix" && (
+                <div>
+                  <p className="mb-3 text-xs text-gray-500">
+                    Appendix rows show the master-template original value vs the value
+                    entered for this agreement, matching the physical appendix document.
+                    C15 Optional Terms is appended as the final row.
+                  </p>
+
+                  {appendixLoading ? (
+                    <p className="text-sm text-gray-400">Loading appendix…</p>
+                  ) : appendixMatrix.length === 0 ? (
+                    <p className="text-sm text-gray-400">No appendix rows found for this agreement.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[1400px] w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="bg-gray-100 text-left text-xs text-gray-600">
+                            <th className="w-56 border p-2 font-semibold">Item Description</th>
+                            <th className="w-24 border p-2 font-semibold">Clause No.</th>
+                            <th className="w-52 border p-2 font-semibold">Original (Master)</th>
+                            <th className="w-52 border p-2 font-semibold">Current Value</th>
+                            {REVIEWER_ROLES.map((r) => {
+                              const roleStep = details!.steps.find(
+                                (s) => s.role_required === r.role,
+                              );
+                              const approved = roleStep?.status === "approved";
+                              const isMe = r.role === role;
+                              return (
+                                <th
+                                  key={r.role}
+                                  className={`min-w-[160px] border p-2 font-semibold ${
+                                    approved
+                                      ? "bg-green-50 text-green-700"
+                                      : isMe
+                                        ? "bg-sky-50 text-sky-700"
+                                        : ""
+                                  }`}
+                                >
+                                  {r.short}
+                                  {approved && (
+                                    <span className="ml-1 text-[10px] font-bold text-green-600">
+                                      ✓
+                                    </span>
+                                  )}
+                                  {isMe && !approved && (
+                                    <span className="ml-1 text-[10px] font-normal text-sky-500">
+                                      (you)
+                                    </span>
+                                  )}
+                                </th>
+                              );
+                            })}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {appendixMatrix.map((row) => (
+                            <AppendixMatrixRow
+                              key={row.field_id}
+                              row={row}
+                              comments={details!.comments}
+                              steps={details!.steps}
+                              currentRole={role}
+                              myStepId={myStep?.id ?? null}
+                              onAddComment={addClauseComment}
+                            />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Tab 3: Document ── */}
               {activeTab === "document" && (
                 <div className="grid gap-3 xl:grid-cols-2">
                   <AgreementPdf
@@ -755,6 +855,89 @@ type FieldMatrixRowProps = {
   myStepId: string | null;
   onAddComment: (fieldId: string, text: string, stepId: string) => Promise<void>;
 };
+
+// ─── Appendix matrix row ─────────────────────────────────────────────────────
+
+type AppendixMatrixRowProps = {
+  row: AppendixFieldRow;
+  comments: WorkflowComment[];
+  steps: WorkflowStep[];
+  currentRole: string | null;
+  myStepId: string | null;
+  onAddComment: (fieldId: string, text: string, stepId: string) => Promise<void>;
+};
+
+function AppendixMatrixRow({
+  row,
+  comments,
+  steps,
+  currentRole,
+  myStepId,
+  onAddComment,
+}: AppendixMatrixRowProps) {
+  const isAmended = row.current_value && row.current_value !== row.default_value;
+  const isC15 = row.field_id === "C15";
+
+  return (
+    <tr className={`${isAmended ? "bg-yellow-50" : ""} ${isC15 ? "border-t-2 border-t-sky-200" : ""}`}>
+      {/* Item Description */}
+      <td className="border p-2 align-top text-xs">
+        <span className="font-medium text-gray-800">{row.row_label}</span>
+        <div className="mt-0.5 font-mono text-[10px] text-gray-400">{row.field_id}</div>
+        {row.auto_source_field_id && (
+          <div className="text-[10px] text-gray-400">auto: {row.auto_source_field_id}</div>
+        )}
+      </td>
+
+      {/* Conditions Clause No. */}
+      <td className="border p-2 align-top text-xs font-mono text-gray-600">
+        {row.clause_ref || "—"}
+      </td>
+
+      {/* Original (master default) */}
+      <td className="min-w-[200px] border p-2 align-top text-xs text-gray-500">
+        <span className="whitespace-pre-wrap break-words leading-relaxed">
+          {row.default_value || "—"}
+        </span>
+      </td>
+
+      {/* Current value */}
+      <td
+        className={`min-w-[200px] border p-2 align-top text-xs ${
+          isAmended ? "font-medium text-gray-900" : "text-gray-400"
+        }`}
+      >
+        <span className="whitespace-pre-wrap break-words leading-relaxed">
+          {row.current_value || row.default_value || "—"}
+        </span>
+        {isAmended && (
+          <span className="ml-1 rounded bg-yellow-200 px-1 text-[9px] font-semibold text-yellow-800">
+            amended
+          </span>
+        )}
+      </td>
+
+      {/* One column per reviewer role */}
+      {REVIEWER_ROLES.map((r) => {
+        const roleStep = steps.find((s) => s.role_required === r.role);
+        return (
+          <RoleCommentCell
+            key={r.role}
+            fieldId={row.field_id}
+            roleKey={r.role}
+            comments={comments}
+            isMyRole={r.role === currentRole}
+            myStepId={myStepId}
+            isApproved={roleStep?.status === "approved"}
+            onAddComment={onAddComment}
+          />
+        );
+      })}
+    </tr>
+  );
+}
+
+// ─── Field matrix row (extracted for readability) ────────────────────────────
 
 function FieldMatrixRow({
   field,
