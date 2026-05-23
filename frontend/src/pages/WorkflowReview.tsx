@@ -140,7 +140,7 @@ function RoleCommentCell({
         ))}
       </div>
 
-      {isMyRole && myStepId && (
+      {isMyRole && myStepId && !isApproved && (
         <div className="mt-1.5">
           <textarea
             rows={2}
@@ -718,13 +718,15 @@ export default function WorkflowReview() {
                             {busy ? "Working…" : "Approve"}
                           </button>
                         )}
-                        <button
-                          className="rounded bg-amber-700 px-4 py-2 text-white disabled:opacity-50"
-                          disabled={busy}
-                          onClick={addGeneralComment}
-                        >
-                          {busy ? "Working…" : "Add Comment"}
-                        </button>
+                        {!myStepApproved && (
+                          <button
+                            className="rounded bg-amber-700 px-4 py-2 text-white disabled:opacity-50"
+                            disabled={busy}
+                            onClick={addGeneralComment}
+                          >
+                            {busy ? "Working…" : "Add Comment"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
