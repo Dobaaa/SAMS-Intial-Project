@@ -88,13 +88,6 @@ const TABS: { key: ActiveTab; label: string }[] = [
   { key: "action", label: "Action" },
 ];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function truncate(text: string, max = 120) {
-  if (!text) return "—";
-  return text.length > max ? text.slice(0, max) + "…" : text;
-}
-
 // ─── Clause Review Matrix ────────────────────────────────────────────────────
 
 type RoleCommentCellProps = {
@@ -428,7 +421,7 @@ export default function WorkflowReview() {
                     <p className="text-sm text-gray-400">No fields found for this agreement.</p>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="min-w-[1100px] w-full border-collapse text-sm">
+                      <table className="min-w-[1400px] w-full border-collapse text-sm">
                         <thead>
                           <tr className="bg-gray-100 text-left text-xs text-gray-600">
                             <th className="w-48 border p-2 font-semibold">Clause</th>
@@ -723,17 +716,21 @@ function FieldMatrixRow({
       </td>
 
       {/* Original (master default) */}
-      <td className="max-w-[200px] border p-2 align-top text-xs text-gray-500">
-        {truncate(field.default_value, 150)}
+      <td className="min-w-[220px] border p-2 align-top text-xs text-gray-500">
+        <span className="whitespace-pre-wrap break-words leading-relaxed">
+          {field.default_value || "—"}
+        </span>
       </td>
 
       {/* Amended (current agreement value) */}
       <td
-        className={`max-w-[200px] border p-2 align-top text-xs ${
+        className={`min-w-[220px] border p-2 align-top text-xs ${
           isAmended ? "font-medium text-gray-900" : "text-gray-400"
         }`}
       >
-        {truncate(field.current_value || field.default_value, 150)}
+        <span className="whitespace-pre-wrap break-words leading-relaxed">
+          {field.current_value || field.default_value || "—"}
+        </span>
         {isAmended && (
           <span className="ml-1 rounded bg-yellow-200 px-1 text-[9px] font-semibold text-yellow-800">
             amended
