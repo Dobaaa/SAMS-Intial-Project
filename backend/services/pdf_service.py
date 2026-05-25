@@ -207,17 +207,33 @@ def _percentage_of(percentage: str | None, base: str | None) -> str:
 
 
 def _inject_percentage_amounts(value_map: dict[str, str]) -> None:
-    """Insert ``A10_AMOUNT`` and ``A21_AMOUNT`` synthetic tokens into the
-    map so the Performance Security and Maximum Liquidated Damages
-    Appendix rows can render both the entered percentage and the
-    corresponding AED amount (``F08 * pct / 100``).
+    """Insert synthetic tokens derived from percentage × F08 into value_map.
 
-    Empty/non-numeric inputs collapse to ``""`` which renders as an empty
-    cell — same behaviour as any missing token.
+    Tokens injected:
+    * ``A10_AMOUNT`` — Performance Security AED amount (A10% × F08)
+    * ``A21_AMOUNT`` — Maximum LDs AED amount (A21% × F08)
+    * ``C03_DISPLAY`` — Advance Payment display: "AED X as Y% of the
+      Subcontract Price", assembled from C03 (amount) + C03_PCT (percentage).
+
+    Empty/non-numeric inputs collapse to ``""`` — same as a missing token.
     """
+    from services.docx_pdf_service import _format_money as _fmt
+
     f08 = value_map.get("F08", "")
     value_map["A10_AMOUNT"] = _percentage_of(value_map.get("A10"), f08)
     value_map["A21_AMOUNT"] = _percentage_of(value_map.get("A21"), f08)
+
+    c03 = value_map.get("C03", "").strip()
+    c03_pct = value_map.get("C03_PCT", "").strip()
+    amt_str = _fmt(c03) if c03 else ""
+    if amt_str and c03_pct:
+        value_map["C03_DISPLAY"] = f"AED {amt_str} as {c03_pct}% of the Subcontract Price"
+    elif amt_str:
+        value_map["C03_DISPLAY"] = f"AED {amt_str}"
+    elif c03_pct:
+        value_map["C03_DISPLAY"] = f"{c03_pct}% of the Subcontract Price"
+    else:
+        value_map["C03_DISPLAY"] = ""
 
 
 def _appendix_rows(

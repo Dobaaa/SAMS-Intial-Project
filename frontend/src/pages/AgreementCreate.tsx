@@ -19,10 +19,11 @@ type MasterField = {
   auto_source_field_id?: string | null;
 };
 
-function tenPercentOf(value: string): string {
-  const n = parseFloat(value.replace(/,/g, "").trim());
-  if (!Number.isFinite(n)) return "";
-  return (n * 0.1).toFixed(2);
+function pctOf(base: string, pct: string): string {
+  const b = parseFloat(base.replace(/,/g, "").trim());
+  const p = parseFloat(pct.replace(/,/g, "").trim());
+  if (!Number.isFinite(b) || !Number.isFinite(p)) return "";
+  return (b * p / 100).toFixed(2);
 }
 
 // F02-F08 duplicate the project / subcontractor inputs collected on Step 1
@@ -158,16 +159,19 @@ export default function AgreementCreate() {
     const isAutoFollow = (target: string, previousSourceVal: string) =>
       (values[target] ?? "") === "" || (values[target] ?? "") === previousSourceVal;
 
-    // Special compute: F08 -> C03 (Advance Payment) = 10% of the
-    // subcontract price. A10 (Performance Security) used to ride this
-    // cascade too, but Rev 02 reclassified A10 as a percentage input;
-    // the AED amount is now derived at render time via the
-    // {{A10_AMOUNT}} synthetic token, so no frontend cascade for A10.
-    if (fieldId === "F08") {
-      const pct = tenPercentOf(value);
-      const prevPct = tenPercentOf(values.F08 ?? "");
-      if ((values.C03 ?? "") === "" || values.C03 === prevPct) {
-        next.C03 = pct;
+    // C03_PCT × F08 → C03 (Advance Payment amount).
+    // Recompute C03 whenever F08 or C03_PCT changes, as long as C03
+    // still equals the previously auto-computed value (i.e. admin hasn't
+    // manually overridden it).
+    if (fieldId === "F08" || fieldId === "C03_PCT") {
+      const f08Val = fieldId === "F08" ? value : (values.F08 ?? "");
+      const pctVal = fieldId === "C03_PCT" ? value : (next.C03_PCT ?? values.C03_PCT ?? "10");
+      const computed = pctOf(f08Val, pctVal);
+      const prevF08 = fieldId === "F08" ? (values.F08 ?? "") : f08Val;
+      const prevPct = fieldId === "C03_PCT" ? (values.C03_PCT ?? "10") : pctVal;
+      const prevComputed = pctOf(prevF08, prevPct);
+      if ((values.C03 ?? "") === "" || values.C03 === prevComputed) {
+        next.C03 = computed;
       }
     }
 
@@ -175,6 +179,7 @@ export default function AgreementCreate() {
     // passes so chained sources propagate (F08 -> C03 -> A09: pass 1 fills
     // C03 from F08, pass 2 fills A09 from C03). The 10% target handled
     // above is skipped here so the percentage compute wins.
+    // C03 is handled by the special compute above — skip generic cascade.
     const tenPctTargets = new Set(["C03"]);
     for (let pass = 0; pass < 2; pass++) {
       for (const f of fields) {

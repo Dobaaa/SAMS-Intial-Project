@@ -37,7 +37,8 @@ FIELDS: list[FieldSeed] = [
     # Conditions (C01-C13)
     FieldSeed(TemplateTypeEnum.conditions, "C01", "2.2", "Scope of Works details", InputTypeEnum.textarea, is_required=True, sort_order=1),
     FieldSeed(TemplateTypeEnum.conditions, "C02", "3.3", "Subcontract Quantities Type", InputTypeEnum.dropdown, is_required=True, sort_order=2),
-    FieldSeed(TemplateTypeEnum.conditions, "C03", "3.4.1", "Advance Payment Amount (AED)", InputTypeEnum.number, default_value="10% of F08", sort_order=3),
+    FieldSeed(TemplateTypeEnum.conditions, "C03", "3.4.1", "Advance Payment Amount (AED)", InputTypeEnum.number, sort_order=3),
+    FieldSeed(TemplateTypeEnum.conditions, "C03_PCT", "3.4.1", "Advance Payment (%)", InputTypeEnum.number, default_value="10", sort_order=3),
     FieldSeed(TemplateTypeEnum.conditions, "C04", "3.4.1", "Advance Payment release condition", InputTypeEnum.text, sort_order=4),
     # Free-text so admin can record "60 days PDC" or "30 days from completion"
     # alongside plain integers. PDF renders the text verbatim.
