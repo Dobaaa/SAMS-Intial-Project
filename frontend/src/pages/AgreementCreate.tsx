@@ -28,7 +28,9 @@ function tenPercentOf(value: string): string {
 // F02-F08 duplicate the project / subcontractor inputs collected on Step 1
 // (sub company / PO box / trade licence / employer / project name / location /
 // price). Step 2 hides these and the values are synced via buildStep1FieldSync.
-const STEP1_DUPLICATE_F_FIELDS = new Set(["F02", "F03", "F04", "F05", "F06", "F07", "F08"]);
+// F08 (Subcontract Price) is intentionally kept in Step 2 so admin enters it
+// alongside the other Form fields — it is per-agreement, never autofilled.
+const STEP1_DUPLICATE_F_FIELDS = new Set(["F02", "F03", "F04", "F05", "F06", "F07"]);
 
 const fallbackFields: MasterField[] = [
   { id: "F01", template_id: "fallback", field_id: "F01", field_label: "Day of signing", input_type: "date", is_required: true, show_in_appendix: false, sort_order: 1 },
@@ -715,10 +717,9 @@ export default function AgreementCreate() {
         <div className="space-y-2 rounded-xl border border-sky-100 bg-white p-4 shadow-sm">
           <h2 className="font-semibold">Step 2: Form of Agreement Header</h2>
           <p className="text-sm text-sky-700">
-            Only the agreement-specific fields below are requested here. The
-            project details, subcontractor identity, employer and contract
-            price you entered in Step 1 are already attached to this draft and
-            are <strong>not</strong> shown again.
+            Project details, subcontractor identity, employer and engineer
+            entered in Step 1 are already attached. Enter the Subcontract Price
+            and any remaining Form fields below.
           </p>
           {formFields.length === 0 ? (
             <div className="rounded border border-sky-100 bg-sky-50/50 p-2 text-sm text-sky-700">

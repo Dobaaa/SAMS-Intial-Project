@@ -54,11 +54,11 @@ FIELDS: list[FieldSeed] = [
     # Company Security Cheque. Cascades into the appendix beneath
     # A10 (Performance Security amount) for the executed agreement.
     FieldSeed(TemplateTypeEnum.conditions, "C14", "3.4.2", "Performance Security Type", InputTypeEnum.dropdown, is_required=True, appendix_row_label="Performance Security Type", appendix_clause_ref="3.4.2", sort_order=14),
-    # Free-text "Optional Terms" clause. Renders as the last row of the
+    # Free-text "Important Notes & Special Conditions" clause. Renders as the last row of the
     # APPENDIX continuation table on page 7 (the {{C15}} token, added by
     # scripts/apply_master_c15_patch.py). No spec clause number — clause_number
     # left blank so the UI doesn't print a "· clause" label.
-    FieldSeed(TemplateTypeEnum.conditions, "C15", "", "Optional Terms", InputTypeEnum.textarea, appendix_row_label="Optional Terms", sort_order=15),
+    FieldSeed(TemplateTypeEnum.conditions, "C15", "", "Important Notes & Special Conditions", InputTypeEnum.textarea, appendix_row_label="Important Notes & Special Conditions", sort_order=15),
     # Appendix (A01-A23)
     FieldSeed(TemplateTypeEnum.appendix, "A01", "1.1", "The Subcontractor", InputTypeEnum.text, auto_source_field_id="F02", appendix_row_label="The Subcontractor", appendix_clause_ref="1.1", sort_order=1),
     FieldSeed(TemplateTypeEnum.appendix, "A02", "1.1", "The Employer", InputTypeEnum.text, auto_source_field_id="F05", appendix_row_label="The Employer", appendix_clause_ref="1.1", sort_order=2),

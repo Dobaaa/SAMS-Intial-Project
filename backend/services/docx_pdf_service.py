@@ -280,6 +280,95 @@ def _emit_styled_run(p_el, base_rpr, text: str, *, bold: bool = False, superscri
     p_el.append(new_r)
 
 
+def _split_cell_soft_breaks(doc: Document) -> None:
+    """Expand <w:br/> soft-break sequences in table cell paragraphs into
+    separate <w:p> elements.
+
+    After token substitution, multi-line values (C15 bullet lists, A04 project
+    details) land in a single <w:p> with <w:br/> between lines. Converting
+    each line to its own paragraph gives correct per-line alignment in
+    LibreOffice — especially for bullet-style content where wrapped lines must
+    start at the same column as the bullet character.
+    """
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                _split_paras_in_cell(cell)
+
+
+def _split_paras_in_cell(cell) -> None:
+    from copy import deepcopy
+    tc = cell._tc
+    for para in list(cell.paragraphs):
+        p_el = para._element
+        # Quick check: any soft <w:br/> (no w:type attribute) anywhere?
+        if not any(
+            br.get(qn("w:type")) is None
+            for br in p_el.iter(qn("w:br"))
+        ):
+            continue
+
+        pPr_orig = p_el.find(qn("w:pPr"))
+
+        # Walk paragraph children and segment at soft <w:br/> boundaries.
+        # Each segment = list of OOXML elements that form one <w:p>.
+        segments: list[list] = [[]]
+
+        for child in list(p_el):
+            if child.tag == qn("w:pPr"):
+                continue
+            if child.tag == qn("w:r"):
+                rPr = child.find(qn("w:rPr"))
+                cur: list = []  # text/other nodes accumulated for this segment
+                for sub in child:
+                    if sub.tag == qn("w:rPr"):
+                        continue
+                    if sub.tag == qn("w:br") and sub.get(qn("w:type")) is None:
+                        # Flush accumulated content into a run for the current segment
+                        if cur:
+                            new_r = OxmlElement("w:r")
+                            if rPr is not None:
+                                new_r.append(deepcopy(rPr))
+                            for t in cur:
+                                new_r.append(deepcopy(t))
+                            segments[-1].append(new_r)
+                            cur = []
+                        segments.append([])
+                    else:
+                        cur.append(sub)
+                if cur:
+                    new_r = OxmlElement("w:r")
+                    if rPr is not None:
+                        new_r.append(deepcopy(rPr))
+                    for t in cur:
+                        new_r.append(deepcopy(t))
+                    segments[-1].append(new_r)
+            else:
+                segments[-1].append(deepcopy(child))
+
+        if len(segments) <= 1:
+            continue
+
+        # Insert one new <w:p> per segment before the original paragraph
+        insert_pos = list(tc).index(p_el)
+        for i, seg_els in enumerate(segments):
+            new_p = OxmlElement("w:p")
+            if pPr_orig is not None:
+                new_pPr = deepcopy(pPr_orig)
+                if i > 0:
+                    # Remove top-spacing on continuation lines so bullets
+                    # don't float apart from one another
+                    spc = new_pPr.find(qn("w:spacing"))
+                    if spc is not None and qn("w:before") in spc.attrib:
+                        del spc.attrib[qn("w:before")]
+                new_p.append(new_pPr)
+            for el in seg_els:
+                new_p.append(el)
+            tc.insert(insert_pos + i, new_p)
+
+        tc.remove(p_el)
+
+
 def _set_run_text_with_breaks(run, text: str) -> None:
     """Write `text` into `run`, converting "\\n" to OOXML ``<w:br/>`` breaks.
 
@@ -461,6 +550,11 @@ def render_agreement_docx_to_pdf(
     # revision text spans too.
     for para in _iter_paragraphs(doc):
         _substitute_in_paragraph(para, values)
+
+    # 3.5) Expand any <w:br/> soft-break sequences that token substitution
+    # produced in table cells (e.g. C15 bullets, A04 project details) into
+    # separate <w:p> elements so each line aligns properly in LibreOffice.
+    _split_cell_soft_breaks(doc)
 
     # 4) Headers / footers (including textbox content). The {{REFERENCE}}
     # token stamped on every page lives inside <wps:txbx> shapes that the

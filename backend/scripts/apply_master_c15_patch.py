@@ -34,7 +34,7 @@ from docx import Document
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 MASTER_DOCX = BACKEND_DIR / "masters" / "sca_master_v1.docx"
 
-_ROW_LABEL = "Optional Terms"
+_ROW_LABEL = "Important Notes & Special Conditions"
 _ROW_TOKEN = "{{C15}}"
 
 

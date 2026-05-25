@@ -226,12 +226,12 @@ async def get_workflow_agreement_appendix_fields(
             "auto_source_field_id": mf.auto_source_field_id,
         })
 
-    # Append C15 "Optional Terms" — a Conditions field shown as the last appendix row
+    # Append C15 — a Conditions field shown as the last appendix row
     c15 = master_map.get("C15")
     if c15:
         rows.append({
             "field_id": "C15",
-            "row_label": c15.appendix_row_label or "Optional Terms",
+            "row_label": c15.appendix_row_label or "Important Notes & Special Conditions",
             "clause_ref": c15.appendix_clause_ref or "",
             "default_value": c15.default_value or "",
             "current_value": value_map.get("C15", ""),
