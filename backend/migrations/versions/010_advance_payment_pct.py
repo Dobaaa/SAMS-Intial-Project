@@ -35,7 +35,7 @@ def upgrade() -> None:
             'Advance Payment (%)', 'number', false,
             '10', false, 3
         FROM master_templates mt
-        WHERE mt.template_type = 'conditions'
+        WHERE mt.type = 'conditions'
           AND NOT EXISTS (
             SELECT 1 FROM master_fields mf2
             WHERE mf2.template_id = mt.id AND mf2.field_id = 'C03_PCT'
