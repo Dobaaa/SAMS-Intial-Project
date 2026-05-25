@@ -81,7 +81,7 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.appendix, "A18", "4.3(b)", "Milestones", InputTypeEnum.table, auto_source_field_id="C09", appendix_row_label="Time for Completion of the Sections (Milestones)", appendix_clause_ref="4.3(b)", sort_order=18),
     FieldSeed(TemplateTypeEnum.appendix, "A19", "5", "Defects Liability Period", InputTypeEnum.number, auto_source_field_id="C10", appendix_row_label="Defects Liability Period", appendix_clause_ref="5", sort_order=19),
     FieldSeed(TemplateTypeEnum.appendix, "A20", "6.2", "Rate of Liquidated Damages (AED/day)", InputTypeEnum.number, auto_source_field_id="C11", appendix_row_label="Rate Of Liquidated Damages", appendix_clause_ref="6.2", sort_order=20),
-    FieldSeed(TemplateTypeEnum.appendix, "A21", "6.2", "Maximum Liquidated Damages (%)", InputTypeEnum.number, default_value="10", appendix_row_label="Maximum Liquidated Damages", appendix_clause_ref="6.2", sort_order=21),
+    FieldSeed(TemplateTypeEnum.appendix, "A21", "6.2", "Maximum Liquidated Damages (%)", InputTypeEnum.number, default_value="10", appendix_row_label="Maximum Liquidated Damages", appendix_clause_ref="6.2", show_in_appendix=False, sort_order=21),
     FieldSeed(TemplateTypeEnum.appendix, "A22", "10.1", "Insurance submission deadline (days)", InputTypeEnum.number, auto_source_field_id="C12", appendix_row_label="Time to submit the Copies of the required Insurance Policies", appendix_clause_ref="10.1", sort_order=22),
     FieldSeed(TemplateTypeEnum.appendix, "A23", "13.3", "Dispute Resolution Jurisdiction", InputTypeEnum.text, auto_source_field_id="C13", appendix_row_label="Dispute Resolution (Jurisdiction)", appendix_clause_ref="13.3", sort_order=23),
 ]

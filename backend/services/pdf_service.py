@@ -223,6 +223,16 @@ def _inject_percentage_amounts(value_map: dict[str, str]) -> None:
     value_map["A10_AMOUNT"] = _percentage_of(value_map.get("A10"), f08)
     value_map["A21_AMOUNT"] = _percentage_of(value_map.get("A21"), f08)
 
+    # A21_DISPLAY: "AED X per day and limited to 10% of Subcontract Value"
+    # C11 holds the daily rate (AED/day); the 10% cap is fixed per the
+    # body clause text (para 500).
+    c11 = value_map.get("C11", "").strip()
+    rate_str = _fmt(c11) if c11 else ""
+    if rate_str:
+        value_map["A21_DISPLAY"] = f"AED {rate_str} per day and limited to 10% of Subcontract Value"
+    else:
+        value_map["A21_DISPLAY"] = ""
+
     c03 = value_map.get("C03", "").strip()
     c03_pct = value_map.get("C03_PCT", "").strip()
     amt_str = _fmt(c03) if c03 else ""
