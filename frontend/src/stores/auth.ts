@@ -6,7 +6,10 @@ export type Role =
   | "project_director"
   | "accounts"
   | "operation_manager"
-  | "gm";
+  | "gm"
+  | "quality_surveyor"
+  | "estimator"
+  | "project_manager";
 
 export type AuthUser = {
   id: string;

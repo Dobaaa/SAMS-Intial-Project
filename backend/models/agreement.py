@@ -36,6 +36,20 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     agreements = relationship("Agreement", back_populates="project")
+    project_users = relationship("ProjectUser", back_populates="project", cascade="all, delete-orphan")
+
+
+class ProjectUser(Base):
+    """Per-project user assignments. Used to notify QS, SR.QS, PD, PM etc.
+    when activity (comments, approvals) happens on an agreement for that project."""
+    __tablename__ = "project_users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    project = relationship("Project", back_populates="project_users")
 
 
 class Subcontractor(Base):

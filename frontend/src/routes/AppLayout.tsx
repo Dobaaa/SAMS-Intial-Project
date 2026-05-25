@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { api } from "../lib/api";
+import { humanRole } from "../lib/roles";
 import { useAuth, type Role } from "../stores/auth";
 
 type NavItem = {
@@ -11,7 +12,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", roles: ["admin"] },
-  { to: "/reviewer-dashboard", label: "My Agreements", roles: ["project_director", "accounts", "operation_manager", "gm"] },
+  { to: "/reviewer-dashboard", label: "My Agreements", roles: ["project_director", "accounts", "operation_manager", "gm"] as Role[] },
   { to: "/agreements/new", label: "New Agreement", roles: ["admin"] },
   { to: "/workflow", label: "Workflow Review" },
   { to: "/resolution", label: "Resolution" },
@@ -64,7 +65,7 @@ export default function AppLayout() {
         <div className="ml-auto flex items-center gap-3 text-sm text-sky-800">
           {user && (
             <span>
-              {user.name} <span className="text-sky-500">({user.role})</span>
+              {user.name} <span className="text-sky-500">({humanRole(user.role)})</span>
             </span>
           )}
           <button

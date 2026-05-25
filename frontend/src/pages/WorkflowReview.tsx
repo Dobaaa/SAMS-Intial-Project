@@ -363,7 +363,7 @@ export default function WorkflowReview() {
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
-  const isAdmin = role === "admin";
+  const isObserver = role === "admin" || role === "quality_surveyor" || role === "estimator" || role === "project_manager";
 
   // Step that belongs to the current logged-in role (for posting comments)
   const myStep = details?.steps.find((s) => s.role_required === role) ?? null;
@@ -379,11 +379,11 @@ export default function WorkflowReview() {
     <div className="grid grid-cols-12 gap-4 p-4">
       {/* Sidebar: all my review agreements */}
       <aside className="col-span-2 rounded border p-3">
-        <h2 className="mb-3 text-lg font-semibold">{isAdmin ? "Under Review" : "My Agreements"}</h2>
+        <h2 className="mb-3 text-lg font-semibold">{isObserver ? "Under Review" : "My Agreements"}</h2>
         <div className="space-y-2">
           {myReviews.length === 0 && (
             <p className="text-xs text-gray-400">
-              {isAdmin ? "No agreements currently under review." : "No agreements assigned to your role."}
+              {isObserver ? "No agreements currently under review." : "No agreements assigned to your role."}
             </p>
           )}
           {myReviews.map((item) => {
@@ -780,7 +780,7 @@ export default function WorkflowReview() {
                   </div>
 
                   {/* Action controls — hidden for admin (observer-only) */}
-                  {!isAdmin && (
+                  {!isObserver && (
                   <div className="rounded border p-3">
                     <h3 className="mb-2 font-semibold">Review Action</h3>
                     <p className="mb-2 text-xs text-gray-500">
@@ -836,7 +836,7 @@ export default function WorkflowReview() {
           </>
         ) : (
           <div className="rounded border p-4 text-sm text-gray-500">
-            {isAdmin ? "No agreements currently under review." : "No pending agreements for your role."}
+            {isObserver ? "No agreements currently under review." : "No pending agreements for your role."}
           </div>
         )}
       </main>

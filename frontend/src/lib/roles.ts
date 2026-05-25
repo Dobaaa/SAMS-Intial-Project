@@ -13,6 +13,9 @@ const ROLE_LABELS: Record<string, string> = {
   accounts: "Accounts",
   operation_manager: "Operation Manager",
   gm: "General Manager",
+  quality_surveyor: "Quantity Surveyor",
+  estimator: "Sr. Estimator",
+  project_manager: "Project Manager",
 };
 
 export function humanRole(value: string | null | undefined): string {

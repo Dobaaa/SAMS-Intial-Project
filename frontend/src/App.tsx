@@ -16,9 +16,13 @@ import AppLayout from "./routes/AppLayout";
 import RequireAuth from "./routes/RequireAuth";
 import { useAuth } from "./stores/auth";
 
+const OBSERVER_ROLES = new Set(["admin", "quality_surveyor", "estimator", "project_manager"]);
+
 function DefaultRedirect() {
   const role = useAuth((s) => s.user?.role);
-  return <Navigate to={role === "admin" ? "/dashboard" : "/reviewer-dashboard"} replace />;
+  if (role === "admin") return <Navigate to="/dashboard" replace />;
+  if (role && OBSERVER_ROLES.has(role)) return <Navigate to="/workflow" replace />;
+  return <Navigate to="/reviewer-dashboard" replace />;
 }
 
 export default function App() {

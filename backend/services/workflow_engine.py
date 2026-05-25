@@ -138,9 +138,51 @@ async def get_pending_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
 
 RESOLUTION_STEP_NAMES = {"Resolution - Operation Manager", "Resolution - General Manager"}
 
+# Roles that get observer-only access in WorkflowReview (no approval step of their own).
+OBSERVER_ROLES = {RoleEnum.admin, RoleEnum.quality_surveyor, RoleEnum.estimator, RoleEnum.project_manager}
+
 
 def _is_resolution_step(step: WorkflowStep) -> bool:
     return step.step_name in RESOLUTION_STEP_NAMES
+
+
+async def _notify_project_users(
+    db: AsyncSession,
+    agreement: Agreement,
+    subject: str,
+    body: str,
+    exclude_user_id=None,
+) -> None:
+    """Email all users assigned to the agreement's project (project_users table).
+
+    Falls back to notifying admins if the project has no explicit assignments.
+    Failures are swallowed — email is best-effort, never workflow-blocking.
+    """
+    from models.agreement import ProjectUser
+
+    result = await db.execute(
+        select(User)
+        .join(ProjectUser, ProjectUser.user_id == User.id)
+        .where(
+            ProjectUser.project_id == agreement.project_id,
+            User.is_active.is_(True),
+        )
+    )
+    users = result.scalars().all()
+
+    if not users:
+        # No project assignments — fall back to admins
+        result = await db.execute(select(User).where(User.role == RoleEnum.admin, User.is_active.is_(True)))
+        users = result.scalars().all()
+
+    seen: set[str] = set()
+    for u in users:
+        if exclude_user_id and str(u.id) == str(exclude_user_id):
+            continue
+        if u.email in seen:
+            continue
+        seen.add(u.email)
+        await send_email(to_email=u.email, subject=subject, body=body)
 
 
 async def _notify_admins_agreement_ready_to_forward(
@@ -226,14 +268,23 @@ async def approve_step(db: AsyncSession, step: WorkflowStep, actor: User) -> Non
     if _is_resolution_step(step):
         await _handle_resolution_approval(db, step, agreement)
     elif agreement and await all_main_steps_approved(db, agreement.id):
-        # Flat parallel review complete: every reviewer role has approved, so
-        # the agreement is ready for Admin to forward to the subcontractor.
-        # Status stays under_internal_review until Admin triggers
-        # POST /api/agreements/{id}/send-to-subcontractor.
         agreement.gm_approval_date = date.today()
         agreement.current_status = AgreementStatusEnum.under_internal_review
         agreement.status_updated_on = datetime.now(UTC)
         await _notify_admins_agreement_ready_to_forward(db, agreement)
+
+    if agreement:
+        ref = agreement.reference_number
+        role_label = step.role_required.value.replace("_", " ").title()
+        await _notify_project_users(
+            db, agreement,
+            subject=f"SAMS: {role_label} approved {ref}",
+            body=(
+                f"{actor.name} ({role_label}) has approved agreement {ref}.\n\n"
+                f"Log in to SAMS to view the agreement status."
+            ),
+            exclude_user_id=actor.id,
+        )
 
     await db.commit()
 
@@ -322,18 +373,19 @@ async def add_comment(
     await db.flush()
 
     agreement = await db.get(Agreement, step.agreement_id)
-    admin_result = await db.execute(
-        select(User).where(User.role == RoleEnum.admin, User.is_active.is_(True))
-    )
-    for admin in admin_result.scalars().all():
-        await send_email(
-            to_email=admin.email,
-            subject=f"SAMS Review Comment - {agreement.reference_number if agreement else step.agreement_id}",
+    if agreement:
+        ref = agreement.reference_number
+        role_label = step.role_required.value.replace("_", " ").title()
+        clause_note = f"\nClause Reference: {clause_reference}" if clause_reference else ""
+        await _notify_project_users(
+            db, agreement,
+            subject=f"SAMS: New comment on {ref}",
             body=(
-                f"New review comment by {actor.name} ({step.role_required.value}).\n"
-                f"Comment: {comment.comment_text}\n"
-                f"Clause Reference: {clause_reference or 'N/A'}"
+                f"{actor.name} ({role_label}) added a comment on agreement {ref}:\n\n"
+                f"{comment.comment_text}{clause_note}\n\n"
+                f"Log in to SAMS to view the full review."
             ),
+            exclude_user_id=actor.id,
         )
 
     await db.commit()

@@ -15,6 +15,9 @@ class RoleEnum(str, enum.Enum):
     accounts = "accounts"
     operation_manager = "operation_manager"
     gm = "gm"
+    quality_surveyor = "quality_surveyor"
+    estimator = "estimator"
+    project_manager = "project_manager"
 
 
 class User(Base):

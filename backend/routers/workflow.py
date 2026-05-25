@@ -10,6 +10,7 @@ from middleware.rbac import get_current_user
 from models.user import User
 from models.workflow import WorkflowStep
 from services.workflow_engine import (
+    OBSERVER_ROLES,
     add_comment,
     approve_step,
     get_all_for_admin,
@@ -46,8 +47,7 @@ async def get_my_agreements(
 
     Admin gets a read-only observer view: all agreements currently under
     internal review, using the PD step as the sidebar representative."""
-    from models.user import RoleEnum
-    if current_user.role == RoleEnum.admin:
+    if current_user.role in OBSERVER_ROLES:
         return await get_all_for_admin(db)
     return await get_all_for_role(db, current_user.role)
 
