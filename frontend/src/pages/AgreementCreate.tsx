@@ -295,6 +295,9 @@ export default function AgreementCreate() {
     if (project.project_location) out.F07 = project.project_location;
     // F08 (price) is intentionally not synced — admin enters it explicitly
     // in Step 2 alongside F01 (signing date) + F09 (scope title).
+    // A06 gets the full subcontractor address for notices (overrides the F03
+    // PO-Box-only cascade when the admin enters the full address).
+    if (subcontractor.address) out.A06 = subcontractor.address;
     return out;
   };
 
@@ -685,6 +688,21 @@ export default function AgreementCreate() {
               <label className="mb-1 block text-sm">Email</label>
               <input className="w-full rounded border p-2" value={subcontractor.email} onChange={(e) => setSubcontractor({ ...subcontractor, email: e.target.value })} />
             </div>
+            <div>
+              <label className="mb-1 block text-sm">
+                Full address for notices (A06 — Appendix communication address)
+              </label>
+              <textarea
+                className="w-full rounded border p-2"
+                rows={3}
+                placeholder={"M/s. Company LLC\nP.O. Box 12345\nDubai, UAE"}
+                value={subcontractor.address}
+                onChange={(e) => setSubcontractor({ ...subcontractor, address: e.target.value })}
+              />
+              <p className="mt-0.5 text-xs text-sky-700">
+                Multi-line address used in the appendix "Communications Address for Serving of Notices" row (A06).
+              </p>
+            </div>
           </section>
 
           {manualAppendixFields.length > 0 && (
@@ -701,6 +719,11 @@ export default function AgreementCreate() {
                   <label className="mb-1 block text-sm">
                     {field.field_id} — {field.field_label}
                     {field.is_required && <span className="text-red-500"> *</span>}
+                    {field.field_id === "A05" && (
+                      <span className="ml-1 text-xs font-normal text-sky-600">
+                        (BGCC's address for serving of notices — Appendix clause 1.6)
+                      </span>
+                    )}
                   </label>
                   <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} invalid={Boolean(errors[field.field_id])} />
                   {errors[field.field_id] && <p className="mt-1 text-xs text-red-600">{errors[field.field_id]}</p>}
