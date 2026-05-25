@@ -609,7 +609,7 @@ export default function AgreementCreate() {
             </div>
             <div>
               <label className="mb-1 block text-sm">Engineer / Consultant</label>
-              <input readOnly={projectLocked} className={`w-full rounded border p-2${projectLocked ? " bg-gray-100" : ""}`} value={project.engineer_name} onChange={(e) => setProject({ ...project, engineer_name: e.target.value })} />
+              <input className="w-full rounded border p-2" value={project.engineer_name} onChange={(e) => setProject({ ...project, engineer_name: e.target.value })} />
             </div>
             <div>
               <label className="mb-1 block text-sm">Reference number override (optional, auto-generated otherwise)</label>
