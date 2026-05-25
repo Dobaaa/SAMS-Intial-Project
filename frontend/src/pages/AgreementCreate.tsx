@@ -298,6 +298,10 @@ export default function AgreementCreate() {
     // A06 gets the full subcontractor address for notices (overrides the F03
     // PO-Box-only cascade when the admin enters the full address).
     if (subcontractor.address) out.A06 = subcontractor.address;
+    // A03 (Engineer/Consultant) cascades from the project's engineer field.
+    // Admin can still override it by typing in the appendix inputs section;
+    // the manual value wins (manualAppendixFields loop runs after this).
+    if (project.engineer_name) out.A03 = project.engineer_name;
     return out;
   };
 
@@ -379,6 +383,10 @@ export default function AgreementCreate() {
       engineer_name: p.engineer_name || "",
     });
     setReference(p.reference || "");
+    // Pre-fill A03 (Engineer/Consultant) in the appendix inputs from the
+    // project record so admin sees it populated rather than having to
+    // re-type it below in the appendix section.
+    if (p.engineer_name) setValues((prev) => ({ ...prev, A03: p.engineer_name! }));
   };
 
   // Subcontractor picker: debounce the search input and call the list
