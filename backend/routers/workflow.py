@@ -12,6 +12,7 @@ from models.workflow import WorkflowStep
 from services.workflow_engine import (
     add_comment,
     approve_step,
+    get_all_for_admin,
     get_all_for_role,
     get_pending_for_role,
     get_workflow_agreement_summary,
@@ -41,7 +42,13 @@ async def get_my_agreements(
 ) -> list[dict]:
     """All steps (pending + approved + returned) for this reviewer's role,
     with enriched agreement info. Used by the sidebar and reviewer dashboard
-    so agreements remain visible after approval."""
+    so agreements remain visible after approval.
+
+    Admin gets a read-only observer view: all agreements currently under
+    internal review, using the PD step as the sidebar representative."""
+    from models.user import RoleEnum
+    if current_user.role == RoleEnum.admin:
+        return await get_all_for_admin(db)
     return await get_all_for_role(db, current_user.role)
 
 

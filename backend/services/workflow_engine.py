@@ -56,6 +56,39 @@ async def get_all_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
     ]
 
 
+async def get_all_for_admin(db: AsyncSession) -> list[dict]:
+    """All agreements currently under internal review, returned in the same
+    {step, agreement} shape as get_all_for_role so the frontend sidebar works
+    without modification. Uses the PD step as the representative step per
+    agreement (just needed for sidebar key tracking — admin has no own step)."""
+    result = await db.execute(
+        select(Agreement)
+        .where(Agreement.current_status == AgreementStatusEnum.under_internal_review)
+        .options(
+            selectinload(Agreement.project),
+            selectinload(Agreement.subcontractor),
+            selectinload(Agreement.workflow_steps),
+        )
+        .order_by(Agreement.status_updated_on.desc())
+    )
+    items = []
+    for agr in result.scalars().all():
+        if not agr.workflow_steps:
+            continue
+        rep_step = min(agr.workflow_steps, key=lambda s: s.step_order)
+        items.append({
+            "step": _step_to_dict(rep_step),
+            "agreement": {
+                "id": str(agr.id),
+                "reference_number": agr.reference_number,
+                "current_status": agr.current_status.value,
+                "project_name": agr.project.project_name if agr.project else None,
+                "subcontractor_name": agr.subcontractor.company_name if agr.subcontractor else None,
+            },
+        })
+    return items
+
+
 async def get_pending_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
     result = await db.execute(
         select(WorkflowStep)

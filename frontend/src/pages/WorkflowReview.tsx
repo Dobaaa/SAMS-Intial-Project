@@ -363,6 +363,8 @@ export default function WorkflowReview() {
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
+  const isAdmin = role === "admin";
+
   // Step that belongs to the current logged-in role (for posting comments)
   const myStep = details?.steps.find((s) => s.role_required === role) ?? null;
   const myStepApproved = myStep?.status === "approved";
@@ -377,10 +379,12 @@ export default function WorkflowReview() {
     <div className="grid grid-cols-12 gap-4 p-4">
       {/* Sidebar: all my review agreements */}
       <aside className="col-span-2 rounded border p-3">
-        <h2 className="mb-3 text-lg font-semibold">My Agreements</h2>
+        <h2 className="mb-3 text-lg font-semibold">{isAdmin ? "Under Review" : "My Agreements"}</h2>
         <div className="space-y-2">
           {myReviews.length === 0 && (
-            <p className="text-xs text-gray-400">No agreements assigned to your role.</p>
+            <p className="text-xs text-gray-400">
+              {isAdmin ? "No agreements currently under review." : "No agreements assigned to your role."}
+            </p>
           )}
           {myReviews.map((item) => {
             const isApproved = item.step.status === "approved";
@@ -775,7 +779,8 @@ export default function WorkflowReview() {
                     </div>
                   </div>
 
-                  {/* Action controls */}
+                  {/* Action controls — hidden for admin (observer-only) */}
+                  {!isAdmin && (
                   <div className="rounded border p-3">
                     <h3 className="mb-2 font-semibold">Review Action</h3>
                     <p className="mb-2 text-xs text-gray-500">
@@ -823,6 +828,7 @@ export default function WorkflowReview() {
                       </div>
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
@@ -830,7 +836,7 @@ export default function WorkflowReview() {
           </>
         ) : (
           <div className="rounded border p-4 text-sm text-gray-500">
-            No pending agreements for your role.
+            {isAdmin ? "No agreements currently under review." : "No pending agreements for your role."}
           </div>
         )}
       </main>
