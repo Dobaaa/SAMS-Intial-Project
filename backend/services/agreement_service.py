@@ -12,6 +12,7 @@ from models.agreement import (
     Project,
     Subcontractor,
 )
+from services.workflow_engine import _notify_project_users
 from models.master import MasterField, MasterTemplate, TemplateTypeEnum
 from models.user import RoleEnum, User
 from models.workflow import WorkflowStep, WorkflowStepStatusEnum
@@ -285,3 +286,17 @@ async def submit_for_review(db: AsyncSession, agreement: Agreement) -> None:
     agreement.status_updated_on = datetime.now(UTC)
     agreement.updated_at = datetime.now(UTC)
     await db.commit()
+
+    ref = agreement.reference_number or "N/A"
+    await _notify_project_users(
+        db,
+        agreement,
+        subject=f"SAMS: Agreement {ref} is ready for your review",
+        body=(
+            f"Dear Team,\n\n"
+            f"The following agreement has been submitted for internal review and is now pending your approval:\n\n"
+            f"  Reference: {ref}\n\n"
+            f"Please log in to SAMS to review the agreement, add comments, or approve your step.\n\n"
+            f"This is an automated notification. Do not reply to this email."
+        ),
+    )
