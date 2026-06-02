@@ -125,8 +125,10 @@ async def dashboard_agreements(
     from services.workflow_engine import RESOLUTION_STEP_NAMES
 
     comment_counts: dict[uuid.UUID, int] = {}
+    resolved_counts: dict[uuid.UUID, int] = {}
     if items:
         agr_ids = [a.id for a in items]
+        # Pending (unresolved) main-chain comments
         cc_res = await db.execute(
             select(WorkflowComment.agreement_id, func.count(WorkflowComment.id))
             .join(WorkflowStep, WorkflowComment.workflow_step_id == WorkflowStep.id)
@@ -138,6 +140,18 @@ async def dashboard_agreements(
             .group_by(WorkflowComment.agreement_id)
         )
         comment_counts = {row[0]: row[1] for row in cc_res.all()}
+        # Resolved main-chain comments
+        rc_res = await db.execute(
+            select(WorkflowComment.agreement_id, func.count(WorkflowComment.id))
+            .join(WorkflowStep, WorkflowComment.workflow_step_id == WorkflowStep.id)
+            .where(
+                WorkflowComment.agreement_id.in_(agr_ids),
+                WorkflowComment.status == CommentStatusEnum.resolved,
+                ~WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES),
+            )
+            .group_by(WorkflowComment.agreement_id)
+        )
+        resolved_counts = {row[0]: row[1] for row in rc_res.all()}
 
     return [
         {
@@ -150,6 +164,7 @@ async def dashboard_agreements(
             "status_updated_on": a.status_updated_on.isoformat() if a.status_updated_on else None,
             "gm_approval_date": a.gm_approval_date.isoformat() if a.gm_approval_date else None,
             "open_returned_comments": int(comment_counts.get(a.id, 0)),
+            "resolved_comments": int(resolved_counts.get(a.id, 0)),
         }
         for a in items
     ]

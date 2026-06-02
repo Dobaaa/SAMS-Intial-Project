@@ -23,6 +23,7 @@ type AgreementRow = {
   status_updated_on?: string | null;
   gm_approval_date?: string | null;
   open_returned_comments?: number;
+  resolved_comments?: number;
 };
 
 type AuditItem = {
@@ -367,13 +368,20 @@ export default function Dashboard() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span>{a.reference_number}</span>
                     {(a.open_returned_comments ?? 0) > 0 && (
-                      <Link
-                        to="/resolution"
-                        className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 hover:bg-amber-200"
-                        title="Returned with comments — open Resolution"
+                      <span
+                        className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700"
+                        title="Pending comments — reviewers are waiting for admin to address these"
                       >
-                        {a.open_returned_comments} comment{a.open_returned_comments === 1 ? "" : "s"}
-                      </Link>
+                        {a.open_returned_comments} pending
+                      </span>
+                    )}
+                    {(a.open_returned_comments ?? 0) === 0 && (a.resolved_comments ?? 0) > 0 && (
+                      <span
+                        className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700"
+                        title="All comments resolved — agreement resubmitted"
+                      >
+                        {a.resolved_comments} resolved
+                      </span>
                     )}
                   </div>
                 </td>
