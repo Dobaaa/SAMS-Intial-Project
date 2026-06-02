@@ -7,6 +7,9 @@ Changes applied (all idempotent):
 4. Insurance Policies value cell             (Table 4): {{A22}}  -> {{A22}} days
    + add missing <w:w val='105'/> run-property so the cell renders in the same
      character-width scaling as every other row in the table.
+5. Insurance Policies label cell             (Table 4): rebuild all runs to match
+   Rate Of Liquidated Damages styling (remove italic, sz 23→20, add w:w=105,
+   fix pPr spacing and indent).
 
 Run::
 
@@ -36,6 +39,69 @@ def _set_value_cell(cell, new_text: str) -> None:
             extra_run._r.getparent().remove(extra_run._r)
     else:
         para.add_run(new_text)
+
+
+def _fix_insurance_label_cell(label_cell, reference_label_cell) -> bool:
+    """Rebuild the Insurance Policies label cell to match the style of the
+    Rate Of Liquidated Damages label cell (remove italic, correct font size,
+    fix paragraph spacing/indent).
+
+    Returns True if changes were made.
+    """
+    from copy import deepcopy
+
+    # Already fixed if no italic runs present
+    for para in label_cell.paragraphs:
+        for run in para.runs:
+            if run.italic:
+                break
+        else:
+            continue
+        break
+    else:
+        return False  # no italic found — already clean
+
+    # ── Copy pPr from the reference row ──────────────────────────────────────
+    ref_para = reference_label_cell.paragraphs[0]
+    tgt_para = label_cell.paragraphs[0]
+    ref_ppr = ref_para._element.find(qn("w:pPr"))
+    tgt_ppr = tgt_para._element.find(qn("w:pPr"))
+
+    if ref_ppr is not None:
+        new_ppr = deepcopy(ref_ppr)
+        if tgt_ppr is not None:
+            tgt_para._element.replace(tgt_ppr, new_ppr)
+        else:
+            tgt_para._element.insert(0, new_ppr)
+
+    # ── Collect full text then replace all runs with a single clean run ───────
+    full_text = "".join(r.text or "" for r in tgt_para.runs)
+
+    # Remove all existing runs
+    for run in list(tgt_para.runs):
+        run._r.getparent().remove(run._r)
+
+    # Build a new run copying rPr from the first reference run (w:w=105, sz=20)
+    ref_runs = ref_para.runs
+    base_rpr = deepcopy(ref_runs[0]._r.find(qn("w:rPr"))) if ref_runs else None
+
+    new_r = OxmlElement("w:r")
+    if base_rpr is not None:
+        # Strip any spacing tweak — plain font with no letter-spacing delta
+        for sp in base_rpr.findall(qn("w:spacing")):
+            base_rpr.remove(sp)
+        new_r.append(base_rpr)
+    t = OxmlElement("w:t")
+    t.set(qn("xml:space"), "preserve")
+    t.text = full_text
+    new_r.append(t)
+    tgt_para._element.append(new_r)
+
+    # Remove extra paragraphs (the cell may have had wrapped paras)
+    for extra in label_cell.paragraphs[1:]:
+        extra._element.getparent().remove(extra._element)
+
+    return True
 
 
 def _ensure_w_w(cell, val: str = "105") -> None:
@@ -94,19 +160,32 @@ def patch(doc) -> dict[str, bool]:
         changes["remove_a21_row"] = False
 
     # Re-iterate after possible deletion
+    rate_ld_row = None
+    insurance_row = None
     for row in t4.rows:
         val_text = row.cells[-1].text.strip()
 
         # 2. Rate Of Liquidated Damages: {{C11}} → AED {{C11}} per day
-        if val_text == "{{C11}}":
-            _set_value_cell(row.cells[-1], "AED {{C11}} per day")
-            changes["c11_per_day"] = True
+        if val_text in ("{{C11}}", "AED {{C11}} per day"):
+            if val_text == "{{C11}}":
+                _set_value_cell(row.cells[-1], "AED {{C11}} per day")
+                changes["c11_per_day"] = True
+            rate_ld_row = row
 
         # 3. Insurance Policies: {{A22}} → {{A22}} days + fix rPr w:w
-        elif val_text == "{{A22}}":
-            _set_value_cell(row.cells[-1], "{{A22}} days")
-            _ensure_w_w(row.cells[-1])
-            changes["a22_days_fix"] = True
+        elif "{{A22}}" in val_text:
+            if val_text == "{{A22}}":
+                _set_value_cell(row.cells[-1], "{{A22}} days")
+                _ensure_w_w(row.cells[-1])
+                changes["a22_days_fix"] = True
+            insurance_row = row
+
+    # 4. Fix Insurance Policies label cell styling (italic / wrong font size)
+    if rate_ld_row is not None and insurance_row is not None:
+        fixed = _fix_insurance_label_cell(insurance_row.cells[0], rate_ld_row.cells[0])
+        changes["a22_label_fix"] = fixed
+    else:
+        changes["a22_label_fix"] = False
 
     return changes
 
@@ -126,6 +205,8 @@ def main() -> None:
         print("Table 4: 'Rate Of Liquidated Damages' value cell updated → AED {{C11}} per day")
     if results.get("a22_days_fix"):
         print("Table 4: 'Insurance Policies' value cell updated → {{A22}} days (+ rPr fix)")
+    if results.get("a22_label_fix"):
+        print("Table 4: 'Insurance Policies' label cell rebuilt — italic removed, sz 23→20, styling matched to Rate Of Liquidated Damages.")
 
     applied = any(results.values())
     if not applied:
