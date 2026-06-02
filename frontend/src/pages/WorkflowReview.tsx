@@ -592,6 +592,33 @@ export default function WorkflowReview() {
                       </table>
                     </div>
                   )}
+
+                  {/* General comments (no clause reference) — these don't
+                      appear in any matrix cell so we surface them here so
+                      reviewers don't miss them. */}
+                  {(() => {
+                    const general = details.comments.filter((c) => !c.clause_reference);
+                    if (general.length === 0) return null;
+                    return (
+                      <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3">
+                        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-amber-700">
+                          General Comments ({general.length})
+                        </h4>
+                        <div className="space-y-2">
+                          {general.map((c) => (
+                            <div key={c.id} className="rounded border border-amber-100 bg-white p-2 text-sm">
+                              <div className="mb-0.5 text-xs font-semibold text-sky-800">
+                                {c.author_name ?? "Unknown"}
+                                {c.author_role ? ` · ${humanRole(c.author_role)}` : ""}
+                              </div>
+                              <div>{c.comment_text}</div>
+                              <div className="mt-0.5 text-xs text-gray-400">Status: {c.status}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
