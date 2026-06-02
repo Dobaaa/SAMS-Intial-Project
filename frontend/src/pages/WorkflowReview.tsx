@@ -204,7 +204,8 @@ export default function WorkflowReview() {
   // AI state
   const [analysis, setAnalysis] = useState<AIAnalysis | null>(null);
   const [summary, setSummary] = useState<AISummary | null>(null);
-  const [aiBusy, setAiBusy] = useState<"" | "analyze" | "summary">("");
+  const [grammarResult, setGrammarResult] = useState<{ data: unknown; cached: boolean } | null>(null);
+  const [aiBusy, setAiBusy] = useState<"" | "analyze" | "summary" | "grammar">("");
 
   // ── Data loading ────────────────────────────────────────────────────────────
 
@@ -258,6 +259,7 @@ export default function WorkflowReview() {
     setSelectedStepId(item.step.id);
     setAnalysis(null);
     setSummary(null);
+    setGrammarResult(null);
     setActiveTab("clauses");
     await loadDetails(item.agreement.id);
     await loadFieldMatrix(item.agreement.id);
@@ -295,6 +297,20 @@ export default function WorkflowReview() {
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
       toast.error(e?.response?.data?.detail ?? "AI summary failed.");
+    } finally {
+      setAiBusy("");
+    }
+  };
+
+  const runGrammarCheck = async () => {
+    if (!details || aiBusy) return;
+    setAiBusy("grammar");
+    try {
+      const { data } = await api.post(`/ai/${details.agreement.id}/grammar`);
+      setGrammarResult({ data: data?.data ?? [], cached: !!data?.cached });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "Grammar check failed.");
     } finally {
       setAiBusy("");
     }
@@ -483,9 +499,9 @@ export default function WorkflowReview() {
                   ) : fieldMatrix.length === 0 ? (
                     <p className="text-sm text-gray-400">No fields found for this agreement.</p>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-auto max-h-[70vh]">
                       <table className="min-w-[1400px] w-full border-collapse text-sm">
-                        <thead>
+                        <thead className="sticky top-0 z-10">
                           <tr className="bg-gray-100 text-left text-xs text-gray-600">
                             <th className="w-48 border p-2 font-semibold">Clause</th>
                             <th className="w-52 border p-2 font-semibold">Original (Master)</th>
@@ -636,9 +652,9 @@ export default function WorkflowReview() {
                   ) : appendixMatrix.length === 0 ? (
                     <p className="text-sm text-gray-400">No appendix rows found for this agreement.</p>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-auto max-h-[70vh]">
                       <table className="min-w-[1400px] w-full border-collapse text-sm">
-                        <thead>
+                        <thead className="sticky top-0 z-10">
                           <tr className="bg-gray-100 text-left text-xs text-gray-600">
                             <th className="w-56 border p-2 font-semibold">Item Description</th>
                             <th className="w-24 border p-2 font-semibold">Clause No.</th>
@@ -728,6 +744,14 @@ export default function WorkflowReview() {
                       >
                         {aiBusy === "summary" ? "Summarizing…" : `Summary (${role ?? "?"})`}
                       </button>
+                      <button
+                        type="button"
+                        className="rounded bg-indigo-700 px-3 py-1 text-sm text-white disabled:opacity-50"
+                        disabled={!!aiBusy}
+                        onClick={runGrammarCheck}
+                      >
+                        {aiBusy === "grammar" ? "Checking…" : "Grammar & Wording"}
+                      </button>
                     </div>
                   </div>
                   <div className="space-y-3">
@@ -758,7 +782,16 @@ export default function WorkflowReview() {
                         onConfirm={() => toast.success("Summary reviewed.")}
                       />
                     )}
-                    {!analysis && !summary && (
+                    {grammarResult && (
+                      <AIReviewPanel
+                        title="Grammar & Wording Check"
+                        kind="grammar"
+                        data={grammarResult.data}
+                        cached={grammarResult.cached}
+                        onConfirm={() => toast.success("Grammar review confirmed.")}
+                      />
+                    )}
+                    {!analysis && !summary && !grammarResult && (
                       <p className="text-sm text-gray-500">
                         Run an analysis to see AI suggestions here.
                       </p>

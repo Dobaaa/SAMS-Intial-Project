@@ -15,6 +15,7 @@ class ReviewTypeEnum(str, enum.Enum):
     summary = "summary"
     response_suggestion = "response_suggestion"
     validation = "validation"
+    grammar = "grammar"
 
 
 class PDFTypeEnum(str, enum.Enum):

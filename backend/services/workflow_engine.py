@@ -493,6 +493,20 @@ async def resubmit_agreement(db: AsyncSession, agreement: Agreement) -> None:
 
     await db.commit()
 
+    # Notify all reviewer roles that the agreement has been resubmitted
+    try:
+        ctx = await _get_email_context(db, agreement)
+        ref = agreement.reference_number or str(agreement.id)
+        subject = f"Agreement Resubmitted for Review — {ref}"
+        body = (
+            f"The agreement '{ref}' has been resubmitted by the Admin after editing.\n\n"
+            f"{ctx}\n\n"
+            "Please log in to SAMS to review the updated agreement."
+        )
+        await _notify_project_users(db, agreement, subject, body)
+    except Exception:  # noqa: BLE001
+        pass
+
 
 async def get_workflow_agreement_summary(db: AsyncSession, agreement_id: str) -> dict | None:
     agreement_result = await db.execute(

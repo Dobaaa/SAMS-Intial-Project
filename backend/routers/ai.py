@@ -9,6 +9,7 @@ from models.agreement import Agreement
 from models.user import User
 from services.ai_service import (
     AIProviderError,
+    check_grammar_wording,
     compare_clauses,
     detect_risks,
     generate_summary,
@@ -71,6 +72,22 @@ async def suggest_resolution_responses(
         result = await suggest_responses(db, str(agreement_id))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AIProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"status": "success", "data": result.data, "cached": result.cached}
+
+
+@router.post("/{agreement_id}/grammar")
+async def check_grammar(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
+) -> dict:
+    agreement = await db.get(Agreement, agreement_id)
+    if not agreement:
+        raise HTTPException(status_code=404, detail="Agreement not found")
+    try:
+        result = await check_grammar_wording(db, str(agreement_id))
     except AIProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"status": "success", "data": result.data, "cached": result.cached}

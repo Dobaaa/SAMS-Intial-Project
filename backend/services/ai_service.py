@@ -256,6 +256,45 @@ async def suggest_responses(db: AsyncSession, agreement_id: str) -> AIResult:
     return AIResult(data=data, cached=False)
 
 
+async def check_grammar_wording(db: AsyncSession, agreement_id: str) -> AIResult:
+    """Analyse all free-text field values for grammar and wording issues."""
+    key = _cache_key(agreement_id, "grammar")
+    cached = await _get_cache(key)
+    if cached is not None:
+        return AIResult(data=cached, cached=True)
+
+    fields_res = await db.execute(
+        select(AgreementFieldValue, MasterField)
+        .join(MasterField, MasterField.field_id == AgreementFieldValue.field_id)
+        .where(
+            AgreementFieldValue.agreement_id == agreement_id,
+            AgreementFieldValue.entered_value.isnot(None),
+            AgreementFieldValue.entered_value != "",
+        )
+    )
+    text_fields = [
+        {"field_id": mf.field_id, "field_label": mf.field_label, "value": afv.entered_value}
+        for afv, mf in fields_res.all()
+        if mf.input_type.value in ("text", "textarea")
+    ]
+    if not text_fields:
+        return AIResult(data=[], cached=False)
+
+    prompt = (
+        "You are a legal document proofreader for a UAE construction subcontract agreement. "
+        "Review each field value below for grammar, spelling, punctuation, and wording clarity. "
+        "Only flag items that have actual issues — skip fields that are already correct. "
+        "For each issue return: field_id, field_label, original_text, suggested_text, "
+        "issue_type (one of: grammar, spelling, punctuation, clarity, legal_wording), explanation. "
+        "Return a JSON array. If there are no issues return an empty array [].\n\n"
+        f"Fields:\n{json.dumps(text_fields, ensure_ascii=False)}"
+    )
+    data = await _chat_json("Return valid JSON only.", prompt)
+    await _set_cache(key, data)
+    await _store_ai_review(db, agreement_id, ReviewTypeEnum.grammar, data)
+    return AIResult(data=data, cached=False)
+
+
 async def validate_revision(db: AsyncSession, agreement_id: str) -> AIResult:
     """Check whether the Admin's revisions address every subcontractor comment."""
     key = _cache_key(agreement_id, "validation")

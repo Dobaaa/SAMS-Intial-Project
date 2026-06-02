@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-type Kind = "comparison" | "risks" | "summary" | "suggestions" | "validation";
+type Kind = "comparison" | "risks" | "summary" | "suggestions" | "validation" | "grammar";
 
 type Props = {
   title: string;
@@ -79,6 +79,9 @@ function renderBody(data: unknown, kind?: Kind) {
   }
   if (kind === "validation" && Array.isArray(data)) {
     return <ValidationList rows={data as ValidationRow[]} />;
+  }
+  if (kind === "grammar" && Array.isArray(data)) {
+    return <GrammarList rows={data as GrammarRow[]} />;
   }
   if (kind === "summary") {
     return <SummaryView value={data} />;
@@ -235,6 +238,68 @@ function ValidationList({ rows }: { rows: ValidationRow[] }) {
           {row.explanation && <p className="text-sm text-gray-800">{row.explanation}</p>}
         </li>
       ))}
+    </ul>
+  );
+}
+
+// ----- Grammar -----
+
+type GrammarRow = {
+  field_id?: string;
+  field_label?: string;
+  original_text?: string;
+  suggested_text?: string;
+  issue_type?: string;
+  explanation?: string;
+};
+
+const ISSUE_STYLES: Record<string, string> = {
+  grammar: "bg-amber-100 text-amber-800",
+  spelling: "bg-red-100 text-red-800",
+  punctuation: "bg-orange-100 text-orange-800",
+  clarity: "bg-sky-100 text-sky-800",
+  legal_wording: "bg-purple-100 text-purple-800",
+};
+
+function GrammarList({ rows }: { rows: GrammarRow[] }) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-emerald-700">No grammar or wording issues detected.</p>;
+  }
+  return (
+    <ul className="space-y-3">
+      {rows.map((row, i) => {
+        const style = ISSUE_STYLES[row.issue_type ?? ""] ?? "bg-gray-100 text-gray-700";
+        return (
+          <li key={i} className="rounded border border-gray-200 bg-gray-50 p-2">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <span className="rounded bg-indigo-100 px-2 py-0.5 text-xs font-mono text-indigo-800">
+                {row.field_id || "—"}
+              </span>
+              <span className="text-sm font-medium">{row.field_label || ""}</span>
+              {row.issue_type && (
+                <span className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${style}`}>
+                  {row.issue_type.replace(/_/g, " ")}
+                </span>
+              )}
+            </div>
+            {row.original_text && (
+              <p className="text-sm">
+                <span className="font-semibold text-gray-700">Original: </span>
+                <span className="text-red-700 line-through">{row.original_text}</span>
+              </p>
+            )}
+            {row.suggested_text && (
+              <p className="mt-0.5 text-sm">
+                <span className="font-semibold text-gray-700">Suggested: </span>
+                <span className="text-emerald-700">{row.suggested_text}</span>
+              </p>
+            )}
+            {row.explanation && (
+              <p className="mt-1 text-xs text-gray-600">{row.explanation}</p>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
