@@ -288,6 +288,8 @@ async def submit_for_review(db: AsyncSession, agreement: Agreement) -> None:
     await db.commit()
 
     ref = agreement.reference_number or "N/A"
+    from services.workflow_engine import _get_email_context
+    ctx = await _get_email_context(db, agreement)
     await _notify_project_users(
         db,
         agreement,
@@ -295,7 +297,8 @@ async def submit_for_review(db: AsyncSession, agreement: Agreement) -> None:
         body=(
             f"Dear Team,\n\n"
             f"The following agreement has been submitted for internal review and is now pending your approval:\n\n"
-            f"  Reference: {ref}\n\n"
+            f"  Reference: {ref}\n"
+            f"{ctx}\n\n"
             f"Please log in to SAMS to review the agreement, add comments, or approve your step.\n\n"
             f"This is an automated notification. Do not reply to this email."
         ),

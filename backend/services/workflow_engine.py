@@ -6,10 +6,44 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from models.agreement import Agreement, AgreementStatusEnum
+from models.agreement import Agreement, AgreementFieldValue, AgreementStatusEnum
 from models.user import RoleEnum, User
 from models.workflow import CommentStatusEnum, WorkflowComment, WorkflowStep, WorkflowStepStatusEnum
 from services.email_service import send_email
+
+
+async def _get_email_context(db: AsyncSession, agreement: Agreement) -> str:
+    """Return project / subcontractor / scope lines for inclusion in email bodies."""
+    from sqlalchemy.orm import selectinload as _sio
+
+    # Load project and subcontractor if not already present on the object
+    agr_res = await db.execute(
+        select(Agreement)
+        .where(Agreement.id == agreement.id)
+        .options(_sio(Agreement.project), _sio(Agreement.subcontractor))
+    )
+    agr = agr_res.scalar_one_or_none() or agreement
+
+    project_name = agr.project.project_name if agr.project else "N/A"
+    subcontractor_name = agr.subcontractor.company_name if agr.subcontractor else "N/A"
+
+    c01_res = await db.execute(
+        select(AgreementFieldValue).where(
+            AgreementFieldValue.agreement_id == agreement.id,
+            AgreementFieldValue.field_id == "C01",
+        )
+    )
+    c01 = c01_res.scalar_one_or_none()
+    scope = (c01.entered_value or "").strip() if c01 else ""
+    if len(scope) > 300:
+        scope = scope[:300] + "…"
+    scope = scope or "N/A"
+
+    return (
+        f"  Project:       {project_name}\n"
+        f"  Subcontractor: {subcontractor_name}\n"
+        f"  Scope:         {scope}"
+    )
 
 
 def _step_to_dict(step: WorkflowStep) -> dict:
@@ -188,6 +222,7 @@ async def _notify_project_users(
 async def _notify_admins_agreement_ready_to_forward(
     db: AsyncSession, agreement: Agreement
 ) -> None:
+    ctx = await _get_email_context(db, agreement)
     admin_result = await db.execute(
         select(User).where(User.role == RoleEnum.admin, User.is_active.is_(True))
     )
@@ -198,7 +233,8 @@ async def _notify_admins_agreement_ready_to_forward(
             body=(
                 f"Agreement {agreement.reference_number} has completed its internal\n"
                 "review / resolution cycle. You can now generate the PDF and forward\n"
-                "it to the subcontractor."
+                f"it to the subcontractor.\n\n"
+                f"{ctx}"
             ),
         )
 
@@ -240,17 +276,20 @@ async def _handle_resolution_approval(
         )
         next_step = next_res.scalar_one_or_none()
         if next_step:
+            ctx = await _get_email_context(db, agreement) if agreement else ""
             recipients_res = await db.execute(
                 select(User).where(User.role == next_step.role_required, User.is_active.is_(True))
             )
+            ref = agreement.reference_number if agreement else str(step.agreement_id)
             for recipient in recipients_res.scalars().all():
                 await send_email(
                     to_email=recipient.email,
-                    subject=f"SAMS Review Required - {agreement.reference_number if agreement else step.agreement_id}",
+                    subject=f"SAMS Review Required - {ref}",
                     body=(
-                        f"Agreement: {agreement.reference_number if agreement else step.agreement_id}\n"
-                        f"Current step: {next_step.step_name}\n"
-                        "Please review and take action."
+                        f"Agreement {ref} is pending your review.\n\n"
+                        f"Current step: {next_step.step_name}\n\n"
+                        f"{ctx}\n\n"
+                        "Please log in to SAMS to review and take action."
                     ),
                 )
     if agreement and step.step_order == last_order:
@@ -276,11 +315,13 @@ async def approve_step(db: AsyncSession, step: WorkflowStep, actor: User) -> Non
     if agreement:
         ref = agreement.reference_number
         role_label = step.role_required.value.replace("_", " ").title()
+        ctx = await _get_email_context(db, agreement)
         await _notify_project_users(
             db, agreement,
             subject=f"SAMS: {role_label} approved {ref}",
             body=(
                 f"{actor.name} ({role_label}) has approved agreement {ref}.\n\n"
+                f"{ctx}\n\n"
                 f"Log in to SAMS to view the agreement status."
             ),
             exclude_user_id=actor.id,
@@ -324,17 +365,21 @@ async def return_step(
         agreement.current_status = AgreementStatusEnum.under_bgcc_revision
         agreement.status_updated_on = datetime.now(UTC)
 
+    ctx = await _get_email_context(db, agreement) if agreement else ""
+    ref = agreement.reference_number if agreement else str(step.agreement_id)
     admin_result = await db.execute(select(User).where(User.role == RoleEnum.admin, User.is_active.is_(True)))
     admin_users = admin_result.scalars().all()
     for admin in admin_users:
         await send_email(
             to_email=admin.email,
-            subject=f"SAMS Return Notice - {agreement.reference_number if agreement else step.agreement_id}",
+            subject=f"SAMS Return Notice - {ref}",
             body=(
-                f"Agreement returned by: {actor.name}\n"
-                f"Step: {step.step_name}\n"
-                f"Comment: {comment.comment_text}\n"
-                f"Clause Reference: {clause_reference or 'N/A'}"
+                f"Agreement {ref} has been returned.\n\n"
+                f"{ctx}\n\n"
+                f"Returned by:     {actor.name}\n"
+                f"Step:            {step.step_name}\n"
+                f"Clause Ref:      {clause_reference or 'N/A'}\n"
+                f"Comment:         {comment.comment_text}"
             ),
         )
 
@@ -377,12 +422,14 @@ async def add_comment(
         ref = agreement.reference_number
         role_label = step.role_required.value.replace("_", " ").title()
         clause_note = f"\nClause Reference: {clause_reference}" if clause_reference else ""
+        ctx = await _get_email_context(db, agreement)
         await _notify_project_users(
             db, agreement,
             subject=f"SAMS: New comment on {ref}",
             body=(
                 f"{actor.name} ({role_label}) added a comment on agreement {ref}:\n\n"
-                f"{comment.comment_text}{clause_note}\n\n"
+                f"{ctx}\n\n"
+                f"Comment: {comment.comment_text}{clause_note}\n\n"
                 f"Log in to SAMS to view the full review."
             ),
             exclude_user_id=actor.id,

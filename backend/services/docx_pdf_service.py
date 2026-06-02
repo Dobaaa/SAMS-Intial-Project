@@ -296,6 +296,16 @@ def _split_cell_soft_breaks(doc: Document) -> None:
                 _split_paras_in_cell(cell)
 
 
+def _allow_page_breaks_in_ppr(pPr) -> None:
+    """Remove keepLines / keepNext / pageBreakBefore flags from a pPr element
+    so long multi-paragraph cells (e.g. C15 with many bullet points) are allowed
+    to break across pages in LibreOffice. Without this, all generated paragraphs
+    inherit the style's keepNext and the entire cell is forced onto one page."""
+    for tag in (qn("w:keepLines"), qn("w:keepNext"), qn("w:pageBreakBefore")):
+        for el in pPr.findall(tag):
+            pPr.remove(el)
+
+
 def _split_paras_in_cell(cell) -> None:
     from copy import deepcopy
     tc = cell._tc
@@ -361,6 +371,9 @@ def _split_paras_in_cell(cell) -> None:
                     spc = new_pPr.find(qn("w:spacing"))
                     if spc is not None and qn("w:before") in spc.attrib:
                         del spc.attrib[qn("w:before")]
+                # Always allow page breaks in multi-paragraph cells so long
+                # content (e.g. C15 with many bullet points) doesn't overflow
+                _allow_page_breaks_in_ppr(new_pPr)
                 new_p.append(new_pPr)
             for el in seg_els:
                 new_p.append(el)

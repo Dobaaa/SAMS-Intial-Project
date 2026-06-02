@@ -116,14 +116,19 @@ async def edit_comment(
 
     # Notify original author that the comment was edited.
     if comment.original_author and comment.original_author.email:
+        from models.agreement import Agreement
+        from services.workflow_engine import _get_email_context
+        agr = await db.get(Agreement, comment.agreement_id)
+        ctx = await _get_email_context(db, agr) if agr else ""
         await send_email(
             to_email=comment.original_author.email,
             subject="SAMS Comment Updated",
             body=(
-                f"Your comment has been edited.\n"
-                f"Edited by: {current_user.name}\n"
+                f"Your comment has been edited.\n\n"
+                f"{ctx}\n\n"
+                f"Edited by:     {current_user.name}\n"
                 f"Previous text: {previous_text}\n"
-                f"New text: {new_text}"
+                f"New text:      {new_text}"
             ),
         )
 

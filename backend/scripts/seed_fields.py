@@ -36,7 +36,7 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.form, "F09", "Cover", "Scope Title", InputTypeEnum.text, is_required=True, show_in_appendix=False, sort_order=9),
     # Conditions (C01-C13)
     FieldSeed(TemplateTypeEnum.conditions, "C01", "2.2", "Scope of Works details", InputTypeEnum.textarea, is_required=True, sort_order=1),
-    FieldSeed(TemplateTypeEnum.conditions, "C02", "3.3", "Subcontract Quantities Type", InputTypeEnum.dropdown, is_required=True, sort_order=2),
+    FieldSeed(TemplateTypeEnum.conditions, "C02", "3.3", "Contract Type", InputTypeEnum.dropdown, is_required=True, sort_order=2),
     FieldSeed(TemplateTypeEnum.conditions, "C03", "3.4.1", "Advance Payment Amount (AED)", InputTypeEnum.number, sort_order=3),
     FieldSeed(TemplateTypeEnum.conditions, "C03_PCT", "3.4.1", "Advance Payment (%)", InputTypeEnum.number, default_value="10", sort_order=3),
     FieldSeed(TemplateTypeEnum.conditions, "C04", "3.4.1", "Advance Payment release condition", InputTypeEnum.text, sort_order=4),
@@ -68,7 +68,7 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.appendix, "A05", "1.6", "Main Contractor communications address", InputTypeEnum.multifield, appendix_row_label="Main Contractor Address", appendix_clause_ref="1.6", show_in_appendix=False, sort_order=5),
     FieldSeed(TemplateTypeEnum.appendix, "A06", "1.6", "Subcontractor communications address", InputTypeEnum.multifield, auto_source_field_id="F03", appendix_row_label="Subcontractor Address", appendix_clause_ref="1.6", sort_order=6),
     FieldSeed(TemplateTypeEnum.appendix, "A07", "3.1", "Subcontract Price (AED)", InputTypeEnum.number, auto_source_field_id="F08", appendix_row_label="The Subcontract Price", appendix_clause_ref="3.1", sort_order=7),
-    FieldSeed(TemplateTypeEnum.appendix, "A08", "3.3", "Subcontract Quantities Type", InputTypeEnum.dropdown, auto_source_field_id="C02", appendix_row_label="The Subcontract Quantities (Lump Sum or Re-measurable)", appendix_clause_ref="3.3", sort_order=8),
+    FieldSeed(TemplateTypeEnum.appendix, "A08", "3.3", "Contract Type", InputTypeEnum.dropdown, auto_source_field_id="C02", appendix_row_label="The Subcontract Quantities (Lump Sum or Re-measurable)", appendix_clause_ref="3.3", sort_order=8),
     FieldSeed(TemplateTypeEnum.appendix, "A09", "3.4.1", "Advance Payment Amount (AED)", InputTypeEnum.number, auto_source_field_id="C03", appendix_row_label="Advance Payment Amount", appendix_clause_ref="3.4.1", sort_order=9),
     FieldSeed(TemplateTypeEnum.appendix, "A10", "3.4.2", "Performance Security (%)", InputTypeEnum.number, default_value="10", appendix_row_label="Performance Security", appendix_clause_ref="3.4.2", sort_order=10),
     FieldSeed(TemplateTypeEnum.appendix, "A11", "3.4.1", "Advance Payment release condition", InputTypeEnum.text, auto_source_field_id="C04", appendix_row_label="Advance Payment to be released by the Main Contractor", appendix_clause_ref="3.4.1", sort_order=11),

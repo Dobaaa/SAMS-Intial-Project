@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASS: str = ""
+    EMAIL_PAUSED: bool = False
     FRONTEND_URL: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(

@@ -17,6 +17,9 @@ async def send_email(to_email: str, subject: str, body: str) -> None:
     (local dev, network outage, misconfigured creds). Failures are logged
     and swallowed so the calling business logic keeps moving.
     """
+    if settings.EMAIL_PAUSED:
+        logger.debug("Email paused (EMAIL_PAUSED=true) — skipping send to %s", to_email)
+        return
     if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASS:
         # SMTP intentionally not configured (e.g. local dev) — silent no-op.
         return
