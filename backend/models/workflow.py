@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -72,6 +72,22 @@ class WorkflowComment(Base):
     original_author = relationship("User", back_populates="authored_comments", foreign_keys=[original_author_id])
     last_edited_by_user = relationship("User", back_populates="edited_comments", foreign_keys=[last_edited_by_id])
     edit_history = relationship("CommentEditHistory", back_populates="comment", cascade="all, delete-orphan")
+    reactions = relationship("CommentReaction", back_populates="comment", cascade="all, delete-orphan")
+
+
+class CommentReaction(Base):
+    __tablename__ = "comment_reactions"
+    __table_args__ = (UniqueConstraint("comment_id", "reactor_user_id", name="uq_comment_reaction_user"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    comment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workflow_comments.id", ondelete="CASCADE"), nullable=False, index=True)
+    reactor_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    reactor_role: Mapped[str] = mapped_column(String(50), nullable=False)
+    reaction: Mapped[str] = mapped_column(String(20), nullable=False)  # "accepted" | "rejected"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    comment = relationship("WorkflowComment", back_populates="reactions")
+    reactor = relationship("User", foreign_keys=[reactor_user_id])
 
 
 class CommentEditHistory(Base):

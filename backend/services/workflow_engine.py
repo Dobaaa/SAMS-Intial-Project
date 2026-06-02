@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from models.agreement import Agreement, AgreementFieldValue, AgreementStatusEnum
 from models.user import RoleEnum, User
-from models.workflow import CommentStatusEnum, WorkflowComment, WorkflowStep, WorkflowStepStatusEnum
+from models.workflow import CommentReaction, CommentStatusEnum, WorkflowComment, WorkflowStep, WorkflowStepStatusEnum
 from services.email_service import send_email
 
 
@@ -519,7 +519,10 @@ async def get_workflow_agreement_summary(db: AsyncSession, agreement_id: str) ->
     comments_result = await db.execute(
         select(WorkflowComment)
         .where(WorkflowComment.agreement_id == agreement.id)
-        .options(selectinload(WorkflowComment.original_author))
+        .options(
+            selectinload(WorkflowComment.original_author),
+            selectinload(WorkflowComment.reactions).selectinload(CommentReaction.reactor),
+        )
         .order_by(WorkflowComment.created_at.asc())
     )
     comments = comments_result.scalars().all()
@@ -542,6 +545,14 @@ async def get_workflow_agreement_summary(db: AsyncSession, agreement_id: str) ->
                 "created_at": c.created_at.isoformat() if c.created_at else None,
                 "author_name": c.original_author.name if c.original_author else None,
                 "author_role": c.original_author.role.value if c.original_author else None,
+                "reactions": [
+                    {
+                        "reactor_name": r.reactor.name if r.reactor else None,
+                        "reactor_role": r.reactor_role,
+                        "reaction": r.reaction,
+                    }
+                    for r in (c.reactions or [])
+                ],
             }
             for c in comments
         ],

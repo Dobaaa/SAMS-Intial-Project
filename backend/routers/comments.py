@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from database import get_db_session
 from middleware.rbac import get_current_user
 from models.user import RoleEnum, User
-from models.workflow import CommentEditHistory, CommentStatusEnum, WorkflowComment
+from models.workflow import CommentEditHistory, CommentReaction, CommentStatusEnum, WorkflowComment
 from services.email_service import send_email
 
 router = APIRouter(tags=["comments"])
@@ -22,6 +22,18 @@ class CommentUpdatePayload(BaseModel):
 
 class CommentStatusPayload(BaseModel):
     status: CommentStatusEnum
+
+
+class CommentReactPayload(BaseModel):
+    reaction: str  # "accepted" | "rejected"
+
+
+ROLE_RANK: dict[str, int] = {
+    "project_director": 1,
+    "accounts": 2,
+    "operation_manager": 3,
+    "gm": 4,
+}
 
 
 def _history_to_dict(item: CommentEditHistory) -> dict:
@@ -42,6 +54,7 @@ def _comment_to_dict(item: WorkflowComment) -> dict:
         "agreement_id": str(item.agreement_id),
         "original_author_id": str(item.original_author_id),
         "original_author_name": item.original_author.name if item.original_author else None,
+        "author_role": item.original_author.role.value if item.original_author else None,
         "created_at": item.created_at.isoformat() if item.created_at else None,
         "comment_text": item.comment_text,
         "clause_reference": item.clause_reference,
@@ -50,6 +63,14 @@ def _comment_to_dict(item: WorkflowComment) -> dict:
         "last_edited_by_name": item.last_edited_by_user.name if item.last_edited_by_user else None,
         "last_edited_at": item.last_edited_at.isoformat() if item.last_edited_at else None,
         "edit_history": [_history_to_dict(h) for h in sorted(item.edit_history, key=lambda x: x.edited_at)],
+        "reactions": [
+            {
+                "reactor_name": r.reactor.name if r.reactor else None,
+                "reactor_role": r.reactor_role,
+                "reaction": r.reaction,
+            }
+            for r in (item.reactions or [])
+        ],
     }
 
 
@@ -66,6 +87,7 @@ async def get_agreement_comments(
             selectinload(WorkflowComment.original_author),
             selectinload(WorkflowComment.last_edited_by_user),
             selectinload(WorkflowComment.edit_history).selectinload(CommentEditHistory.edited_by_user),
+            selectinload(WorkflowComment.reactions).selectinload(CommentReaction.reactor),
         )
         .order_by(WorkflowComment.created_at.asc())
     )
@@ -139,6 +161,7 @@ async def edit_comment(
             selectinload(WorkflowComment.original_author),
             selectinload(WorkflowComment.last_edited_by_user),
             selectinload(WorkflowComment.edit_history).selectinload(CommentEditHistory.edited_by_user),
+            selectinload(WorkflowComment.reactions).selectinload(CommentReaction.reactor),
         )
     )
     return _comment_to_dict(refreshed.scalar_one())
@@ -179,6 +202,69 @@ async def update_comment_status(
             selectinload(WorkflowComment.original_author),
             selectinload(WorkflowComment.last_edited_by_user),
             selectinload(WorkflowComment.edit_history).selectinload(CommentEditHistory.edited_by_user),
+            selectinload(WorkflowComment.reactions).selectinload(CommentReaction.reactor),
+        )
+    )
+    return _comment_to_dict(refreshed.scalar_one())
+
+
+@router.post("/comments/{comment_id}/react")
+async def react_to_comment(
+    comment_id: uuid.UUID,
+    payload: CommentReactPayload,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    if payload.reaction not in ("accepted", "rejected"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="reaction must be 'accepted' or 'rejected'")
+
+    result = await db.execute(
+        select(WorkflowComment)
+        .where(WorkflowComment.id == comment_id)
+        .options(
+            selectinload(WorkflowComment.original_author),
+            selectinload(WorkflowComment.last_edited_by_user),
+            selectinload(WorkflowComment.edit_history).selectinload(CommentEditHistory.edited_by_user),
+            selectinload(WorkflowComment.reactions).selectinload(CommentReaction.reactor),
+        )
+    )
+    comment = result.scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+
+    # Enforce hierarchy: reactor's rank must be strictly higher than author's rank
+    reactor_rank = ROLE_RANK.get(current_user.role.value, 0)
+    author_role = comment.original_author.role.value if comment.original_author else None
+    author_rank = ROLE_RANK.get(author_role or "", 0)
+    if reactor_rank <= author_rank:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only react to comments from roles below yours in the hierarchy.",
+        )
+
+    # Upsert: update existing reaction or create new one
+    existing = next((r for r in comment.reactions if str(r.reactor_user_id) == str(current_user.id)), None)
+    if existing:
+        existing.reaction = payload.reaction
+    else:
+        db.add(
+            CommentReaction(
+                comment_id=comment.id,
+                reactor_user_id=current_user.id,
+                reactor_role=current_user.role.value,
+                reaction=payload.reaction,
+            )
+        )
+    await db.commit()
+
+    refreshed = await db.execute(
+        select(WorkflowComment)
+        .where(WorkflowComment.id == comment_id)
+        .options(
+            selectinload(WorkflowComment.original_author),
+            selectinload(WorkflowComment.last_edited_by_user),
+            selectinload(WorkflowComment.edit_history).selectinload(CommentEditHistory.edited_by_user),
+            selectinload(WorkflowComment.reactions).selectinload(CommentReaction.reactor),
         )
     )
     return _comment_to_dict(refreshed.scalar_one())

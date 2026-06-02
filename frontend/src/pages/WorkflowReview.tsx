@@ -38,6 +38,12 @@ type WorkflowStep = {
   acted_at?: string | null;
 };
 
+type CommentReaction = {
+  reactor_name?: string | null;
+  reactor_role: string;
+  reaction: "accepted" | "rejected";
+};
+
 type WorkflowComment = {
   id: string;
   workflow_step_id: string;
@@ -47,6 +53,14 @@ type WorkflowComment = {
   created_at?: string | null;
   author_name?: string | null;
   author_role?: string | null;
+  reactions?: CommentReaction[];
+};
+
+const ROLE_RANK: Record<string, number> = {
+  project_director: 1,
+  accounts: 2,
+  operation_manager: 3,
+  gm: 4,
 };
 
 type WorkflowAgreementDetails = {
@@ -313,6 +327,25 @@ export default function WorkflowReview() {
       toast.error(e?.response?.data?.detail ?? "Grammar check failed.");
     } finally {
       setAiBusy("");
+    }
+  };
+
+  const reactToComment = async (commentId: string, reaction: "accepted" | "rejected") => {
+    try {
+      const { data } = await api.post(`/comments/${commentId}/react`, { reaction });
+      // Update the comment in details in-place
+      setDetails((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          comments: prev.comments.map((c) =>
+            c.id === commentId ? { ...c, reactions: (data as WorkflowComment).reactions } : c,
+          ),
+        };
+      });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "Failed to react to comment.");
     }
   };
 
@@ -816,25 +849,75 @@ export default function WorkflowReview() {
                       {details.comments.length === 0 ? (
                         <p className="text-sm text-gray-400">No comments yet.</p>
                       ) : (
-                        details.comments.map((comment) => (
-                          <div key={comment.id} className="rounded border p-2 text-sm">
-                            <div className="mb-0.5 text-xs font-semibold text-sky-800">
-                              {comment.author_name ?? "Unknown"}
-                              {comment.author_role
-                                ? ` · ${humanRole(comment.author_role)}`
-                                : ""}
-                              {comment.clause_reference && (
-                                <span className="ml-2 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500">
-                                  {comment.clause_reference}
-                                </span>
+                        details.comments.map((comment) => {
+                          const authorRank = ROLE_RANK[comment.author_role ?? ""] ?? 0;
+                          const myRank = ROLE_RANK[role ?? ""] ?? 0;
+                          const canReact = myRank > authorRank && authorRank > 0;
+                          const myReaction = comment.reactions?.find((r) => r.reactor_role === role);
+                          return (
+                            <div key={comment.id} className="rounded border p-2 text-sm">
+                              <div className="mb-1 flex flex-wrap items-center justify-between gap-1">
+                                <div className="text-xs font-semibold text-sky-800">
+                                  {comment.author_name ?? "Unknown"}
+                                  {comment.author_role
+                                    ? ` · ${humanRole(comment.author_role)}`
+                                    : ""}
+                                  {comment.clause_reference && (
+                                    <span className="ml-2 rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500">
+                                      {comment.clause_reference}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-gray-400">{comment.status}</span>
+                              </div>
+                              <div className="mb-2">{comment.comment_text}</div>
+                              {/* Existing reactions */}
+                              {(comment.reactions ?? []).length > 0 && (
+                                <div className="mb-1 flex flex-wrap gap-1">
+                                  {comment.reactions!.map((r, i) => (
+                                    <span
+                                      key={i}
+                                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                        r.reaction === "accepted"
+                                          ? "bg-green-100 text-green-700"
+                                          : "bg-red-100 text-red-700"
+                                      }`}
+                                    >
+                                      {humanRole(r.reactor_role)}: {r.reaction}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {/* Accept / Reject buttons for eligible roles */}
+                              {canReact && (
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    className={`rounded border px-2 py-0.5 text-xs font-medium ${
+                                      myReaction?.reaction === "accepted"
+                                        ? "border-green-500 bg-green-100 text-green-700"
+                                        : "border-gray-300 text-gray-600 hover:border-green-400 hover:text-green-700"
+                                    }`}
+                                    onClick={() => void reactToComment(comment.id, "accepted")}
+                                  >
+                                    ✓ Accept
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`rounded border px-2 py-0.5 text-xs font-medium ${
+                                      myReaction?.reaction === "rejected"
+                                        ? "border-red-500 bg-red-100 text-red-700"
+                                        : "border-gray-300 text-gray-600 hover:border-red-400 hover:text-red-700"
+                                    }`}
+                                    onClick={() => void reactToComment(comment.id, "rejected")}
+                                  >
+                                    ✗ Reject
+                                  </button>
+                                </div>
                               )}
                             </div>
-                            <div>{comment.comment_text}</div>
-                            <div className="text-xs text-gray-400">
-                              Status: {comment.status}
-                            </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>
