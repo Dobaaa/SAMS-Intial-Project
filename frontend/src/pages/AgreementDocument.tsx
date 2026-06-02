@@ -14,6 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import { formatDateTime } from "../lib/formatDate";
 
 import AppendixBuilder from "../components/AppendixBuilder";
 import ClauseRevisionsPanel from "../components/ClauseRevisionsPanel";
@@ -44,6 +45,15 @@ type AgreementBundle = {
   project: Record<string, unknown>;
   subcontractor: Record<string, unknown>;
   values: Record<string, string>;
+};
+
+type ReviewerComment = {
+  id: string;
+  original_author_name?: string | null;
+  created_at?: string | null;
+  comment_text: string;
+  clause_reference?: string | null;
+  status: string;
 };
 
 type FieldGroup = {
@@ -93,12 +103,40 @@ export default function AgreementDocument() {
   const [saving, setSaving] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [comments, setComments] = useState<ReviewerComment[]>([]);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   const editingLocked =
     !isAdmin ||
     !bundle ||
     bundle.is_executed ||
     STATUSES_LOCKED_FOR_EDIT.has(bundle.current_status);
+
+  // ----------------------------- comments -----------------------------
+  const loadComments = useCallback(async () => {
+    if (!agreementId || !isAdmin) return;
+    try {
+      const { data } = await api.get(`/agreements/${agreementId}/comments`);
+      setComments((data as ReviewerComment[]) ?? []);
+    } catch {
+      // non-fatal
+    }
+  }, [agreementId, isAdmin]);
+
+  const resolveComment = async (commentId: string) => {
+    setResolvingId(commentId);
+    try {
+      await api.patch(`/comments/${commentId}/status`, { status: "resolved" });
+      setComments((prev) =>
+        prev.map((c) => (c.id === commentId ? { ...c, status: "resolved" } : c)),
+      );
+      toast.success("Comment marked resolved.");
+    } catch {
+      toast.error("Failed to resolve comment.");
+    } finally {
+      setResolvingId(null);
+    }
+  };
 
   // ----------------------------- data load -----------------------------
   const reloadPdf = useCallback(async () => {
@@ -168,6 +206,7 @@ export default function AgreementDocument() {
         }
         if (!cancelled) setFields(allFields);
         await reloadPdf();
+        if (!cancelled) await loadComments();
       } catch (err) {
         console.error(err);
         if (!cancelled) setError("Failed to load the agreement.");
@@ -179,7 +218,7 @@ export default function AgreementDocument() {
     return () => {
       cancelled = true;
     };
-  }, [agreementId, reloadPdf]);
+  }, [agreementId, reloadPdf, loadComments]);
 
   // Revoke the blob URL when the component unmounts so we don't leak.
   useEffect(() => {
@@ -429,6 +468,80 @@ export default function AgreementDocument() {
                   }}
                 />
               </section>
+
+              {/* Reviewer comments — admin resolves these before resubmitting */}
+              {comments.length > 0 && (
+                <section className="rounded-xl border border-sky-100 bg-white p-3 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-sky-900">Reviewer Comments</h2>
+                    <div className="flex gap-2 text-xs">
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-700">
+                        {comments.filter((c) => c.status !== "resolved").length} pending
+                      </span>
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 font-semibold text-green-700">
+                        {comments.filter((c) => c.status === "resolved").length} resolved
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mb-3 text-xs text-sky-700">
+                    Address each comment by editing the relevant fields above, then mark it resolved.
+                    Once all comments are resolved, resubmit the agreement for review.
+                  </p>
+                  <div className="space-y-2">
+                    {comments.map((comment) => {
+                      const isPending = comment.status !== "resolved";
+                      return (
+                        <div
+                          key={comment.id}
+                          className={`rounded border p-3 text-sm ${
+                            isPending
+                              ? "border-red-200 bg-red-50"
+                              : "border-green-200 bg-green-50 opacity-70"
+                          }`}
+                        >
+                          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold">
+                                {comment.original_author_name || "Reviewer"}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {formatDateTime(comment.created_at)}
+                              </span>
+                              {comment.clause_reference && (
+                                <span className="rounded bg-indigo-100 px-2 py-0.5 text-xs font-mono text-indigo-700">
+                                  {comment.clause_reference}
+                                </span>
+                              )}
+                            </div>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                isPending
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-green-100 text-green-700"
+                              }`}
+                            >
+                              {isPending ? "Pending" : "Resolved"}
+                            </span>
+                          </div>
+                          <p className="whitespace-pre-wrap text-gray-800">
+                            {comment.comment_text}
+                          </p>
+                          {isPending && (
+                            <button
+                              type="button"
+                              className="mt-2 rounded border border-green-400 bg-white px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-50 disabled:opacity-50"
+                              disabled={resolvingId === comment.id}
+                              onClick={() => void resolveComment(comment.id)}
+                            >
+                              {resolvingId === comment.id ? "Resolving…" : "Mark Resolved"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
             </div>
           </div>
         ) : (
