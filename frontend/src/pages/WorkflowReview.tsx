@@ -351,6 +351,24 @@ export default function WorkflowReview() {
 
   // ── Workflow actions ────────────────────────────────────────────────────────
 
+  const [resubmitting, setResubmitting] = useState(false);
+
+  const resubmitForReview = async () => {
+    if (!details || resubmitting) return;
+    setResubmitting(true);
+    try {
+      await api.post(`/agreements/${details.agreement.id}/resubmit`);
+      toast.success(`${details.agreement.reference_number} resubmitted for internal review.`);
+      await loadDetails(details.agreement.id);
+      await loadMyReviews();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "Failed to resubmit.");
+    } finally {
+      setResubmitting(false);
+    }
+  };
+
   const approve = async () => {
     if (!selectedStepId || busy) return;
     setBusy(true);
@@ -489,12 +507,27 @@ export default function WorkflowReview() {
                     Status: {details.agreement.current_status.replace(/_/g, " ")}
                   </p>
                 </div>
-                <Link
-                  to={`/agreements/${details.agreement.id}/compare`}
-                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1 text-sm text-sky-800 hover:bg-sky-100"
-                >
-                  Open Compare view →
-                </Link>
+                <div className="flex items-center gap-2">
+                  {role === "admin" &&
+                    details.agreement.current_status === "under_bgcc_revision" &&
+                    !details.agreement.gm_approval_date && (
+                      <button
+                        type="button"
+                        className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-1 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                        disabled={resubmitting}
+                        onClick={() => void resubmitForReview()}
+                        title="Reset all reviewer approvals and resubmit for internal review"
+                      >
+                        {resubmitting ? "Resubmitting…" : "Resubmit for Review"}
+                      </button>
+                    )}
+                  <Link
+                    to={`/agreements/${details.agreement.id}/compare`}
+                    className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1 text-sm text-sky-800 hover:bg-sky-100"
+                  >
+                    Open Compare view →
+                  </Link>
+                </div>
               </div>
             </div>
 
