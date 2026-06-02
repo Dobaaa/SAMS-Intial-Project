@@ -142,10 +142,10 @@ export default function AgreementCreate() {
   const conditionFields = useMemo(() => fields.filter((f) => /^C\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
   const appendixFields = useMemo(() => fields.filter((f) => /^A\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
   // A-fields with no auto_source_field_id are the ones admin MUST type in
-  // (e.g. A03 Engineer, A05 Main Contractor address, A15 Commencement Date,
-  // A17 Subcontract works completion). The rest cascade from F/C values.
+  // (e.g. A03 Engineer, A15 Commencement Date, A17 Subcontract works completion).
+  // A05 (Main Contractor address) is excluded — only Subcontractor address (A06) appears.
   const manualAppendixFields = useMemo(
-    () => appendixFields.filter((f) => !f.auto_source_field_id),
+    () => appendixFields.filter((f) => !f.auto_source_field_id && f.field_id !== "A05"),
     [appendixFields]
   );
 
@@ -727,12 +727,7 @@ export default function AgreementCreate() {
                   <label className="mb-1 block text-sm">
                     {field.field_id} — {field.field_label}
                     {field.is_required && <span className="text-red-500"> *</span>}
-                    {field.field_id === "A05" && (
-                      <span className="ml-1 text-xs font-normal text-sky-600">
-                        (BGCC's address for serving of notices — Appendix clause 1.6)
-                      </span>
-                    )}
-                  </label>
+                    </label>
                   <FieldInput field={field} value={values[field.field_id] ?? ""} onChange={onChangeValue} invalid={Boolean(errors[field.field_id])} />
                   {errors[field.field_id] && <p className="mt-1 text-xs text-red-600">{errors[field.field_id]}</p>}
                 </div>
