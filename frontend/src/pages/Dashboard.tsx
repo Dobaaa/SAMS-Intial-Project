@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useToast } from "../components/Toast";
@@ -113,6 +113,29 @@ export default function Dashboard() {
   useEffect(() => {
     void loadAll();
   }, [auditPage]);
+
+  // Silently re-fetch only the agreements list every 30 s so the comment-count
+  // badges stay current without requiring a manual refresh.
+  const pollAgreements = useCallback(async () => {
+    try {
+      const agr = await api.get("/reports/dashboard/agreements", {
+        params: {
+          status: status || undefined,
+          reference_number: reference || undefined,
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
+        },
+      });
+      setAgreements(Array.isArray(agr.data) ? agr.data : []);
+    } catch {
+      // Silent — the full loadAll() error path handles user-visible errors.
+    }
+  }, [status, reference, dateFrom, dateTo]);
+
+  useEffect(() => {
+    const id = setInterval(() => { void pollAgreements(); }, 30_000);
+    return () => clearInterval(id);
+  }, [pollAgreements]);
 
   const flash = (message: string) => {
     setActionMessage(message);
