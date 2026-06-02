@@ -118,18 +118,22 @@ async def dashboard_agreements(
     result = await db.execute(query)
     items = result.scalars().all()
 
-    # Per-agreement counts of unresolved internal-review comments. Used by
-    # the dashboard to badge rows that were returned by PD/Accounts/OM/GM.
-    from models.workflow import CommentStatusEnum, WorkflowComment
+    # Per-agreement counts of unresolved Workflow Review comments (PD / Accounts /
+    # OM / GM main-chain steps only). Resolution-chain comments are excluded so
+    # the badge reflects what is visible on the Workflow Review page.
+    from models.workflow import CommentStatusEnum, WorkflowComment, WorkflowStep
+    from services.workflow_engine import RESOLUTION_STEP_NAMES
 
     comment_counts: dict[uuid.UUID, int] = {}
     if items:
         agr_ids = [a.id for a in items]
         cc_res = await db.execute(
             select(WorkflowComment.agreement_id, func.count(WorkflowComment.id))
+            .join(WorkflowStep, WorkflowComment.workflow_step_id == WorkflowStep.id)
             .where(
                 WorkflowComment.agreement_id.in_(agr_ids),
                 WorkflowComment.status != CommentStatusEnum.resolved,
+                ~WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES),
             )
             .group_by(WorkflowComment.agreement_id)
         )
