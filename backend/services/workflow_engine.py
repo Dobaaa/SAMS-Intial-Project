@@ -91,13 +91,17 @@ async def get_all_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
 
 
 async def get_all_for_admin(db: AsyncSession) -> list[dict]:
-    """All agreements currently under internal review, returned in the same
-    {step, agreement} shape as get_all_for_role so the frontend sidebar works
-    without modification. Uses the PD step as the representative step per
-    agreement (just needed for sidebar key tracking — admin has no own step)."""
+    """Agreements visible to admin on the Workflow Review page: both
+    under_internal_review (main review) and under_bgcc_revision (resolution /
+    resubmit cycle). Uses the lowest-order step as the sidebar representative."""
     result = await db.execute(
         select(Agreement)
-        .where(Agreement.current_status == AgreementStatusEnum.under_internal_review)
+        .where(
+            Agreement.current_status.in_([
+                AgreementStatusEnum.under_internal_review,
+                AgreementStatusEnum.under_bgcc_revision,
+            ])
+        )
         .options(
             selectinload(Agreement.project),
             selectinload(Agreement.subcontractor),
