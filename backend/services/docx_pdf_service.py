@@ -51,7 +51,7 @@ MASTER_DOCX = MASTERS_DIR / "sca_master_v1.docx"
 # Field IDs whose values should be reformatted as a long-form date
 # ("05th May 2026") at substitution time. The DB stores them as ISO
 # strings; the master's tokens don't know that.
-DATE_FIELDS: set[str] = {"F01"}
+DATE_FIELDS: set[str] = {"F01", "A15"}
 
 # Field IDs whose values are stored as raw numbers but should render
 # with thousands separators + 2-dp decimals per Rev 01 items 11/12
@@ -171,6 +171,8 @@ def _iter_header_footer_text_elements(doc):
         for attr in _HEADER_FOOTER_ATTRS:
             hf = getattr(section, attr, None)
             if hf is None:
+                continue
+            if not hasattr(hf, "_element"):
                 continue
             root = hf._element
             if id(root) in seen:
@@ -414,7 +416,7 @@ def _substitute_in_paragraph(para: Paragraph, values: dict[str, str]) -> bool:
     * ``BOLD_FIELDS`` (F02 — the Subcontractor company name) emit a
       dedicated bold run, so M/s. Microfab renders bold inline alongside
       its non-bold surrounding text (Rev 02 items 3 + 8).
-    * ``DATE_FIELDS`` (F01) emit three runs: day digits / ordinal
+    * ``DATE_FIELDS`` (F01, A15) emit three runs: day digits / ordinal
       suffix as superscript / rest of the date, so "05th May 2026"
       renders as "05ᵗʰ May 2026" (Rev 02 item 8).
 

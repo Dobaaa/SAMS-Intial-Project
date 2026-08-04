@@ -23,6 +23,24 @@ async def patched_docx_render(monkeypatch):
 
 
 @pytest_asyncio.fixture
+async def captured_docx_values(monkeypatch):
+    """Like patched_docx_render, but also records the `values` dict passed
+    to render_agreement_docx_to_pdf so tests can assert on the exact
+    value_map a render used, without needing LibreOffice."""
+    from services import docx_pdf_service
+
+    captured: dict[str, str] = {}
+
+    def _capture(values, output_dir, **kwargs):
+        captured.clear()
+        captured.update(values)
+        return b"%PDF-1.4 stub"
+
+    monkeypatch.setattr(docx_pdf_service, "render_agreement_docx_to_pdf", _capture)
+    yield captured
+
+
+@pytest_asyncio.fixture
 async def patched_suggest_responses(monkeypatch):
     """Replace ai_service.suggest_responses with a deterministic stub so tests
     don't need a real OpenAI key or network. The stub returns a predictable
@@ -161,6 +179,42 @@ async def test_regenerate_pdf_allowed_before_signing(
     regen = await authed_client.post(f"/api/pdf/{agreement['id']}/generate")
     assert regen.status_code == 200
     assert regen.json()["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_a15_fallback_when_blank(
+    authed_client, admin_user, patched_suggest_responses, captured_docx_values
+):
+    """A15 (Commencement Date) is optional. When the admin leaves it blank,
+    the appendix cell falls back to clause 4.1's own definition text rather
+    than rendering empty."""
+    agreement = await _seeded_agreement(authed_client)
+
+    resp = await authed_client.post(f"/api/pdf/{agreement['id']}/generate")
+    assert resp.status_code == 200
+    assert captured_docx_values["A15"] == (
+        "The date specified in the written instruction issued by the Main "
+        "Contractor directing the Subcontractor to commence the Subcontract Works"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a15_value_preserved_when_entered(
+    authed_client, admin_user, patched_suggest_responses, captured_docx_values
+):
+    """When the admin does enter a Commencement Date, that value is used
+    as-is — the fallback only applies when the field is blank."""
+    agreement = await _seeded_agreement(authed_client)
+
+    updated = await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={"values": {"A15": "2026-09-01"}},
+    )
+    assert updated.status_code == 200
+
+    resp = await authed_client.post(f"/api/pdf/{agreement['id']}/generate")
+    assert resp.status_code == 200
+    assert captured_docx_values["A15"] == "2026-09-01"
 
 
 @pytest.mark.asyncio
