@@ -228,12 +228,12 @@ def _clone_rpr(rpr):
     return deepcopy(rpr)
 
 
-def _add_rpr_style(rpr, *, bold: bool = False, superscript: bool = False):
-    """Layer bold and/or superscript flags onto an existing ``<w:rPr>``.
+def _add_rpr_style(rpr, *, bold: bool = False, superscript: bool = False, color: str | None = None):
+    """Layer bold / superscript / text-color flags onto an existing ``<w:rPr>``.
 
-    Removes any existing ``<w:b>`` / ``<w:vertAlign>`` element first so we
-    don't end up with duplicates if the cloned source already had them.
-    Creates a fresh ``<w:rPr>`` if none was provided.
+    Removes any existing ``<w:b>`` / ``<w:vertAlign>`` / ``<w:color>``
+    element first so we don't end up with duplicates if the cloned source
+    already had them. Creates a fresh ``<w:rPr>`` if none was provided.
     """
     if rpr is None:
         rpr = OxmlElement("w:rPr")
@@ -247,6 +247,12 @@ def _add_rpr_style(rpr, *, bold: bool = False, superscript: bool = False):
         va = OxmlElement("w:vertAlign")
         va.set(qn("w:val"), "superscript")
         rpr.append(va)
+    if color:
+        for existing in rpr.findall(qn("w:color")):
+            rpr.remove(existing)
+        c = OxmlElement("w:color")
+        c.set(qn("w:val"), color)
+        rpr.append(c)
     return rpr
 
 
@@ -267,15 +273,17 @@ def _append_text_node(run_el, text: str) -> None:
         run_el.append(t)
 
 
-def _emit_styled_run(p_el, base_rpr, text: str, *, bold: bool = False, superscript: bool = False):
+def _emit_styled_run(
+    p_el, base_rpr, text: str, *, bold: bool = False, superscript: bool = False, color: str | None = None
+):
     """Append a fresh ``<w:r>`` to `p_el` with `text`. Clones `base_rpr`
     so the new run inherits font/size/color from the paragraph's anchor
-    run, then layers bold/superscript on top as requested.
+    run, then layers bold/superscript/color on top as requested.
     """
     new_r = OxmlElement("w:r")
     rpr = _clone_rpr(base_rpr)
-    if bold or superscript:
-        rpr = _add_rpr_style(rpr, bold=bold, superscript=superscript)
+    if bold or superscript or color:
+        rpr = _add_rpr_style(rpr, bold=bold, superscript=superscript, color=color)
     if rpr is not None and len(rpr) > 0:
         new_r.append(rpr)
     _append_text_node(new_r, text)
@@ -406,7 +414,9 @@ def _set_run_text_with_breaks(run, text: str) -> None:
         r_el.append(t)
 
 
-def _substitute_in_paragraph(para: Paragraph, values: dict[str, str]) -> bool:
+def _substitute_in_paragraph(
+    para: Paragraph, values: dict[str, str], *, highlight_admin_content: bool = False
+) -> bool:
     """Replace every ``{{FIELD_ID}}`` token in `para` with its value.
 
     Pass 1 rebuilds the paragraph's top-level run sequence from styled
@@ -419,6 +429,12 @@ def _substitute_in_paragraph(para: Paragraph, values: dict[str, str]) -> bool:
     * ``DATE_FIELDS`` (F01, A15) emit three runs: day digits / ordinal
       suffix as superscript / rest of the date, so "05th May 2026"
       renders as "05ᵗʰ May 2026" (Rev 02 item 8).
+    * When ``highlight_admin_content`` is set (GM Portal "View PDF", req
+      6.3), every substituted field value — every token, since a token is
+      admin-entered content by construction — renders in red so it's
+      visually distinct from the surrounding boilerplate. The boilerplate
+      segments themselves are never colored. Default off: the standard
+      PDF sent to the subcontractor/archived must never change.
 
     Run 0's existing ``<w:rPr>`` is used as the base formatting for every
     emitted run so font / size / color / paragraph-anchored bold all
@@ -428,7 +444,9 @@ def _substitute_in_paragraph(para: Paragraph, values: dict[str, str]) -> bool:
     in the paragraph tree — including text inside ``<w:del>`` / ``<w:ins>``
     track-change wrappers that Phase 4 v2.2 inserts — and substitutes any
     leftover tokens individually so revision spans render with concrete
-    values too.
+    values too. Known limitation: Pass 2 mutates text in place with no run
+    isolation, so highlighting doesn't reach values inside pending
+    track-change spans — acceptable edge case, not blocking.
     """
     p_el = para._element
     changed = False
@@ -448,7 +466,10 @@ def _substitute_in_paragraph(para: Paragraph, values: dict[str, str]) -> bool:
                     p_el.remove(r._r)
 
                 # Emit segments left-to-right, anchoring each new run on
-                # the cloned base run-properties.
+                # the cloned base run-properties. Only substituted field
+                # values get the highlight color — boilerplate segments
+                # (the text between tokens) never do.
+                value_color = "FF0000" if highlight_admin_content else None
                 pos = 0
                 for m in matches:
                     if m.start() > pos:
@@ -460,13 +481,15 @@ def _substitute_in_paragraph(para: Paragraph, values: dict[str, str]) -> bool:
                         parts = _split_long_date(value)
                         if parts is not None:
                             day, suffix, rest = parts
-                            _emit_styled_run(p_el, base_rpr, day, bold=bold)
-                            _emit_styled_run(p_el, base_rpr, suffix, bold=bold, superscript=True)
-                            _emit_styled_run(p_el, base_rpr, rest, bold=bold)
+                            _emit_styled_run(p_el, base_rpr, day, bold=bold, color=value_color)
+                            _emit_styled_run(
+                                p_el, base_rpr, suffix, bold=bold, superscript=True, color=value_color
+                            )
+                            _emit_styled_run(p_el, base_rpr, rest, bold=bold, color=value_color)
                         else:
-                            _emit_styled_run(p_el, base_rpr, value, bold=bold)
+                            _emit_styled_run(p_el, base_rpr, value, bold=bold, color=value_color)
                     else:
-                        _emit_styled_run(p_el, base_rpr, value, bold=bold)
+                        _emit_styled_run(p_el, base_rpr, value, bold=bold, color=value_color)
                     pos = m.end()
                 if pos < len(full):
                     _emit_styled_run(p_el, base_rpr, full[pos:])
@@ -501,6 +524,7 @@ def render_agreement_docx_to_pdf(
     timeout_seconds: int = 90,
     accepted_revisions: list[tuple[str, str]] | None = None,
     pending_revisions: list[tuple[str, str, str]] | None = None,
+    highlight_admin_content: bool = False,
 ) -> bytes:
     """Render the SCA PDF by substituting tokens in the master docx and
     converting via LibreOffice headless.
@@ -516,6 +540,11 @@ def render_agreement_docx_to_pdf(
     master_path:
         Override for the master docx location (defaults to the bundled
         ``backend/masters/sca_master_v1.docx``).
+    highlight_admin_content:
+        GM Portal "View PDF" (req 6.3) — when True, every substituted
+        {{FIELD_ID}} value renders in red so admin-entered content is
+        visually distinct from boilerplate. Default False — the standard
+        PDF (subcontractor-facing, archived) must never change.
     accepted_revisions:
         Phase 4 v2.0 — list of ``(clause_hash, modified_text)`` pairs that
         replace the matching paragraphs in the master before token
@@ -564,7 +593,7 @@ def render_agreement_docx_to_pdf(
     # <w:del>/<w:ins> blocks just inserted and resolves tokens in the
     # revision text spans too.
     for para in _iter_paragraphs(doc):
-        _substitute_in_paragraph(para, values)
+        _substitute_in_paragraph(para, values, highlight_admin_content=highlight_admin_content)
 
     # 3.5) Expand any <w:br/> soft-break sequences that token substitution
     # produced in table cells (e.g. C15 bullets, A04 project details) into

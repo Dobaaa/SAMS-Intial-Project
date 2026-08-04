@@ -134,6 +134,39 @@ async def preview_pdf_with_changes(
     )
 
 
+@router.get("/pdf/{agreement_id}/preview/gm-highlighted", dependencies=[Depends(require_role(RoleEnum.gm))])
+async def preview_pdf_gm_highlighted(
+    agreement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """GM Portal "View PDF" (req 6.3) — the full agreement with every
+    admin-entered {{FIELD_ID}} value rendered in red, so GM can quickly
+    spot what's non-boilerplate. GM-only: this is a distinct rendering
+    mode, never the standard/subcontractor-facing/archived PDF.
+
+    Live render, no caching — mirrors preview_pdf_with_changes.
+    """
+    from services.docx_pdf_service import render_agreement_docx_to_pdf
+    from services.pdf_service import _build_value_map, _load_agreement_bundle
+
+    agreement = await _load_agreement_bundle(db, str(agreement_id))
+    if agreement is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
+
+    value_map = _build_value_map(agreement)
+
+    with tempfile.TemporaryDirectory(prefix=f"sams_gm_highlighted_{agreement_id}_") as tmp:
+        pdf_bytes = render_agreement_docx_to_pdf(value_map, tmp, highlight_admin_content=True)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="sca_{agreement.reference_number}_highlighted.pdf"'
+        },
+    )
+
+
 @router.get("/pdf/{agreement_id}/preview")
 async def preview_pdf(
     agreement_id: uuid.UUID,
