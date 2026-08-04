@@ -9,6 +9,20 @@ import pytest_asyncio
 
 
 @pytest_asyncio.fixture
+async def patched_docx_render(monkeypatch):
+    """Stub out the LibreOffice-backed docx render so PDF-generation tests
+    don't need LibreOffice installed — Package H's regen guard runs before
+    any rendering happens, so only the "allowed" path needs this stub."""
+    from services import docx_pdf_service
+
+    def _stub(values, output_dir, **kwargs):
+        return b"%PDF-1.4 stub"
+
+    monkeypatch.setattr(docx_pdf_service, "render_agreement_docx_to_pdf", _stub)
+    yield
+
+
+@pytest_asyncio.fixture
 async def patched_suggest_responses(monkeypatch):
     """Replace ai_service.suggest_responses with a deterministic stub so tests
     don't need a real OpenAI key or network. The stub returns a predictable
@@ -112,6 +126,41 @@ async def test_send_to_subcontractor_after_resolution_transitions_to_signature(
     resp = await authed_client.post(f"/api/agreements/{agreement['id']}/send-to-subcontractor")
     assert resp.status_code == 200
     assert resp.json()["agreement_status"] == "under_subcontractor_signature"
+
+
+@pytest.mark.asyncio
+async def test_regenerate_pdf_blocked_after_signed(
+    authed_client, admin_user, patched_suggest_responses, patched_docx_render
+):
+    """Package H: once an agreement is signed (is_executed=True), Admin can
+    no longer regenerate its PDF — the render pipeline has no per-agreement
+    master-docx snapshot, so a later master edit could otherwise silently
+    rewrite the legal text a completed agreement was actually signed under."""
+    agreement = await _seeded_agreement(authed_client)
+
+    signed = await authed_client.patch(
+        f"/api/agreements/{agreement['id']}/subcontractor-response",
+        json={"response_type": "signed"},
+    )
+    assert signed.status_code == 200
+    assert signed.json()["is_executed"] is True
+
+    regen = await authed_client.post(f"/api/pdf/{agreement['id']}/generate")
+    assert regen.status_code == 400
+    assert "completed agreement" in regen.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_regenerate_pdf_allowed_before_signing(
+    authed_client, admin_user, patched_suggest_responses, patched_docx_render
+):
+    """The guard is scoped to completed agreements only — regeneration on a
+    still-in-progress agreement is unaffected."""
+    agreement = await _seeded_agreement(authed_client)
+
+    regen = await authed_client.post(f"/api/pdf/{agreement['id']}/generate")
+    assert regen.status_code == 200
+    assert regen.json()["status"] == "success"
 
 
 @pytest.mark.asyncio

@@ -432,8 +432,9 @@ export default function AgreementDocument() {
                       await api.post(`/pdf/${agreementId}/generate`);
                       await reloadPdf();
                       toast.success("PDF regenerated.");
-                    } catch {
-                      toast.error("Failed to regenerate PDF.");
+                    } catch (err: unknown) {
+                      const e = err as { response?: { data?: { detail?: string } } };
+                      toast.error(e?.response?.data?.detail ?? "Failed to regenerate PDF.");
                     } finally {
                       setRegenerating(false);
                     }
@@ -462,6 +463,9 @@ export default function AgreementDocument() {
                     try {
                       await api.post(`/pdf/${agreementId}/generate`);
                       await reloadPdf();
+                    } catch (err: unknown) {
+                      const e = err as { response?: { data?: { detail?: string } } };
+                      toast.error(e?.response?.data?.detail ?? "Failed to regenerate PDF.");
                     } finally {
                       setRegenerating(false);
                     }

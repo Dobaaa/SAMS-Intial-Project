@@ -283,7 +283,13 @@ def _appendix_overrides(
     return visible, notes
 
 
-async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_by: User | None) -> PDFOutput:
+async def generate_agreement_pdf(
+    db: AsyncSession,
+    agreement_id: str,
+    generated_by: User | None,
+    *,
+    allow_regenerate_completed: bool = False,
+) -> PDFOutput:
     """Render the SCA PDF via the docx-based pipeline.
 
     Up to 2026-05-17 this function rendered a WeasyPrint+HTML/CSS PDF. We
@@ -296,6 +302,15 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
     The MasterTemplate rows are still used as the version pointer so each
     agreement is permanently tied to the docx file that was active when it
     was created (the actual docx bytes live in backend/masters/).
+
+    render_agreement_docx_to_pdf always reads the single live
+    backend/masters/sca_master_v1.docx — there's no per-agreement snapshot.
+    So regenerating a *completed* agreement's PDF after a later master-docx
+    edit would silently rewrite the legal text it was actually signed under.
+    `allow_regenerate_completed` exists for exactly one legitimate case:
+    resolution_service.record_subcontractor_response regenerates once,
+    immediately after flipping is_executed=True, to strip the watermark on
+    the newly-final PDF. Every other caller must NOT pass it.
     """
     from models.agreement import AgreementClauseRevision, ClauseRevisionStatus
     from services.docx_pdf_service import render_agreement_docx_to_pdf
@@ -303,6 +318,11 @@ async def generate_agreement_pdf(db: AsyncSession, agreement_id: str, generated_
     agreement = await _load_agreement_bundle(db, agreement_id)
     if not agreement:
         raise ValueError("Agreement not found")
+
+    if agreement.is_executed and not allow_regenerate_completed:
+        raise ValueError(
+            "Cannot regenerate the PDF for a completed agreement — its executed PDF is final."
+        )
 
     value_map = _collect_field_values(agreement.field_values)
     # Synthetic token: every page's running header carries {{REFERENCE}}

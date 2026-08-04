@@ -36,12 +36,18 @@ async def record_subcontractor_response(
     # When the agreement transitions to completed, auto-regenerate the PDF
     # so the watermark (now blank for completed) and any final values reflect
     # the executed state without admin needing to click Generate PDF again.
+    # allow_regenerate_completed=True: this is the one deliberate exception to
+    # the "never regenerate a completed agreement" guard — is_executed was
+    # just set True above, and this is the render that produces the actual
+    # final signed-state PDF, not a later rewrite of an already-final one.
     # Local import + best-effort: regen failure must not undo the response.
     if response_type == "signed":
         try:
             from services.pdf_service import generate_agreement_pdf  # local import to avoid circular
 
-            await generate_agreement_pdf(db, str(agreement.id), generated_by=None)
+            await generate_agreement_pdf(
+                db, str(agreement.id), generated_by=None, allow_regenerate_completed=True
+            )
         except Exception as exc:  # noqa: BLE001 — regeneration is best-effort
             logger.warning(
                 "Failed to auto-regenerate PDF after marking %s as signed: %s",
