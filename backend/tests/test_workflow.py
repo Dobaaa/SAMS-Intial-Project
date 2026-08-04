@@ -113,11 +113,11 @@ async def test_comment_is_nonblocking(
 
 
 @pytest.mark.asyncio
-async def test_all_roles_must_approve_before_forwarding(
+async def test_all_roles_must_approve_in_order_before_forwarding(
     authed_client, admin_user, seeded_reviewers
 ):
     """Forwarding to the subcontractor is gated on every reviewer role
-    approving. The four steps approve in parallel, in any order."""
+    approving, in the sequential order Accounts -> PD -> OM -> GM."""
     agreement = await _make_submitted_agreement(authed_client)
     detail = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
     steps_by_role = {s["role_required"]: s for s in detail.json()["steps"]}
@@ -129,12 +129,20 @@ async def test_all_roles_must_approve_before_forwarding(
     early = await authed_client.post(f"/api/agreements/{agreement['id']}/send-to-subcontractor")
     assert early.status_code == 400
 
-    # Each role approves (order intentionally not PD-first, to prove parallelism).
+    # Out-of-order approval is rejected: OM can't approve before Accounts/PD.
+    om_token = await _login(authed_client, "operation_manager@test.example")
+    authed_client.headers["Authorization"] = f"Bearer {om_token}"
+    out_of_order = await authed_client.post(
+        f"/api/workflow/{steps_by_role['operation_manager']['id']}/approve"
+    )
+    assert out_of_order.status_code == 400
+
+    # Each role approves in the required order.
     for role_value, email in [
+        ("accounts", "accounts@test.example"),
+        ("project_director", "project_director@test.example"),
         ("operation_manager", "operation_manager@test.example"),
         ("gm", "gm@test.example"),
-        ("project_director", "project_director@test.example"),
-        ("accounts", "accounts@test.example"),
     ]:
         token = await _login(authed_client, email)
         authed_client.headers["Authorization"] = f"Bearer {token}"
@@ -151,16 +159,25 @@ async def test_all_roles_must_approve_before_forwarding(
 
 
 @pytest.mark.asyncio
-async def test_all_roles_see_agreement_in_parallel(
+async def test_only_first_in_chain_sees_agreement_initially(
     authed_client, admin_user, seeded_reviewers
 ):
-    """Every reviewer role sees a freshly submitted agreement immediately —
-    no role has to approve first to unlock the next."""
+    """Sequential model: only Accounts (first in chain) sees a freshly
+    submitted agreement in /workflow/pending. PD/OM/GM unlock as each prior
+    role approves."""
     agreement = await _make_submitted_agreement(authed_client)
+
+    accounts_token = await _login(authed_client, "accounts@test.example")
+    authed_client.headers["Authorization"] = f"Bearer {accounts_token}"
+    pending = await authed_client.get("/api/workflow/pending")
+    assert pending.status_code == 200
+    assert any(
+        it["agreement"]["reference_number"] == agreement["reference_number"]
+        for it in pending.json()
+    ), "Accounts should see the agreement immediately"
 
     for email in [
         "project_director@test.example",
-        "accounts@test.example",
         "operation_manager@test.example",
         "gm@test.example",
     ]:
@@ -168,7 +185,79 @@ async def test_all_roles_see_agreement_in_parallel(
         authed_client.headers["Authorization"] = f"Bearer {token}"
         pending = await authed_client.get("/api/workflow/pending")
         assert pending.status_code == 200
-        assert any(
+        assert not any(
             it["agreement"]["reference_number"] == agreement["reference_number"]
             for it in pending.json()
-        ), f"{email} should see the agreement immediately"
+        ), f"{email} should NOT see the agreement before Accounts approves"
+
+    # Accounts approves -> PD unlocks.
+    authed_client.headers["Authorization"] = f"Bearer {accounts_token}"
+    detail = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    steps_by_role = {s["role_required"]: s for s in detail.json()["steps"]}
+    approve = await authed_client.post(
+        f"/api/workflow/{steps_by_role['accounts']['id']}/approve"
+    )
+    assert approve.status_code == 200
+
+    pd_token = await _login(authed_client, "project_director@test.example")
+    authed_client.headers["Authorization"] = f"Bearer {pd_token}"
+    pending = await authed_client.get("/api/workflow/pending")
+    assert any(
+        it["agreement"]["reference_number"] == agreement["reference_number"]
+        for it in pending.json()
+    ), "PD should see the agreement once Accounts has approved"
+
+
+@pytest.mark.asyncio
+async def test_approve_with_comments_records_comment(
+    authed_client, admin_user, seeded_reviewers
+):
+    """'Approved with comments' approves the step AND attaches a comment,
+    in one call."""
+    agreement = await _make_submitted_agreement(authed_client)
+    detail = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    accounts_step = next(
+        s for s in detail.json()["steps"] if s["role_required"] == "accounts"
+    )
+
+    token = await _login(authed_client, "accounts@test.example")
+    authed_client.headers["Authorization"] = f"Bearer {token}"
+    resp = await authed_client.post(
+        f"/api/workflow/{accounts_step['id']}/approve",
+        json={"comment_text": "Looks fine, minor note on 3.4", "clause_reference": "3.4"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["comment_id"] is not None
+
+    detail2 = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    statuses = {s["role_required"]: s["status"] for s in detail2.json()["steps"]}
+    assert statuses["accounts"] == "approved"
+    assert any(
+        c["clause_reference"] == "3.4" for c in detail2.json()["comments"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_reject_with_comments_returns_step(
+    authed_client, admin_user, seeded_reviewers
+):
+    """'Rejected with comments' flips the step to returned and the agreement
+    to under_bgcc_revision, via the existing return_step path."""
+    agreement = await _make_submitted_agreement(authed_client)
+    detail = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    accounts_step = next(
+        s for s in detail.json()["steps"] if s["role_required"] == "accounts"
+    )
+
+    token = await _login(authed_client, "accounts@test.example")
+    authed_client.headers["Authorization"] = f"Bearer {token}"
+    resp = await authed_client.post(
+        f"/api/workflow/{accounts_step['id']}/return",
+        json={"comment_text": "Please revise clause 3.4", "clause_reference": "3.4"},
+    )
+    assert resp.status_code == 200
+
+    detail2 = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    statuses = {s["role_required"]: s["status"] for s in detail2.json()["steps"]}
+    assert statuses["accounts"] == "returned"
+    assert detail2.json()["agreement"]["current_status"] == "under_bgcc_revision"

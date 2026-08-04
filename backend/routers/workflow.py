@@ -28,6 +28,11 @@ class ReturnPayload(BaseModel):
     clause_reference: str | None = None
 
 
+class ApprovePayload(BaseModel):
+    comment_text: str | None = None
+    clause_reference: str | None = None
+
+
 @router.get("/pending")
 async def get_pending_workflows(
     db: AsyncSession = Depends(get_db_session),
@@ -55,6 +60,7 @@ async def get_my_agreements(
 @router.post("/{step_id}/approve")
 async def approve_workflow_step(
     step_id: uuid.UUID,
+    payload: ApprovePayload | None = None,
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> dict:
@@ -64,8 +70,17 @@ async def approve_workflow_step(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow step not found")
     if step.role_required != current_user.role:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this role")
-    await approve_step(db, step, current_user)
-    return {"status": "approved"}
+    try:
+        comment = await approve_step(
+            db,
+            step,
+            current_user,
+            comment_text=payload.comment_text if payload else None,
+            clause_reference=payload.clause_reference if payload else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"status": "approved", "comment_id": str(comment.id) if comment else None}
 
 
 @router.post("/{step_id}/comment")

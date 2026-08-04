@@ -266,8 +266,8 @@ async def submit_for_review(db: AsyncSession, agreement: Agreement) -> None:
         return
 
     chain = [
-        ("Project Director", 1, RoleEnum.project_director),
-        ("Accounts Department", 2, RoleEnum.accounts),
+        ("Accounts Department", 1, RoleEnum.accounts),
+        ("Project Director", 2, RoleEnum.project_director),
         ("Operation Manager", 3, RoleEnum.operation_manager),
         ("General Manager", 4, RoleEnum.gm),
     ]

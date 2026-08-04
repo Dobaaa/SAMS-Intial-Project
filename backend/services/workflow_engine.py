@@ -143,23 +143,12 @@ async def get_pending_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
 
     pending_items: list[dict] = []
     for step in steps:
-        # Main review chain is FLAT/parallel: every reviewer role (PD,
-        # Accounts, OM, GM) sees the agreement as soon as it's submitted,
-        # with no ordering dependency. The resolution chain (OM -> GM) stays
-        # sequential, so only resolution steps are gated on the prior step.
-        if _is_resolution_step(step) and step.step_order > 1:
-            prev_res = await db.execute(
-                select(WorkflowStep).where(
-                    and_(
-                        WorkflowStep.agreement_id == step.agreement_id,
-                        WorkflowStep.step_order == step.step_order - 1,
-                        WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES),
-                    )
-                )
-            )
-            prev_step = prev_res.scalar_one_or_none()
-            if prev_step and prev_step.status != WorkflowStepStatusEnum.approved:
-                continue
+        # Both the main chain (Accounts -> PD -> OM -> GM) and the
+        # resolution chain (OM -> GM) are sequential: a step only becomes
+        # visible/actionable once the prior step in its own chain is
+        # approved.
+        if not await _previous_step_approved(db, step):
+            continue
 
         pending_items.append(
             {
@@ -182,6 +171,34 @@ OBSERVER_ROLES = {RoleEnum.admin, RoleEnum.quality_surveyor, RoleEnum.estimator,
 
 def _is_resolution_step(step: WorkflowStep) -> bool:
     return step.step_name in RESOLUTION_STEP_NAMES
+
+
+async def _previous_step_approved(db: AsyncSession, step: WorkflowStep) -> bool:
+    """True if `step` is first in its chain, or the immediately-prior step
+    in the same chain (main vs resolution, scoped by step_name) is approved.
+
+    Both chains are sequential: main is Accounts(1) -> PD(2) -> OM(3) -> GM(4),
+    resolution is OM(1) -> GM(2).
+    """
+    if step.step_order <= 1:
+        return True
+
+    chain_filter = (
+        WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES)
+        if _is_resolution_step(step)
+        else ~WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES)
+    )
+    prev_res = await db.execute(
+        select(WorkflowStep).where(
+            and_(
+                WorkflowStep.agreement_id == step.agreement_id,
+                WorkflowStep.step_order == step.step_order - 1,
+                chain_filter,
+            )
+        )
+    )
+    prev_step = prev_res.scalar_one_or_none()
+    return prev_step is None or prev_step.status == WorkflowStepStatusEnum.approved
 
 
 async def _notify_project_users(
@@ -246,8 +263,9 @@ async def _notify_admins_agreement_ready_to_forward(
 async def all_main_steps_approved(db: AsyncSession, agreement_id) -> bool:
     """True when every reviewer role's main-chain step is approved.
 
-    The flat review model completes only when PD, Accounts, OM and GM have all
-    approved. Resolution steps (a separate sequential chain) are excluded.
+    The sequential review chain (Accounts -> PD -> OM -> GM) completes only
+    when all four have approved. Resolution steps (a separate sequential
+    chain) are excluded.
     """
     res = await db.execute(
         select(WorkflowStep).where(
@@ -301,10 +319,32 @@ async def _handle_resolution_approval(
         await _notify_admins_agreement_ready_to_forward(db, agreement)
 
 
-async def approve_step(db: AsyncSession, step: WorkflowStep, actor: User) -> None:
+async def approve_step(
+    db: AsyncSession,
+    step: WorkflowStep,
+    actor: User,
+    comment_text: str | None = None,
+    clause_reference: str | None = None,
+) -> WorkflowComment | None:
+    if not await _previous_step_approved(db, step):
+        raise ValueError("The previous reviewer has not approved this agreement yet")
+
     step.status = WorkflowStepStatusEnum.approved
     step.acted_by = actor.id
     step.acted_at = datetime.now(UTC)
+
+    comment: WorkflowComment | None = None
+    if comment_text and comment_text.strip():
+        comment = WorkflowComment(
+            workflow_step_id=step.id,
+            agreement_id=step.agreement_id,
+            original_author_id=actor.id,
+            last_edited_by_id=actor.id,
+            comment_text=comment_text.strip(),
+            clause_reference=clause_reference,
+        )
+        db.add(comment)
+        await db.flush()
 
     agreement = await db.get(Agreement, step.agreement_id)
 
@@ -320,18 +360,23 @@ async def approve_step(db: AsyncSession, step: WorkflowStep, actor: User) -> Non
         ref = agreement.reference_number
         role_label = step.role_required.value.replace("_", " ").title()
         ctx = await _get_email_context(db, agreement)
+        comment_note = f"\n\nComment: {comment.comment_text}" if comment else ""
         await _notify_project_users(
             db, agreement,
             subject=f"SAMS: {role_label} approved {ref}",
             body=(
                 f"{actor.name} ({role_label}) has approved agreement {ref}.\n\n"
-                f"{ctx}\n\n"
+                f"{ctx}"
+                f"{comment_note}\n\n"
                 f"Log in to SAMS to view the agreement status."
             ),
             exclude_user_id=actor.id,
         )
 
     await db.commit()
+    if comment:
+        await db.refresh(comment)
+    return comment
 
 
 async def return_step(
@@ -365,7 +410,7 @@ async def return_step(
         # admin sees a distinct state from a brand-new under_drafting and
         # the dashboard surfaces "Resubmit for Review" + the returned-
         # comments badge. Resubmit restarts the whole chain from step 1
-        # (PD), so any prior approvals on this agreement are wiped.
+        # (Accounts), so any prior approvals on this agreement are wiped.
         agreement.current_status = AgreementStatusEnum.under_bgcc_revision
         agreement.status_updated_on = datetime.now(UTC)
 
@@ -445,8 +490,8 @@ async def add_comment(
 
 
 async def resubmit_agreement(db: AsyncSession, agreement: Agreement) -> None:
-    # Spec: resubmit restarts the WHOLE chain from step 1 (PD for the main
-    # chain, Resolution-OM for the resolution chain) rather than just
+    # Spec: resubmit restarts the WHOLE chain from step 1 (Accounts for the
+    # main chain, Resolution-OM for the resolution chain) rather than just
     # reactivating the returned step. Scope to the chain of the returned
     # step so a main-chain return doesn't wipe resolution progress and
     # vice versa.

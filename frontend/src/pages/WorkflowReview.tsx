@@ -98,12 +98,16 @@ type ActiveTab = "clauses" | "appendix" | "document" | "ai" | "action";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
+// Sequential review order: Accounts -> Project Director -> Operation Manager -> GM.
 const REVIEWER_ROLES = [
-  { role: "project_director", short: "Project Director" },
   { role: "accounts", short: "Accounts" },
+  { role: "project_director", short: "Project Director" },
   { role: "operation_manager", short: "Op. Manager" },
   { role: "gm", short: "GM" },
 ] as const;
+
+const isResolutionStepName = (name: string) =>
+  name === "Resolution - Operation Manager" || name === "Resolution - General Manager";
 
 const TABS: { key: ActiveTab; label: string }[] = [
   { key: "clauses", label: "Clause Review" },
@@ -369,15 +373,25 @@ export default function WorkflowReview() {
     }
   };
 
-  const approve = async () => {
+  const approveStep = async (withComment: boolean) => {
     if (!selectedStepId || busy) return;
+    if (withComment && !commentText.trim()) {
+      toast.error("Please enter a comment.");
+      return;
+    }
     setBusy(true);
     try {
       const ref = details?.agreement.reference_number ?? "";
-      await api.post(`/workflow/${selectedStepId}/approve`);
-      toast.success(`Approved ${ref}.`);
-      // Keep the agreement selected (visible) — just reload to reflect new step status.
       const agreementId = details?.agreement.id;
+      await api.post(
+        `/workflow/${selectedStepId}/approve`,
+        withComment
+          ? { comment_text: commentText, clause_reference: clauseReference || undefined }
+          : undefined,
+      );
+      toast.success(withComment ? `Approved ${ref} with comments.` : `Approved ${ref}.`);
+      setCommentText("");
+      setClauseReference("");
       await loadMyReviews();
       if (agreementId) await loadDetails(agreementId);
     } catch (err: unknown) {
@@ -388,27 +402,26 @@ export default function WorkflowReview() {
     }
   };
 
-  const addGeneralComment = async () => {
+  const rejectWithComments = async () => {
     if (!selectedStepId || busy) return;
     if (!commentText.trim()) {
-      toast.error("Please enter a comment.");
+      toast.error("Please enter a reason for rejection.");
       return;
     }
     setBusy(true);
     try {
       const ref = details?.agreement.reference_number ?? "";
-      const agreementId = details?.agreement.id;
-      await api.post(`/workflow/${selectedStepId}/comment`, {
+      await api.post(`/workflow/${selectedStepId}/return`, {
         comment_text: commentText,
         clause_reference: clauseReference || undefined,
       });
-      toast.success(`Comment added to ${ref}.`);
+      toast.success(`Rejected ${ref}. Sent back to Admin for revision.`);
       setCommentText("");
       setClauseReference("");
-      if (agreementId) await loadDetails(agreementId);
+      await loadMyReviews();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
-      toast.error(e?.response?.data?.detail ?? "Failed to add comment.");
+      toast.error(e?.response?.data?.detail ?? "Failed to reject.");
     } finally {
       setBusy(false);
     }
@@ -435,6 +448,18 @@ export default function WorkflowReview() {
   // Step that belongs to the current logged-in role (for posting comments)
   const myStep = details?.steps.find((s) => s.role_required === role) ?? null;
   const myStepApproved = myStep?.status === "approved";
+  const myStepRejected = myStep?.status === "returned";
+
+  // Sequential gate: locked until the prior step in the same chain (main vs
+  // resolution) is approved. Mirrors the backend's _previous_step_approved.
+  const myStepChainSteps =
+    details?.steps.filter(
+      (s) => isResolutionStepName(s.step_name) === (myStep ? isResolutionStepName(myStep.step_name) : false),
+    ) ?? [];
+  const priorStep = myStep
+    ? myStepChainSteps.find((s) => s.step_order === myStep.step_order - 1)
+    : null;
+  const myStepUnlocked = !myStep || myStep.step_order <= 1 || priorStep?.status === "approved";
 
   // Group fields by prefix (F = Form, C = Conditions)
   const formFields = fieldMatrix.filter((f) => f.field_id.startsWith("F"));
@@ -960,15 +985,16 @@ export default function WorkflowReview() {
                   <div className="rounded border p-3">
                     <h3 className="mb-2 font-semibold">Review Action</h3>
                     <p className="mb-2 text-xs text-gray-500">
-                      Add a general comment (not tied to a specific clause) or
-                      approve. The agreement can only be forwarded to the
-                      subcontractor once every reviewer role has approved.
+                      Review is sequential — Accounts → Project Director → Operation
+                      Manager → GM. A comment is required for "Approved with comments"
+                      and "Rejected with comments". Rejecting sends the agreement back
+                      to Admin; resubmitting restarts the whole chain from step 1.
                     </p>
                     <div className="grid gap-2">
                       <textarea
                         className="rounded border p-2"
                         rows={3}
-                        placeholder="General comment (optional)"
+                        placeholder="Comment (required for 'with comments' actions)"
                         value={commentText}
                         onChange={(e) => setCommentText(e.target.value)}
                       />
@@ -978,28 +1004,43 @@ export default function WorkflowReview() {
                         value={clauseReference}
                         onChange={(e) => setClauseReference(e.target.value)}
                       />
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {myStepApproved ? (
                           <span className="rounded bg-green-100 border border-green-300 px-4 py-2 text-sm font-medium text-green-700">
                             ✓ Approved
                           </span>
+                        ) : myStepRejected ? (
+                          <span className="rounded bg-red-100 border border-red-300 px-4 py-2 text-sm font-medium text-red-700">
+                            ✗ Rejected — awaiting Admin revision
+                          </span>
+                        ) : !myStepUnlocked ? (
+                          <span className="rounded bg-gray-100 border border-gray-300 px-4 py-2 text-sm text-gray-500">
+                            Waiting for {priorStep ? humanRole(priorStep.role_required) : "the previous reviewer"} to approve
+                          </span>
                         ) : (
-                          <button
-                            className="rounded bg-green-700 px-4 py-2 text-white disabled:opacity-50"
-                            disabled={busy}
-                            onClick={approve}
-                          >
-                            {busy ? "Working…" : "Approve"}
-                          </button>
-                        )}
-                        {!myStepApproved && (
-                          <button
-                            className="rounded bg-amber-700 px-4 py-2 text-white disabled:opacity-50"
-                            disabled={busy}
-                            onClick={addGeneralComment}
-                          >
-                            {busy ? "Working…" : "Add Comment"}
-                          </button>
+                          <>
+                            <button
+                              className="rounded bg-green-700 px-4 py-2 text-white disabled:opacity-50"
+                              disabled={busy}
+                              onClick={() => void approveStep(false)}
+                            >
+                              {busy ? "Working…" : "Approved"}
+                            </button>
+                            <button
+                              className="rounded bg-sky-700 px-4 py-2 text-white disabled:opacity-50"
+                              disabled={busy}
+                              onClick={() => void approveStep(true)}
+                            >
+                              {busy ? "Working…" : "Approved with comments"}
+                            </button>
+                            <button
+                              className="rounded bg-red-700 px-4 py-2 text-white disabled:opacity-50"
+                              disabled={busy}
+                              onClick={() => void rejectWithComments()}
+                            >
+                              {busy ? "Working…" : "Rejected with comments"}
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>

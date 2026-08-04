@@ -227,8 +227,8 @@ async def test_submit_creates_four_workflow_steps(authed_client, admin_user):
     assert len(steps) == 4
     roles_in_order = [s["role_required"] for s in sorted(steps, key=lambda s: s["step_order"])]
     assert roles_in_order == [
-        "project_director",
         "accounts",
+        "project_director",
         "operation_manager",
         "gm",
     ]
@@ -247,7 +247,7 @@ async def test_send_to_subcontractor_transitions_from_internal_review(authed_cli
     agreement = await _create_agreement(authed_client)
     await authed_client.post(f"/api/agreements/{agreement['id']}/submit")
 
-    # Flat review model gates forwarding on all reviewer roles approving.
+    # Sequential review model gates forwarding on all reviewer roles approving.
     # HTTP approval needs role-specific users (covered in test_workflow), so
     # here we approve every main-chain step directly at the model layer.
     steps = (

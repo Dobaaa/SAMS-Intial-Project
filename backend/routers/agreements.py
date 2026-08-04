@@ -558,12 +558,12 @@ async def send_to_subcontractor(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
 
     if agreement.current_status == AgreementStatusEnum.under_internal_review:
-        # Flat review model: forwarding is gated on every reviewer role
-        # (PD, Accounts, OM, GM) having approved.
+        # Sequential review chain: forwarding is gated on every reviewer
+        # role (Accounts, PD, OM, GM) having approved, in order.
         if not await all_main_steps_approved(db, agreement.id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="All reviewer roles (PD, Accounts, OM, GM) must approve before forwarding to the subcontractor.",
+                detail="All reviewer roles (Accounts, PD, OM, GM) must approve, in order, before forwarding to the subcontractor.",
             )
         agreement.current_status = AgreementStatusEnum.draft_forwarded_to_subcontractor
     elif agreement.current_status == AgreementStatusEnum.under_bgcc_revision:
