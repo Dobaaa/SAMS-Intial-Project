@@ -142,10 +142,11 @@ export default function AgreementCreate() {
   const conditionFields = useMemo(() => fields.filter((f) => /^C\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
   const appendixFields = useMemo(() => fields.filter((f) => /^A\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
   // A-fields with no auto_source_field_id are the ones admin MUST type in
-  // (e.g. A03 Engineer, A15 Commencement Date, A17 Subcontract works completion).
+  // (e.g. A03 Engineer, A17 Subcontract works completion).
   // A05 (Main Contractor address) is excluded — only Subcontractor address (A06) appears.
+  // A15 (Commencement Date) is excluded — removed from the appendix entirely (Phase 2 req 3).
   const manualAppendixFields = useMemo(
-    () => appendixFields.filter((f) => !f.auto_source_field_id && f.field_id !== "A05"),
+    () => appendixFields.filter((f) => !f.auto_source_field_id && f.field_id !== "A05" && f.field_id !== "A15"),
     [appendixFields]
   );
 
@@ -316,7 +317,7 @@ export default function AgreementCreate() {
       setAgreementId(data.id);
       setReference(data.reference_number);
       // Sync F02-F07 from Step 1's project/subcontractor inputs, plus any
-      // manual appendix fields admin filled on Step 1 (A03/A05/A15/A17 etc.).
+      // manual appendix fields admin filled on Step 1 (A03/A17 etc.).
       const payload: Record<string, string> = { ...buildStep1FieldSync() };
       for (const f of manualAppendixFields) {
         const v = values[f.field_id];
@@ -341,7 +342,7 @@ export default function AgreementCreate() {
   };
 
   // Load master fields once on mount (regardless of new vs. edit mode) so
-  // Step 1 can render the manual appendix inputs (A03/A05/A15/A17) before
+  // Step 1 can render the manual appendix inputs (A03/A17) before
   // the draft has been created.
   useEffect(() => {
     void loadTemplateFields();
