@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db_session
-from middleware.rbac import get_current_user
-from models.user import User
+from middleware.rbac import get_current_user, require_role
+from models.user import RoleEnum, User
 from models.workflow import WorkflowStep
 from services.workflow_engine import (
     OBSERVER_ROLES,
@@ -15,6 +15,7 @@ from services.workflow_engine import (
     approve_step,
     get_all_for_admin,
     get_all_for_role,
+    get_gm_pending_dashboard,
     get_pending_for_role,
     get_workflow_agreement_summary,
     return_step,
@@ -55,6 +56,16 @@ async def get_my_agreements(
     if current_user.role in OBSERVER_ROLES:
         return await get_all_for_admin(db)
     return await get_all_for_role(db, current_user.role)
+
+
+@router.get("/gm-dashboard", dependencies=[Depends(require_role(RoleEnum.gm))])
+async def get_gm_dashboard(
+    db: AsyncSession = Depends(get_db_session),
+) -> list[dict]:
+    """GM Portal (req 6.1): restricted dashboard of agreements pending
+    GM's own approval — Project Code / Agreement Ref / Project Name /
+    Scope of Works / Subcontractor Name, View PDF + Compare only."""
+    return await get_gm_pending_dashboard(db)
 
 
 @router.post("/{step_id}/approve")

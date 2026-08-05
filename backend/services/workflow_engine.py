@@ -163,6 +163,50 @@ async def get_pending_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
     return pending_items
 
 
+async def get_gm_pending_dashboard(db: AsyncSession) -> list[dict]:
+    """GM Portal dashboard (req 6.1): agreements pending GM's own approval
+    step, shaped for the restricted GM view — Project Code / Agreement
+    Ref / Project Name / Scope of Works / Subcontractor Name. Reuses
+    get_pending_for_role's sequential-chain gating, so GM only sees an
+    agreement once every earlier reviewer in its chain has approved.
+    """
+    pending = await get_pending_for_role(db, RoleEnum.gm)
+
+    rows: list[dict] = []
+    for item in pending:
+        agreement_id = item["agreement"]["id"]
+        agr_res = await db.execute(
+            select(Agreement)
+            .where(Agreement.id == agreement_id)
+            .options(selectinload(Agreement.project), selectinload(Agreement.subcontractor))
+        )
+        agreement = agr_res.scalar_one_or_none()
+        if not agreement:
+            continue
+
+        c01_res = await db.execute(
+            select(AgreementFieldValue).where(
+                AgreementFieldValue.agreement_id == agreement_id,
+                AgreementFieldValue.field_id == "C01",
+            )
+        )
+        c01 = c01_res.scalar_one_or_none()
+        scope_of_works = (c01.entered_value or "").strip() if c01 else ""
+
+        rows.append(
+            {
+                "step_id": item["step"]["id"],
+                "agreement_id": agreement_id,
+                "reference_number": agreement.reference_number,
+                "project_code": agreement.project.project_code if agreement.project else None,
+                "project_name": agreement.project.project_name if agreement.project else None,
+                "scope_of_works": scope_of_works,
+                "subcontractor_name": agreement.subcontractor.company_name if agreement.subcontractor else None,
+            }
+        )
+    return rows
+
+
 RESOLUTION_STEP_NAMES = {"Resolution - Operation Manager", "Resolution - General Manager"}
 
 # Roles that get observer-only access in WorkflowReview (no approval step of their own).

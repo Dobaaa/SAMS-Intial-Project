@@ -8,6 +8,7 @@ import AgreementDocument from "./pages/AgreementDocument";
 import Archive from "./pages/Archive";
 import CommentsResolution from "./pages/CommentsResolution";
 import Dashboard from "./pages/Dashboard";
+import GMDashboard from "./pages/GMDashboard";
 import ReviewerDashboard from "./pages/ReviewerDashboard";
 import Login from "./pages/Login";
 import MasterTemplates from "./pages/MasterTemplates";
@@ -22,6 +23,7 @@ const OBSERVER_ROLES = new Set(["admin", "quality_surveyor", "estimator", "proje
 function DefaultRedirect() {
   const role = useAuth((s) => s.user?.role);
   if (role === "admin") return <Navigate to="/dashboard" replace />;
+  if (role === "gm") return <Navigate to="/gm-dashboard" replace />;
   if (role && OBSERVER_ROLES.has(role)) return <Navigate to="/workflow" replace />;
   return <Navigate to="/reviewer-dashboard" replace />;
 }
@@ -52,6 +54,7 @@ export default function App() {
             <Route path="/agreements/:id/compare" element={<AgreementCompare />} />
             <Route path="/agreements/:id/compare-table" element={<AgreementCompareTable />} />
             <Route path="/reviewer-dashboard" element={<ReviewerDashboard />} />
+            <Route path="/gm-dashboard" element={<GMDashboard />} />
             <Route path="/workflow" element={<WorkflowReview />} />
             <Route path="/resolution" element={<CommentsResolution />} />
             <Route path="/archive" element={<Archive />} />

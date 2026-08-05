@@ -12,7 +12,8 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", roles: ["admin"] },
-  { to: "/reviewer-dashboard", label: "My Agreements", roles: ["project_director", "accounts", "operation_manager", "gm"] as Role[] },
+  { to: "/gm-dashboard", label: "GM Dashboard", roles: ["gm"] as Role[] },
+  { to: "/reviewer-dashboard", label: "My Agreements", roles: ["project_director", "accounts", "operation_manager"] as Role[] },
   { to: "/agreements/new", label: "New Agreement", roles: ["admin"] },
   { to: "/workflow", label: "Workflow Review" },
   { to: "/resolution", label: "Resolution" },

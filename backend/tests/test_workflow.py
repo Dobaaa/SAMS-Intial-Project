@@ -238,6 +238,64 @@ async def test_approve_with_comments_records_comment(
 
 
 @pytest.mark.asyncio
+async def test_gm_dashboard_shows_only_gm_ready_agreements(
+    authed_client, admin_user, seeded_reviewers
+):
+    """Package B: GET /workflow/gm-dashboard is gm-only and only lists
+    agreements that have actually reached GM's step in the sequential
+    chain, shaped with project_code/project_name/scope_of_works/
+    subcontractor_name for the restricted GM Portal view."""
+    agreement = await _make_submitted_agreement(authed_client)
+    await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={"values": {"C01": "Fit-out works for tower B"}},
+    )
+
+    gm_token = await _login(authed_client, "gm@test.example")
+    authed_client.headers["Authorization"] = f"Bearer {gm_token}"
+
+    # Non-admin dependency check: another role can't hit this endpoint.
+    accounts_token = await _login(authed_client, "accounts@test.example")
+    authed_client.headers["Authorization"] = f"Bearer {accounts_token}"
+    forbidden = await authed_client.get("/api/workflow/gm-dashboard")
+    assert forbidden.status_code == 403
+
+    # Before Accounts/PD/OM approve, GM's dashboard is empty — the
+    # agreement hasn't reached GM's step in the chain yet.
+    authed_client.headers["Authorization"] = f"Bearer {gm_token}"
+    empty = await authed_client.get("/api/workflow/gm-dashboard")
+    assert empty.status_code == 200
+    assert empty.json() == []
+
+    detail = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    steps_by_role = {s["role_required"]: s for s in detail.json()["steps"]}
+    for role_value, email in [
+        ("accounts", "accounts@test.example"),
+        ("project_director", "project_director@test.example"),
+        ("operation_manager", "operation_manager@test.example"),
+    ]:
+        token = await _login(authed_client, email)
+        authed_client.headers["Authorization"] = f"Bearer {token}"
+        approve = await authed_client.post(
+            f"/api/workflow/{steps_by_role[role_value]['id']}/approve"
+        )
+        assert approve.status_code == 200
+
+    authed_client.headers["Authorization"] = f"Bearer {gm_token}"
+    ready = await authed_client.get("/api/workflow/gm-dashboard")
+    assert ready.status_code == 200
+    rows = ready.json()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["agreement_id"] == agreement["id"]
+    assert row["reference_number"] == agreement["reference_number"]
+    assert row["project_code"] == "P001"
+    assert row["project_name"] == "P"
+    assert row["subcontractor_name"] == "S"
+    assert row["scope_of_works"] == "Fit-out works for tower B"
+
+
+@pytest.mark.asyncio
 async def test_reject_with_comments_returns_step(
     authed_client, admin_user, seeded_reviewers
 ):
