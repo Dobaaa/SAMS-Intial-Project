@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from database import get_db_session
 from middleware.rbac import get_current_user
-from models.agreement import Agreement, AgreementStatusEnum
+from models.agreement import Agreement, AgreementFieldValue, AgreementStatusEnum, Project, Subcontractor
 from models.ai_review import PDFOutput, PDFTypeEnum
 from models.user import User
 
@@ -31,12 +31,14 @@ STATUS_LABELS = {
 
 
 def _agreement_row(agreement: Agreement) -> dict:
+    c01 = next((f for f in (agreement.field_values or []) if f.field_id == "C01"), None)
     return {
         "id": str(agreement.id),
         "reference_number": agreement.reference_number,
         "subcontractor_name": agreement.subcontractor.company_name if agreement.subcontractor else None,
         "project_name": agreement.project.project_name if agreement.project else None,
         "project_code": agreement.project.project_code if agreement.project else None,
+        "scope_of_works": (c01.entered_value or "").strip() if c01 else "",
         "current_status": agreement.current_status.value,
         "status_label": STATUS_LABELS.get(agreement.current_status.value, agreement.current_status.value),
         "status_updated_on": agreement.status_updated_on.isoformat() if agreement.status_updated_on else None,
@@ -77,7 +79,11 @@ async def archive_by_project(
     query = (
         select(Agreement)
         .where(Agreement.project_id == project_id)
-        .options(selectinload(Agreement.project), selectinload(Agreement.subcontractor))
+        .options(
+            selectinload(Agreement.project),
+            selectinload(Agreement.subcontractor),
+            selectinload(Agreement.field_values),
+        )
         .order_by(desc(Agreement.created_at))
     )
     query = _apply_archive_filters(query, status_filter, date_from, date_to, reference_number)
@@ -103,10 +109,71 @@ async def archive_by_subcontractor(
     query = (
         select(Agreement)
         .where(Agreement.subcontractor_id == subcontractor_id)
-        .options(selectinload(Agreement.project), selectinload(Agreement.subcontractor))
+        .options(
+            selectinload(Agreement.project),
+            selectinload(Agreement.subcontractor),
+            selectinload(Agreement.field_values),
+        )
         .order_by(desc(Agreement.created_at))
     )
     query = _apply_archive_filters(query, status_filter, date_from, date_to, reference_number)
+    result = await db.execute(query)
+    return [_agreement_row(item) for item in result.scalars().all()]
+
+
+@router.get("/agreements")
+async def list_all_archive_agreements(
+    status_filter: str | None = Query(default=None, alias="status"),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    reference_number: str | None = None,
+    project_code: str | None = None,
+    project_name: str | None = None,
+    subcontractor_name: str | None = None,
+    scope_of_works: str | None = None,
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_current_user),
+) -> list[dict]:
+    """Req 8: flat listing of every agreement, no project/subcontractor id
+    required — unlike /projects/{id} and /subcontractors/{id} above, which
+    can't list everything. Filters cover req 10's full field list (Project
+    Code / Agreement Ref / Project Name / Scope of Works / Subcontractor
+    Name / Status); bucketing (req 9) is computed client-side from this
+    flat response.
+    """
+    if status_filter:
+        try:
+            AgreementStatusEnum(status_filter)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status filter") from exc
+
+    query = (
+        select(Agreement)
+        .join(Agreement.project)
+        .join(Agreement.subcontractor)
+        .options(
+            selectinload(Agreement.project),
+            selectinload(Agreement.subcontractor),
+            selectinload(Agreement.field_values),
+        )
+        .order_by(desc(Agreement.created_at))
+    )
+    query = _apply_archive_filters(query, status_filter, date_from, date_to, reference_number)
+    if project_code:
+        query = query.where(Project.project_code.ilike(f"%{project_code}%"))
+    if project_name:
+        query = query.where(Project.project_name.ilike(f"%{project_name}%"))
+    if subcontractor_name:
+        query = query.where(Subcontractor.company_name.ilike(f"%{subcontractor_name}%"))
+    if scope_of_works:
+        query = query.join(
+            AgreementFieldValue,
+            and_(
+                AgreementFieldValue.agreement_id == Agreement.id,
+                AgreementFieldValue.field_id == "C01",
+            ),
+        ).where(AgreementFieldValue.entered_value.ilike(f"%{scope_of_works}%"))
+
     result = await db.execute(query)
     return [_agreement_row(item) for item in result.scalars().all()]
 
@@ -187,22 +254,47 @@ async def export_archive(
     date_from: date | None = None,
     date_to: date | None = None,
     reference_number: str | None = None,
+    project_code: str | None = None,
+    project_name: str | None = None,
+    subcontractor_name: str | None = None,
+    scope_of_works: str | None = None,
     db: AsyncSession = Depends(get_db_session),
     _: User = Depends(get_current_user),
 ) -> Response:
-    if not project_id and not subcontractor_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide project_id or subcontractor_id")
+    """Exports the current Archive view. project_id/subcontractor_id are
+    still accepted (Project View / Subcontractor View), but are now
+    optional — with none of them, exports the flat/filtered listing that
+    GET /archive/agreements shows."""
     if status_filter:
         try:
             AgreementStatusEnum(status_filter)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status filter") from exc
 
-    query = select(Agreement).options(selectinload(Agreement.project), selectinload(Agreement.subcontractor))
+    query = (
+        select(Agreement)
+        .join(Agreement.project)
+        .join(Agreement.subcontractor)
+        .options(selectinload(Agreement.project), selectinload(Agreement.subcontractor))
+    )
     if project_id:
         query = query.where(Agreement.project_id == project_id)
     if subcontractor_id:
         query = query.where(Agreement.subcontractor_id == subcontractor_id)
+    if project_code:
+        query = query.where(Project.project_code.ilike(f"%{project_code}%"))
+    if project_name:
+        query = query.where(Project.project_name.ilike(f"%{project_name}%"))
+    if subcontractor_name:
+        query = query.where(Subcontractor.company_name.ilike(f"%{subcontractor_name}%"))
+    if scope_of_works:
+        query = query.join(
+            AgreementFieldValue,
+            and_(
+                AgreementFieldValue.agreement_id == Agreement.id,
+                AgreementFieldValue.field_id == "C01",
+            ),
+        ).where(AgreementFieldValue.entered_value.ilike(f"%{scope_of_works}%"))
     query = _apply_archive_filters(query, status_filter, date_from, date_to, reference_number)
     query = query.order_by(desc(Agreement.created_at))
     rows = (await db.execute(query)).scalars().all()
