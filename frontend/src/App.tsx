@@ -2,6 +2,7 @@ import { Navigate, Route, BrowserRouter, Routes } from "react-router-dom";
 
 import { ToastProvider } from "./components/Toast";
 import AgreementCompare from "./pages/AgreementCompare";
+import AgreementCompareTable from "./pages/AgreementCompareTable";
 import AgreementCreate from "./pages/AgreementCreate";
 import AgreementDocument from "./pages/AgreementDocument";
 import Archive from "./pages/Archive";
@@ -49,6 +50,7 @@ export default function App() {
                 the clause-revisions panel switches to review mode. */}
             <Route path="/agreements/:id/document" element={<AgreementDocument />} />
             <Route path="/agreements/:id/compare" element={<AgreementCompare />} />
+            <Route path="/agreements/:id/compare-table" element={<AgreementCompareTable />} />
             <Route path="/reviewer-dashboard" element={<ReviewerDashboard />} />
             <Route path="/workflow" element={<WorkflowReview />} />
             <Route path="/resolution" element={<CommentsResolution />} />

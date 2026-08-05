@@ -309,6 +309,61 @@ async def test_with_changes_pdf_embeds_pending_revisions(
     assert head in text, "original (deletion) text missing from with_changes PDF"
 
 
+async def test_compare_table_shape_and_status(
+    client, authed_client, admin_user, project_director_user
+):
+    """Package D (req 6.4): GET .../compare-table reshapes every clause
+    revision on the agreement into Original / Revised+Amendment /
+    Generated-by-Whom rows, regardless of status."""
+    await _seed_active_templates(authed_client)
+    agreement = await _create_agreement(authed_client)
+    clauses = (await authed_client.get(f"/api/agreements/{agreement['id']}/clauses")).json()["clauses"]
+
+    create = await authed_client.post(
+        f"/api/agreements/{agreement['id']}/revisions",
+        json={
+            "clause_hash": clauses[3]["clause_hash"],
+            "modified_text": "[compare-table edit] " + clauses[3]["text"],
+            "change_reason": "client requested wording change",
+        },
+    )
+    rev_id = create.json()["id"]
+
+    # Still pending — should already show up in the table.
+    table = await authed_client.get(f"/api/agreements/{agreement['id']}/compare-table")
+    assert table.status_code == 200, table.text
+    rows = table.json()["rows"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["id"] == rev_id
+    assert row["clause_label"] == clauses[3]["clause_label"]
+    assert row["original_text"] == clauses[3]["text"]
+    assert row["revised_text"] == "[compare-table edit] " + clauses[3]["text"]
+    assert row["change_reason"] == "client requested wording change"
+    assert row["status"] == "pending"
+    assert row["generated_by_name"] == admin_user.name
+    assert row["generated_by_role"] == "admin"
+
+    # PD accepts — the table reflects the new status without a new row.
+    pd_token = await _login(client, "pd@test.example", "revpass1")
+    client.headers["Authorization"] = f"Bearer {pd_token}"
+    await client.post(f"/api/agreements/{agreement['id']}/revisions/{rev_id}/accept")
+
+    table2 = await authed_client.get(f"/api/agreements/{agreement['id']}/compare-table")
+    rows2 = table2.json()["rows"]
+    assert len(rows2) == 1
+    assert rows2[0]["status"] == "accepted"
+
+
+async def test_compare_table_empty_when_no_revisions(authed_client):
+    await _seed_active_templates(authed_client)
+    agreement = await _create_agreement(authed_client)
+
+    table = await authed_client.get(f"/api/agreements/{agreement['id']}/compare-table")
+    assert table.status_code == 200
+    assert table.json()["rows"] == []
+
+
 async def test_cannot_decide_an_already_decided_revision(
     client, authed_client, project_director_user
 ):
