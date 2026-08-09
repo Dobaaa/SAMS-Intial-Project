@@ -45,7 +45,7 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.conditions, "C05", "3.4.6", "Interim Payment days", InputTypeEnum.text, is_required=True, sort_order=5),
     FieldSeed(TemplateTypeEnum.conditions, "C06", "3.4.7", "1st Half Retention release days", InputTypeEnum.text, sort_order=6),
     FieldSeed(TemplateTypeEnum.conditions, "C07", "3.4.7", "2nd Half Retention release days", InputTypeEnum.text, sort_order=7),
-    FieldSeed(TemplateTypeEnum.conditions, "C08", "4.3", "Time for Completion (Project)", InputTypeEnum.text, is_required=True, sort_order=8),
+    FieldSeed(TemplateTypeEnum.conditions, "C08", "4.3", "Time for Completion (Project) in days", InputTypeEnum.text, is_required=True, sort_order=8),
     FieldSeed(TemplateTypeEnum.conditions, "C09", "4.3", "Milestones table", InputTypeEnum.table, sort_order=9),
     FieldSeed(TemplateTypeEnum.conditions, "C10", "5", "Defects Liability Period", InputTypeEnum.text, sort_order=10),
     FieldSeed(TemplateTypeEnum.conditions, "C11", "6.2", "Rate of Liquidated Damages (AED/day)", InputTypeEnum.number, is_required=True, sort_order=11),
