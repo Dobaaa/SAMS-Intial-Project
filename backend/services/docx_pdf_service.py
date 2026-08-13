@@ -228,10 +228,10 @@ def _clone_rpr(rpr):
     return deepcopy(rpr)
 
 
-def _add_rpr_style(rpr, *, bold: bool = False, superscript: bool = False, color: str | None = None):
-    """Layer bold / superscript / text-color flags onto an existing ``<w:rPr>``.
+def _add_rpr_style(rpr, *, bold: bool = False, superscript: bool = False, highlight: str | None = None):
+    """Layer bold / superscript / highlight flags onto an existing ``<w:rPr>``.
 
-    Removes any existing ``<w:b>`` / ``<w:vertAlign>`` / ``<w:color>``
+    Removes any existing ``<w:b>`` / ``<w:vertAlign>`` / ``<w:highlight>``
     element first so we don't end up with duplicates if the cloned source
     already had them. Creates a fresh ``<w:rPr>`` if none was provided.
     """
@@ -247,12 +247,12 @@ def _add_rpr_style(rpr, *, bold: bool = False, superscript: bool = False, color:
         va = OxmlElement("w:vertAlign")
         va.set(qn("w:val"), "superscript")
         rpr.append(va)
-    if color:
-        for existing in rpr.findall(qn("w:color")):
+    if highlight:
+        for existing in rpr.findall(qn("w:highlight")):
             rpr.remove(existing)
-        c = OxmlElement("w:color")
-        c.set(qn("w:val"), color)
-        rpr.append(c)
+        h = OxmlElement("w:highlight")
+        h.set(qn("w:val"), highlight)
+        rpr.append(h)
     return rpr
 
 
@@ -274,16 +274,16 @@ def _append_text_node(run_el, text: str) -> None:
 
 
 def _emit_styled_run(
-    p_el, base_rpr, text: str, *, bold: bool = False, superscript: bool = False, color: str | None = None
+    p_el, base_rpr, text: str, *, bold: bool = False, superscript: bool = False, highlight: str | None = None
 ):
     """Append a fresh ``<w:r>`` to `p_el` with `text`. Clones `base_rpr`
     so the new run inherits font/size/color from the paragraph's anchor
-    run, then layers bold/superscript/color on top as requested.
+    run, then layers bold/superscript/highlight on top as requested.
     """
     new_r = OxmlElement("w:r")
     rpr = _clone_rpr(base_rpr)
-    if bold or superscript or color:
-        rpr = _add_rpr_style(rpr, bold=bold, superscript=superscript, color=color)
+    if bold or superscript or highlight:
+        rpr = _add_rpr_style(rpr, bold=bold, superscript=superscript, highlight=highlight)
     if rpr is not None and len(rpr) > 0:
         new_r.append(rpr)
     _append_text_node(new_r, text)
@@ -431,10 +431,11 @@ def _substitute_in_paragraph(
       renders as "05ᵗʰ May 2026" (Rev 02 item 8).
     * When ``highlight_admin_content`` is set (GM Portal "View PDF", req
       6.3), every substituted field value — every token, since a token is
-      admin-entered content by construction — renders in red so it's
-      visually distinct from the surrounding boilerplate. The boilerplate
-      segments themselves are never colored. Default off: the standard
-      PDF sent to the subcontractor/archived must never change.
+      admin-entered content by construction — gets a red highlighter
+      background (text stays black) so it's visually distinct from the
+      surrounding boilerplate. The boilerplate segments themselves are
+      never highlighted. Default off: the standard PDF sent to the
+      subcontractor/archived must never change.
 
     Run 0's existing ``<w:rPr>`` is used as the base formatting for every
     emitted run so font / size / color / paragraph-anchored bold all
@@ -467,9 +468,9 @@ def _substitute_in_paragraph(
 
                 # Emit segments left-to-right, anchoring each new run on
                 # the cloned base run-properties. Only substituted field
-                # values get the highlight color — boilerplate segments
-                # (the text between tokens) never do.
-                value_color = "FF0000" if highlight_admin_content else None
+                # values get the highlight background — boilerplate
+                # segments (the text between tokens) never do.
+                value_highlight = "red" if highlight_admin_content else None
                 pos = 0
                 for m in matches:
                     if m.start() > pos:
@@ -481,15 +482,15 @@ def _substitute_in_paragraph(
                         parts = _split_long_date(value)
                         if parts is not None:
                             day, suffix, rest = parts
-                            _emit_styled_run(p_el, base_rpr, day, bold=bold, color=value_color)
+                            _emit_styled_run(p_el, base_rpr, day, bold=bold, highlight=value_highlight)
                             _emit_styled_run(
-                                p_el, base_rpr, suffix, bold=bold, superscript=True, color=value_color
+                                p_el, base_rpr, suffix, bold=bold, superscript=True, highlight=value_highlight
                             )
-                            _emit_styled_run(p_el, base_rpr, rest, bold=bold, color=value_color)
+                            _emit_styled_run(p_el, base_rpr, rest, bold=bold, highlight=value_highlight)
                         else:
-                            _emit_styled_run(p_el, base_rpr, value, bold=bold, color=value_color)
+                            _emit_styled_run(p_el, base_rpr, value, bold=bold, highlight=value_highlight)
                     else:
-                        _emit_styled_run(p_el, base_rpr, value, bold=bold, color=value_color)
+                        _emit_styled_run(p_el, base_rpr, value, bold=bold, highlight=value_highlight)
                     pos = m.end()
                 if pos < len(full):
                     _emit_styled_run(p_el, base_rpr, full[pos:])

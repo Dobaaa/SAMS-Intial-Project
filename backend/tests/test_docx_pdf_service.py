@@ -9,14 +9,14 @@ from docx.oxml.ns import qn
 from services.docx_pdf_service import _substitute_in_paragraph
 
 
-def _run_colors(paragraph) -> list[str | None]:
-    """The w:color val (if any) of each run in a paragraph, in order."""
-    colors = []
+def _run_highlights(paragraph) -> list[str | None]:
+    """The w:highlight val (if any) of each run in a paragraph, in order."""
+    highlights = []
     for run in paragraph.runs:
         rpr = run._r.find(qn("w:rPr"))
-        color_el = rpr.find(qn("w:color")) if rpr is not None else None
-        colors.append(color_el.get(qn("w:val")) if color_el is not None else None)
-    return colors
+        highlight_el = rpr.find(qn("w:highlight")) if rpr is not None else None
+        highlights.append(highlight_el.get(qn("w:val")) if highlight_el is not None else None)
+    return highlights
 
 
 def _make_paragraph(text: str):
@@ -25,36 +25,38 @@ def _make_paragraph(text: str):
     return doc, p
 
 
-def test_highlight_off_by_default_no_color_added():
+def test_highlight_off_by_default_no_highlight_added():
     doc, p = _make_paragraph("Boilerplate before {{X}} boilerplate after.")
     changed = _substitute_in_paragraph(p, {"X": "ADMIN VALUE"})
     assert changed is True
     assert p.text == "Boilerplate before ADMIN VALUE boilerplate after."
-    assert all(c is None for c in _run_colors(p))
+    assert all(h is None for h in _run_highlights(p))
 
 
-def test_highlight_on_colors_only_the_substituted_value():
+def test_highlight_on_highlights_only_the_substituted_value():
     doc, p = _make_paragraph("Boilerplate before {{X}} boilerplate after.")
     changed = _substitute_in_paragraph(p, {"X": "ADMIN VALUE"}, highlight_admin_content=True)
     assert changed is True
     assert p.text == "Boilerplate before ADMIN VALUE boilerplate after."
 
-    # Exactly one run should carry the red color — the substituted value —
-    # and it must be the "ADMIN VALUE" run, not the boilerplate around it.
-    runs_and_colors = list(zip((r.text for r in p.runs), _run_colors(p)))
-    colored = [text for text, color in runs_and_colors if color == "FF0000"]
-    assert colored == ["ADMIN VALUE"]
-    for text, color in runs_and_colors:
+    # Exactly one run should carry the red highlight background — the
+    # substituted value — and it must be the "ADMIN VALUE" run, not the
+    # boilerplate around it. Text color is untouched (stays black).
+    runs_and_highlights = list(zip((r.text for r in p.runs), _run_highlights(p)))
+    highlighted = [text for text, highlight in runs_and_highlights if highlight == "red"]
+    assert highlighted == ["ADMIN VALUE"]
+    for text, highlight in runs_and_highlights:
         if text != "ADMIN VALUE":
-            assert color is None, f"boilerplate run {text!r} should not be colored"
+            assert highlight is None, f"boilerplate run {text!r} should not be highlighted"
 
 
-def test_highlight_on_empty_value_no_visible_colored_text():
+def test_highlight_on_empty_value_no_visible_highlighted_text():
     """A blank field value substitutes to empty text. An empty run may still
-    carry the color attribute internally, but nothing visible renders red."""
+    carry the highlight attribute internally, but nothing visible renders
+    highlighted."""
     doc, p = _make_paragraph("Before {{X}} after.")
     _substitute_in_paragraph(p, {}, highlight_admin_content=True)
     assert p.text == "Before  after."
-    for text, color in zip((r.text for r in p.runs), _run_colors(p)):
+    for text, highlight in zip((r.text for r in p.runs), _run_highlights(p)):
         if text:
-            assert color is None, f"non-empty run {text!r} should not be colored when value is blank"
+            assert highlight is None, f"non-empty run {text!r} should not be highlighted when value is blank"
