@@ -196,6 +196,48 @@ def _fix_pdc_wording_and_gaps(doc) -> None:
         _delete_paragraph(b)
 
 
+def _rewire_pdc_day_inputs(doc) -> bool:
+    """Re-insert {{C05}}/{{C06}}/{{C07}} as the PDC day count in
+    3.4.6(a)/3.4.7(a)(I)/(II) so the admin's Interim/Retention day-count
+    inputs actually drive the rendered PDF (2026-08-24 follow-up: the day
+    count must stay an admin input, not a hardcoded 30/60 — the earlier fix
+    in this same round only swapped one hardcoded number for another).
+    The 15-day Engineer's-Certificate-approval window stays fixed text,
+    per client confirmation. Returns True if anything changed."""
+    changed = False
+
+    p1 = _find_paragraph(doc, "Progress payments shall be released by")
+    if "{{C05}}" not in p1.text:
+        new_text = p1.text
+        for old, new in (
+            ("released by 30-day Post-Dated Cheque (PDC)", "released by {{C05}}-day Post-Dated Cheque (PDC)"),
+            ("released by 60-day Post-Dated Cheque (PDC)", "released by {{C05}}-day Post-Dated Cheque (PDC)"),
+            ("PDC dated 30 days from the invoice date", "PDC dated {{C05}} days from the invoice date"),
+            ("PDC dated 60 days from the invoice date", "PDC dated {{C05}} days from the invoice date"),
+        ):
+            new_text = new_text.replace(old, new)
+        _set_paragraph_text(p1, new_text)
+        changed = True
+
+    p2 = _find_paragraph(doc, "The first 50% of the retention shall be released")
+    if "{{C06}}" not in p2.text:
+        new_text = p2.text
+        for old in ("30-day", "60-day"):
+            new_text = new_text.replace(f"released by {old} Post-Dated Cheque (PDC)", "released by {{C06}}-day Post-Dated Cheque (PDC)")
+        _set_paragraph_text(p2, new_text)
+        changed = True
+
+    p3 = _find_paragraph(doc, "The remaining 50% of the retention shall be released")
+    if "{{C07}}" not in p3.text:
+        new_text = p3.text
+        for old in ("30-day", "60-day"):
+            new_text = new_text.replace(f"released by {old} Post-Dated Cheque (PDC)", "released by {{C07}}-day Post-Dated Cheque (PDC)")
+        _set_paragraph_text(p3, new_text)
+        changed = True
+
+    return changed
+
+
 def _all_body_text(doc) -> str:
     """Every ``w:t`` text run anywhere under the body, including ones nested
     inside content controls (``w:sdt``) — e.g. the document's frozen Table
@@ -241,6 +283,9 @@ def main() -> None:
         _remove_stale_toc_entry(doc)
         changed = True
 
+    if _rewire_pdc_day_inputs(doc):
+        changed = True
+
     if not changed:
         print("Already patched — no change.")
         return
@@ -254,11 +299,17 @@ def main() -> None:
     full_text = _all_body_text(doc2)
     if "Commencement" in full_text:
         raise SystemExit("Patch ran but 'Commencement' text still referenced somewhere (incl. TOC).")
-    if "60-day" in full_text or "60 days" in full_text:
-        raise SystemExit("Patch ran but a '60-day'/'60 days' PDC reference remains.")
+    if "60-day" in full_text or "60 days" in full_text or "30-day" in full_text or "30 days" in full_text:
+        raise SystemExit("Patch ran but a hardcoded PDC day count remains (should be a token now).")
     if _token_in_table(doc2.tables[3], "{{A15}}") or _token_in_table(doc2.tables[3], "{{A16}}"):
         raise SystemExit("Patch ran but {{A15}}/{{A16}} still present in Table 3.")
-    print("Commencement Date removed (incl. stale TOC entry), Time for Completion simplified, PDC wording + page-21 gaps fixed.")
+    for tok in ("{{C05}}", "{{C06}}", "{{C07}}"):
+        if tok not in full_text:
+            raise SystemExit(f"Patch ran but {tok} is missing — PDC day-count rewire failed.")
+    print(
+        "Commencement Date removed (incl. stale TOC entry), Time for Completion simplified, "
+        "PDC day counts rewired to C05/C06/C07 inputs, page-21 gaps fixed."
+    )
 
 
 if __name__ == "__main__":
