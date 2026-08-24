@@ -23,8 +23,17 @@
    region (left over from Package G's clause rewrite) that were causing
    the irregular page-21 vertical gaps the client flagged.
 
-Idempotent: if {{A15}} is already absent from Table 3, exits without
-changes.
+Also removes the stale "Commencement Date" line from the document's frozen
+Table of Contents. That TOC is NOT a live field — it's cached paragraphs
+wrapped in a content-control (``w:sdt``) that ``python-docx``'s normal
+``doc.paragraphs`` does not walk, so it's addressed separately via a
+raw XML search over every ``w:p`` in the body (``doc.element.body.iter``).
+Confirmed via a real render that the TOC's clause numbering (4.2->4.1 etc.)
+re-numbers itself automatically once the stale line is removed, same as
+the body headings.
+
+Idempotent: each of the three fixes above checks its own precondition and
+is skipped if already applied.
 
 Run::
 
@@ -36,6 +45,7 @@ import shutil
 from pathlib import Path
 
 from docx import Document
+from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -186,19 +196,54 @@ def _fix_pdc_wording_and_gaps(doc) -> None:
         _delete_paragraph(b)
 
 
+def _all_body_text(doc) -> str:
+    """Every ``w:t`` text run anywhere under the body, including ones nested
+    inside content controls (``w:sdt``) — e.g. the document's frozen Table
+    of Contents — that ``doc.paragraphs`` does not walk."""
+    parts = []
+    for p in doc.element.body.iter(qn("w:p")):
+        texts = p.findall(".//" + qn("w:t"))
+        parts.append("".join(t.text or "" for t in texts))
+    return "\n".join(parts)
+
+
+def _find_stale_toc_paragraph(doc):
+    for p in doc.element.body.iter(qn("w:p")):
+        texts = p.findall(".//" + qn("w:t"))
+        text = "".join(t.text or "" for t in texts)
+        if "Commencement" in text:
+            return p
+    return None
+
+
+def _remove_stale_toc_entry(doc) -> None:
+    p = _find_stale_toc_paragraph(doc)
+    if p is None:
+        raise RuntimeError("Expected a stale TOC 'Commencement Date' paragraph but found none.")
+    p.getparent().remove(p)
+
+
 def main() -> None:
     if not MASTER_DOCX.exists():
         raise SystemExit(f"Master docx not found at {MASTER_DOCX}")
 
     doc = Document(str(MASTER_DOCX))
-    if not _token_in_table(doc.tables[3], "{{A15}}"):
-        print("Already patched — {{A15}} absent from Table 3. No change.")
-        return
+    changed = False
 
-    _remove_clause_4_1(doc)
-    _reword_commencement_date_references(doc)
-    _update_table3(doc)
-    _fix_pdc_wording_and_gaps(doc)
+    if _token_in_table(doc.tables[3], "{{A15}}"):
+        _remove_clause_4_1(doc)
+        _reword_commencement_date_references(doc)
+        _update_table3(doc)
+        _fix_pdc_wording_and_gaps(doc)
+        changed = True
+
+    if _find_stale_toc_paragraph(doc) is not None:
+        _remove_stale_toc_entry(doc)
+        changed = True
+
+    if not changed:
+        print("Already patched — no change.")
+        return
 
     if not BACKUP.exists():
         shutil.copy2(MASTER_DOCX, BACKUP)
@@ -206,16 +251,14 @@ def main() -> None:
     doc.save(str(MASTER_DOCX))
 
     doc2 = Document(str(MASTER_DOCX))
-    full_text = "\n".join(p.text for p in doc2.paragraphs)
-    if any(p.text.strip() == "Commencement Date" for p in doc2.paragraphs):
-        raise SystemExit("Patch ran but clause 4.1 heading is still present.")
-    if "Commencement Date" in full_text:
-        raise SystemExit("Patch ran but 'Commencement Date' text still referenced somewhere.")
+    full_text = _all_body_text(doc2)
+    if "Commencement" in full_text:
+        raise SystemExit("Patch ran but 'Commencement' text still referenced somewhere (incl. TOC).")
     if "60-day" in full_text or "60 days" in full_text:
         raise SystemExit("Patch ran but a '60-day'/'60 days' PDC reference remains.")
     if _token_in_table(doc2.tables[3], "{{A15}}") or _token_in_table(doc2.tables[3], "{{A16}}"):
         raise SystemExit("Patch ran but {{A15}}/{{A16}} still present in Table 3.")
-    print("Commencement Date removed, Time for Completion simplified, PDC wording + page-21 gaps fixed.")
+    print("Commencement Date removed (incl. stale TOC entry), Time for Completion simplified, PDC wording + page-21 gaps fixed.")
 
 
 if __name__ == "__main__":
