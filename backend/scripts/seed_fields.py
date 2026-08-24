@@ -45,7 +45,11 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.conditions, "C05", "3.4.6", "Interim Payment days", InputTypeEnum.text, is_required=True, sort_order=5),
     FieldSeed(TemplateTypeEnum.conditions, "C06", "3.4.7", "1st Half Retention release days", InputTypeEnum.text, sort_order=6),
     FieldSeed(TemplateTypeEnum.conditions, "C07", "3.4.7", "2nd Half Retention release days", InputTypeEnum.text, sort_order=7),
-    FieldSeed(TemplateTypeEnum.conditions, "C08", "4.3", "Time for Completion (Project) in days", InputTypeEnum.text, is_required=True, sort_order=8),
+    # No longer required (2026-08-24 client feedback): orphaned from the
+    # master docx alongside A16, per the removal of clause 4.3(a)'s
+    # project-level Time for Completion line. Hidden from the wizard's
+    # Conditions step (frontend filter) but left in the data model.
+    FieldSeed(TemplateTypeEnum.conditions, "C08", "4.3", "Time for Completion (Project) in days", InputTypeEnum.text, is_required=False, sort_order=8),
     FieldSeed(TemplateTypeEnum.conditions, "C09", "4.3", "Milestones table", InputTypeEnum.table, sort_order=9),
     FieldSeed(TemplateTypeEnum.conditions, "C10", "5", "Defects Liability Period", InputTypeEnum.text, sort_order=10),
     FieldSeed(TemplateTypeEnum.conditions, "C11", "6.2", "Rate of Liquidated Damages (AED/day)", InputTypeEnum.number, is_required=True, sort_order=11),
@@ -75,13 +79,20 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.appendix, "A12", "3.4.6", "Interim Payment days", InputTypeEnum.number, auto_source_field_id="C05", appendix_row_label="Interim Payment to be paid by the Main Contractor", appendix_clause_ref="3.4.6", sort_order=12),
     FieldSeed(TemplateTypeEnum.appendix, "A13", "3.4.7", "1st Half Retention release", InputTypeEnum.text, auto_source_field_id="C06", appendix_row_label="1st Half of retention Money to be released by the Main Contractor", appendix_clause_ref="3.4.7", sort_order=13),
     FieldSeed(TemplateTypeEnum.appendix, "A14", "3.4.7", "2nd Half Retention release", InputTypeEnum.text, auto_source_field_id="C07", appendix_row_label="2nd Half of retention Money to be released by the Main Contractor", appendix_clause_ref="3.4.7", sort_order=14),
-    FieldSeed(TemplateTypeEnum.appendix, "A15", "4.1", "Commencement Date", InputTypeEnum.date, appendix_row_label="Commencement Date", appendix_clause_ref="4.1", sort_order=15),
-    FieldSeed(TemplateTypeEnum.appendix, "A16", "4.3(a)", "Time for Completion - Project", InputTypeEnum.text, auto_source_field_id="C08", appendix_row_label="Time for Completion of the Project", appendix_clause_ref="4.3(a)", sort_order=16),
-    FieldSeed(TemplateTypeEnum.appendix, "A17", "4.3(a)", "Time for Completion - Subcontract Works in days", InputTypeEnum.text, appendix_row_label="Time for Completion of the Subcontract Works", appendix_clause_ref="4.3(a)", sort_order=17),
-    FieldSeed(TemplateTypeEnum.appendix, "A18", "4.3(b)", "Milestones", InputTypeEnum.table, auto_source_field_id="C09", appendix_row_label="Time for Completion of the Sections (Milestones)", appendix_clause_ref="4.3(b)", sort_order=18),
-    FieldSeed(TemplateTypeEnum.appendix, "A24", "4.3(b)", "Start of Material Submission", InputTypeEnum.text, appendix_row_label="Start of Material Submission", appendix_clause_ref="4.3(b)", show_in_appendix=False, sort_order=19),
-    FieldSeed(TemplateTypeEnum.appendix, "A25", "4.3(b)", "Complete all Material Submission", InputTypeEnum.text, appendix_row_label="Complete all Material Submission", appendix_clause_ref="4.3(b)", show_in_appendix=False, sort_order=20),
-    FieldSeed(TemplateTypeEnum.appendix, "A26", "4.3(b)", "Start of Submission of Shop Drawings", InputTypeEnum.text, appendix_row_label="Start of Submission of Shop Drawings", appendix_clause_ref="4.3(b)", show_in_appendix=False, sort_order=21),
+    # A15 (Commencement Date / clause 4.1) removed entirely per 2026-08-24
+    # client feedback -- clause 4.1 itself is deleted from the master docx
+    # (see apply_master_remove_commencement_time_pdc_patch.py), so this row
+    # is hidden rather than deleted from the data model.
+    FieldSeed(TemplateTypeEnum.appendix, "A15", "4.1", "Commencement Date", InputTypeEnum.date, appendix_row_label="Commencement Date", appendix_clause_ref="4.1", show_in_appendix=False, sort_order=15),
+    # A16 (Time for Completion - Project) removed per the same feedback --
+    # only the Subcontract Works line (A17) remains in the appendix. Clauses
+    # renumbered 4.3->4.2 after clause 4.1's removal.
+    FieldSeed(TemplateTypeEnum.appendix, "A16", "4.3(a)", "Time for Completion - Project", InputTypeEnum.text, auto_source_field_id="C08", appendix_row_label="Time for Completion of the Project", appendix_clause_ref="4.3(a)", show_in_appendix=False, sort_order=16),
+    FieldSeed(TemplateTypeEnum.appendix, "A17", "4.2(a)", "Time for Completion - Subcontract Works in days", InputTypeEnum.text, appendix_row_label="Time for Completion of the Subcontract Works", appendix_clause_ref="4.2(a)", sort_order=17),
+    FieldSeed(TemplateTypeEnum.appendix, "A18", "4.2(b)", "Milestones", InputTypeEnum.table, auto_source_field_id="C09", appendix_row_label="Time for Completion of the Sections (Milestones)", appendix_clause_ref="4.2(b)", sort_order=18),
+    FieldSeed(TemplateTypeEnum.appendix, "A24", "4.2(b)", "Start of Material Submission", InputTypeEnum.text, appendix_row_label="Start of Material Submission", appendix_clause_ref="4.2(b)", show_in_appendix=False, sort_order=19),
+    FieldSeed(TemplateTypeEnum.appendix, "A25", "4.2(b)", "Complete all Material Submission", InputTypeEnum.text, appendix_row_label="Complete all Material Submission", appendix_clause_ref="4.2(b)", show_in_appendix=False, sort_order=20),
+    FieldSeed(TemplateTypeEnum.appendix, "A26", "4.2(b)", "Start of Submission of Shop Drawings", InputTypeEnum.text, appendix_row_label="Start of Submission of Shop Drawings", appendix_clause_ref="4.2(b)", show_in_appendix=False, sort_order=21),
     FieldSeed(TemplateTypeEnum.appendix, "A19", "5", "Defects Liability Period", InputTypeEnum.text, auto_source_field_id="C10", appendix_row_label="Defects Liability Period", appendix_clause_ref="5", sort_order=22),
     FieldSeed(TemplateTypeEnum.appendix, "A20", "6.2", "Rate of Liquidated Damages (AED/day)", InputTypeEnum.number, auto_source_field_id="C11", appendix_row_label="Rate Of Liquidated Damages", appendix_clause_ref="6.2", sort_order=23),
     FieldSeed(TemplateTypeEnum.appendix, "A21", "6.2", "Maximum Liquidated Damages in AED", InputTypeEnum.number, default_value="10", appendix_row_label="Maximum Liquidated Damages", appendix_clause_ref="6.2", show_in_appendix=False, sort_order=24),

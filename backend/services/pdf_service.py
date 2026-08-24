@@ -20,17 +20,6 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 TEMPLATES_DIR = BASE_DIR / "backend" / "templates"
 UPLOADS_DIR = BASE_DIR / "uploads" / "agreements"
 
-# A15 (Commencement Date) is optional (is_required=False) — if the admin
-# doesn't enter a specific date, the appendix cell falls back to clause
-# 4.1's own definition rather than rendering blank. Mirrors clause 4.1's
-# wording (paragraph "The Commencement Date for the Subcontract Works
-# shall be...") so the appendix stays consistent with the clause even
-# when no concrete date has been fixed yet.
-A15_FALLBACK_TEXT = (
-    "The date specified in the written instruction issued by the Main "
-    "Contractor directing the Subcontractor to commence the Subcontract Works"
-)
-
 jinja_env = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "xml"]),
@@ -202,9 +191,9 @@ def _collect_field_values(field_values: list[AgreementFieldValue]) -> dict[str, 
 
 def _build_value_map(agreement: Agreement) -> dict[str, str]:
     """Field values for a render, plus the synthetic/derived tokens every
-    render needs: {{REFERENCE}}, the A15 fallback, and percentage amounts.
-    Shared by generate_agreement_pdf and the with_changes preview endpoint
-    so both stay consistent.
+    render needs: {{REFERENCE}} and percentage amounts. Shared by
+    generate_agreement_pdf and the with_changes preview endpoint so both
+    stay consistent.
     """
     value_map = _collect_field_values(agreement.field_values)
     # Synthetic token: every page's running header carries {{REFERENCE}}
@@ -213,8 +202,6 @@ def _build_value_map(agreement: Agreement) -> dict[str, str]:
     # placeholder.
     if agreement.reference_number:
         value_map["REFERENCE"] = agreement.reference_number
-    if not value_map.get("A15"):
-        value_map["A15"] = A15_FALLBACK_TEXT
     _inject_percentage_amounts(value_map)
     return value_map
 

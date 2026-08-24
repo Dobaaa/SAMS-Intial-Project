@@ -139,13 +139,16 @@ export default function AgreementCreate() {
         .sort((a, b) => a.sort_order - b.sort_order),
     [fields]
   );
-  const conditionFields = useMemo(() => fields.filter((f) => /^C\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
+  // C08 (Time for Completion - Project) excluded: removed per 2026-08-24
+  // client feedback, no longer rendered anywhere in the master docx.
+  const conditionFields = useMemo(() => fields.filter((f) => /^C\d+/.test(f.field_id) && f.field_id !== "C08").sort((a, b) => a.sort_order - b.sort_order), [fields]);
   const appendixFields = useMemo(() => fields.filter((f) => /^A\d+/.test(f.field_id)).sort((a, b) => a.sort_order - b.sort_order), [fields]);
   // A-fields with no auto_source_field_id are the ones admin MUST type in
-  // (e.g. A03 Engineer, A15 Commencement Date, A17 Subcontract works completion).
-  // A05 (Main Contractor address) is excluded — only Subcontractor address (A06) appears.
+  // (e.g. A03 Engineer, A17 Subcontract works completion).
+  // A05 (Main Contractor address) excluded — only Subcontractor address (A06) appears.
+  // A15 (Commencement Date) excluded — clause 4.1 removed per 2026-08-24 client feedback.
   const manualAppendixFields = useMemo(
-    () => appendixFields.filter((f) => !f.auto_source_field_id && f.field_id !== "A05"),
+    () => appendixFields.filter((f) => !f.auto_source_field_id && f.field_id !== "A05" && f.field_id !== "A15"),
     [appendixFields]
   );
 
