@@ -196,6 +196,25 @@ def _fix_pdc_wording_and_gaps(doc) -> None:
         _delete_paragraph(b)
 
 
+def _fix_retention_item_widths(doc) -> bool:
+    """Items I./II. under 3.4.7(a) have right_indent=0 while their lettered
+    siblings (c)/(d) have right_indent~=1127125 EMU (~1.23in) -- so I./II.
+    run all the way to the page edge instead of wrapping at the same width
+    as the rest of the list (client feedback, 2026-08-24). Match (c)'s
+    right_indent exactly. Returns True if anything changed."""
+    from docx.shared import Emu
+
+    target = Emu(1127125)
+    p_i = _find_paragraph(doc, "The first 50% of the retention shall be released")
+    p_ii = _find_paragraph(doc, "The remaining 50% of the retention shall be released")
+    changed = False
+    for p in (p_i, p_ii):
+        if p.paragraph_format.right_indent != target:
+            p.paragraph_format.right_indent = target
+            changed = True
+    return changed
+
+
 def _rewire_pdc_day_inputs(doc) -> bool:
     """Re-insert {{C05}}/{{C06}}/{{C07}} as the PDC day count in
     3.4.6(a)/3.4.7(a)(I)/(II) so the admin's Interim/Retention day-count
@@ -286,6 +305,9 @@ def main() -> None:
     if _rewire_pdc_day_inputs(doc):
         changed = True
 
+    if _fix_retention_item_widths(doc):
+        changed = True
+
     if not changed:
         print("Already patched — no change.")
         return
@@ -306,9 +328,16 @@ def main() -> None:
     for tok in ("{{C05}}", "{{C06}}", "{{C07}}"):
         if tok not in full_text:
             raise SystemExit(f"Patch ran but {tok} is missing — PDC day-count rewire failed.")
+    from docx.shared import Emu
+
+    target = Emu(1127125)
+    p_i = _find_paragraph(doc2, "The first 50% of the retention shall be released")
+    p_ii = _find_paragraph(doc2, "The remaining 50% of the retention shall be released")
+    if p_i.paragraph_format.right_indent != target or p_ii.paragraph_format.right_indent != target:
+        raise SystemExit("Patch ran but retention items I/II right_indent still doesn't match.")
     print(
         "Commencement Date removed (incl. stale TOC entry), Time for Completion simplified, "
-        "PDC day counts rewired to C05/C06/C07 inputs, page-21 gaps fixed."
+        "PDC day counts rewired to C05/C06/C07 inputs, page-21 gaps + retention item I/II widths fixed."
     )
 
 
