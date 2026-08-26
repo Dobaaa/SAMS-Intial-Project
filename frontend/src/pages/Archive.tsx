@@ -48,14 +48,24 @@ function isBucket1(row: ArchiveRow): boolean {
 function isBucket2(row: ArchiveRow): boolean {
   return row.current_status === "under_gm_signature" || row.current_status === "under_subcontractor_signature";
 }
+// gm_approval_date is set exactly once, the moment all four main-chain
+// reviewers have approved (see workflow_engine.approve_step) - it is never
+// cleared afterward. A main-chain reviewer rejection can only happen
+// *before* that milestone (return_step / resubmit_agreement never touch
+// gm_approval_date), so under_bgcc_revision + gm_approval_date set can only
+// mean "this was already forwarded once and the subcontractor sent
+// comments back" - never an initial-pass rejection. That's what
+// distinguishes bucket 3 (approved, not yet issued) from bucket 4
+// (issued, comments received) without a dedicated tracking field.
 function isBucket3(row: ArchiveRow): boolean {
-  return (
-    (row.current_status === "under_internal_review" || row.current_status === "under_bgcc_revision") &&
-    !!row.gm_approval_date
-  );
+  return row.current_status === "under_internal_review" && !!row.gm_approval_date;
 }
 function isBucket4(row: ArchiveRow): boolean {
-  return row.current_status === "draft_forwarded_to_subcontractor" || row.current_status === "under_subcontractor_review";
+  return (
+    row.current_status === "draft_forwarded_to_subcontractor" ||
+    row.current_status === "under_subcontractor_review" ||
+    (row.current_status === "under_bgcc_revision" && !!row.gm_approval_date)
+  );
 }
 
 const BUCKET_PREDICATES: Record<Exclude<BucketKey, "all">, (row: ArchiveRow) => boolean> = {
