@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from models.agreement import Agreement, AgreementFieldValue, AgreementStatusEnum
+from models.agreement import Agreement, AgreementFieldReview, AgreementFieldValue, AgreementStatusEnum
 from models.user import RoleEnum, User
 from models.workflow import CommentReaction, CommentStatusEnum, WorkflowComment, WorkflowStep, WorkflowStepStatusEnum
 from services.email_service import send_email
@@ -565,10 +565,22 @@ async def resubmit_agreement(db: AsyncSession, agreement: Agreement) -> None:
             and_(WorkflowStep.agreement_id == agreement.id, chain_filter)
         )
     )
-    for s in chain_res.scalars().all():
+    chain_steps = chain_res.scalars().all()
+    for s in chain_steps:
         s.status = WorkflowStepStatusEnum.pending
         s.acted_by = None
         s.acted_at = None
+
+    # Field-review decisions (GM Compare page, per-row approve/reject) are
+    # scoped to workflow_step_id, not agreement_id — the step rows above are
+    # reused in place (same ids), so without clearing this a stale decision
+    # from the rejected cycle would incorrectly still count as "already
+    # decided" once the new cycle reaches this reviewer again. Clause-
+    # revision decisions are NOT reset here — pre-existing behavior, no
+    # workflow_step_id on that table to scope by.
+    reset_step_ids = [s.id for s in chain_steps]
+    if reset_step_ids:
+        await db.execute(delete(AgreementFieldReview).where(AgreementFieldReview.workflow_step_id.in_(reset_step_ids)))
 
     agreement.current_status = AgreementStatusEnum.under_internal_review
     agreement.status_updated_on = datetime.now(UTC)

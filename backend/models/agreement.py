@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text, event, func
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, event, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -96,6 +96,7 @@ class Agreement(Base):
     subcontractor = relationship("Subcontractor", back_populates="agreements")
     created_by_user = relationship("User", back_populates="created_agreements", foreign_keys=[created_by])
     field_values = relationship("AgreementFieldValue", back_populates="agreement", cascade="all, delete-orphan")
+    field_reviews = relationship("AgreementFieldReview", back_populates="agreement", cascade="all, delete-orphan")
     appendix_rows = relationship("AppendixConfig", back_populates="agreement", cascade="all, delete-orphan")
     workflow_steps = relationship("WorkflowStep", back_populates="agreement", cascade="all, delete-orphan")
     workflow_comments = relationship("WorkflowComment", back_populates="agreement", cascade="all, delete-orphan")
@@ -196,6 +197,51 @@ class AgreementClauseRevision(Base):
 
     agreement = relationship("Agreement")
     created_by_user = relationship("User", foreign_keys=[created_by])
+    decided_by_user = relationship("User", foreign_keys=[decided_by])
+
+
+class FieldReviewStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
+class AgreementFieldReview(Base):
+    """Per-reviewer-cycle decision on one AgreementFieldValue row, shown as
+    a "field" kind row on the GM Compare table. Scoped to workflow_step_id
+    (not just agreement_id) so a decision made in one review cycle can't
+    leak into the next — resubmit_agreement resets a chain's WorkflowStep
+    rows back to pending IN PLACE (same row ids), so without this scoping a
+    stale decision from a rejected cycle would incorrectly still count as
+    "already decided" after resubmit. resubmit_agreement deletes the rows
+    tied to whichever step ids it resets.
+
+    Absence of a row for (workflow_step_id, field_id) means pending — no
+    row is pre-created for every field."""
+
+    __tablename__ = "agreement_field_reviews"
+    __table_args__ = (
+        UniqueConstraint("workflow_step_id", "field_id", name="uq_field_review_step_field"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agreement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agreements.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    workflow_step_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workflow_steps.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    field_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=FieldReviewStatus.pending.value,
+        server_default=FieldReviewStatus.pending.value,
+    )
+    comment_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    agreement = relationship("Agreement", back_populates="field_reviews")
     decided_by_user = relationship("User", foreign_keys=[decided_by])
 
 
