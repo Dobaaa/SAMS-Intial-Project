@@ -129,6 +129,31 @@ def _fix_subcontractor_contact_person(doc) -> bool:
     return True
 
 
+def _reorder_subcontractor_contact_person(doc) -> bool:
+    """2026-08-26 follow-up: "Contact Person" should be the line BEFORE
+    "The Subcontractor Address" header, not after it — reorders the two
+    runs `_fix_subcontractor_contact_person` created."""
+    cell = _find_table_cell(doc, "Communications Address for Serving", 2)
+    if cell is None:
+        return False
+    p = cell.paragraphs[0]
+    header_run = contact_run = None
+    for r in p.runs:
+        if r.text.strip() == "The Subcontractor Address":
+            header_run = r
+        elif r.text.startswith("Contact Person:"):
+            contact_run = r
+    if header_run is None or contact_run is None:
+        return False
+
+    run_els = [r._r for r in p.runs]
+    if run_els.index(contact_run._r) < run_els.index(header_run._r):
+        return False  # already in the requested order
+
+    header_run._r.addprevious(contact_run._r)
+    return True
+
+
 def _convert_retention_items_to_bullets(doc) -> bool:
     """2026-08-26 follow-up: "Retention Money and Final Payment" (c)'s two
     sub-items (roman numerals I/II — the first/second 50% retention PDC
@@ -277,6 +302,7 @@ def main() -> None:
         "pdc_body_wording": _fix_pdc_body_wording(doc),
         "comms_email_alignment": _fix_comms_address_email_alignment(doc),
         "subcontractor_contact_person": _fix_subcontractor_contact_person(doc),
+        "subcontractor_contact_person_order": _reorder_subcontractor_contact_person(doc),
         "dlp_appendix_months": _fix_dlp_appendix_months(doc),
         "advance_payment_blanks": _trim_advance_payment_double_blanks(doc),
         "quantities_row_left_indent": _fix_quantities_row_left_indent(doc),
@@ -312,6 +338,9 @@ def main() -> None:
     assert "{{C07}}-day" not in body_text, "stale hyphenated C07 wording"
     assert "{{C05}} days Post-Dated Cheque" in body_text
     assert "SUBCONTRACTOR_CONTACT_PERSON" in table_text
+    assert table_text.index("Contact Person: {{SUBCONTRACTOR_CONTACT_PERSON}}") < table_text.index(
+        "The Subcontractor Address"
+    ), "Contact Person must come before The Subcontractor Address"
     assert "•The first 50% of the retention" in body_text.replace("•\t", "•"), "retention item I not bulleted"
     assert "•The remaining 50% of the retention" in body_text.replace("•\t", "•"), "retention item II not bulleted"
 
