@@ -263,6 +263,7 @@ export default function ArchivePage() {
             ) : (
               displayed.map((row) => {
                 const signedByBoth = isBucket1(row);
+                const readyToForward = isBucket3(row);
                 return (
                   <tr key={row.id} className="border-b transition-colors last:border-0 hover:bg-gray-50">
                     <td className="p-3">{row.project_code ?? <span className="text-gray-400">—</span>}</td>
@@ -283,8 +284,18 @@ export default function ArchivePage() {
                         </div>
                       )}
                     </td>
-                    {/* Remarks: names the responsible party, not just the raw status */}
-                    <td className={`p-3 ${signedByBoth ? "text-gray-500" : "font-medium text-red-700"}`}>
+                    {/* Remarks: names the responsible party. Green = nothing
+                        blocking, ready to forward to the subcontractor; red =
+                        still pending with someone; grey = fully executed. */}
+                    <td
+                      className={`p-3 ${
+                        signedByBoth
+                          ? "text-gray-500"
+                          : readyToForward
+                            ? "font-medium text-green-700"
+                            : "font-medium text-red-700"
+                      }`}
+                    >
                       {row.pending_with}
                     </td>
                   </tr>
