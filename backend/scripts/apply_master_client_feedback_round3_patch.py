@@ -1,4 +1,5 @@
-"""Client feedback round 3 (2026-08-26), 7 docx items. Idempotent — each
+"""Client feedback round 3 (2026-08-26), 7 docx items + 1 same-day
+follow-up (Subcontract Quantities row left-indent). Idempotent — each
 sub-fix checks its own precondition before touching anything, matching the
 pattern established in apply_master_remove_commencement_time_pdc_patch.py.
 Run directly: `python scripts/apply_master_client_feedback_round3_patch.py`.
@@ -128,6 +129,89 @@ def _fix_subcontractor_contact_person(doc) -> bool:
     return True
 
 
+def _convert_retention_items_to_bullets(doc) -> bool:
+    """2026-08-26 follow-up: "Retention Money and Final Payment" (c)'s two
+    sub-items (roman numerals I/II — the first/second 50% retention PDC
+    paragraphs) should render as bullet points, tabbed clearly under (c)
+    as sub-bullets. They're already nested under (c) in the numbering
+    (ilvl=4 vs (c)'s ilvl=3, same numId=48), but that shared numId=48/
+    ilvl=4 definition is also used elsewhere (Call on Bonds' I/II/III at
+    paragraphs 288-290), so its abstract numbering format can't be changed
+    without also affecting that unrelated clause. Instead: detach just
+    these two paragraphs from the numbered list (numPr removed) and give
+    each a literal "•" + a real tab stop, with a left-indent well past
+    (c)'s own (c) sits at left=2356/hanging=339 twips, i.e. its own
+    letter starts at ~2017; these get left=3560/hanging=460, i.e. bullet
+    at ~3100 — clearly further right/"tabbed in" than (c) itself, unlike
+    the roman-numeral markers which sat at ~1973-1991, almost exactly
+    level with (c)."""
+    from docx.oxml.ns import qn as _qn
+
+    target_texts = (
+        "The first 50% of the retention shall be released by",
+        "The remaining 50% of the retention shall be released by",
+    )
+    changed = False
+    for p in doc.paragraphs:
+        if not any(p.text.startswith(t) for t in target_texts):
+            continue
+        pPr = p._p.pPr
+        if pPr is None:
+            continue
+        numPr = pPr.find(_qn("w:numPr"))
+        if numPr is None:
+            continue  # already converted (idempotent)
+
+        pPr.remove(numPr)
+
+        ind = pPr.find(_qn("w:ind"))
+        if ind is not None:
+            ind.set(_qn("w:hanging"), "460")
+            ind.set(_qn("w:left"), "3560")
+
+        tabs = pPr.find(_qn("w:tabs"))
+        if tabs is not None:
+            for tab in tabs.findall(_qn("w:tab")):
+                if tab.get(_qn("w:val")) == "left":
+                    tab.set(_qn("w:pos"), "3560")
+
+        run0 = p.runs[0]
+        r_el = run0._r
+        rPr = r_el.find(_qn("w:rPr"))
+        insert_at = list(r_el).index(rPr) + 1 if rPr is not None else 0
+
+        bullet_t = OxmlElement("w:t")
+        bullet_t.set(_qn("xml:space"), "preserve")
+        bullet_t.text = "•"
+        tab_el = OxmlElement("w:tab")
+        r_el.insert(insert_at, tab_el)
+        r_el.insert(insert_at, bullet_t)
+        changed = True
+    return changed
+
+
+def _fix_quantities_row_left_indent(doc) -> bool:
+    """2026-08-26 follow-up: "The Subcontract Quantities (... or
+    Re-measurable)" row's value cell ({{C02}}) has left_indent=3810 EMU,
+    while every sibling value cell in this table (The Subcontract Price,
+    Advance Payment Amount, Performance Security, ...) uses ~65000 EMU —
+    about 17x more. That's why {{C02}}'s value ("Lump Sum"/"Re-measurable")
+    sits flush against the cell border while every other row's value has a
+    visible left margin ("needs a space before it")."""
+    from docx.shared import Emu
+
+    target = Emu(65405)
+    cell = _find_table_cell(doc, "The Subcontract Quantities", 2)
+    if cell is None:
+        return False
+    changed = False
+    for p in cell.paragraphs:
+        if p.paragraph_format.left_indent != target:
+            p.paragraph_format.left_indent = target
+            changed = True
+    return changed
+
+
 def _fix_dlp_appendix_months(doc) -> bool:
     """Req 5: Appendix Table 4's Defects Liability Period row shows the
     bare number; the body clause already appends "Months" (para ~443).
@@ -195,6 +279,8 @@ def main() -> None:
         "subcontractor_contact_person": _fix_subcontractor_contact_person(doc),
         "dlp_appendix_months": _fix_dlp_appendix_months(doc),
         "advance_payment_blanks": _trim_advance_payment_double_blanks(doc),
+        "quantities_row_left_indent": _fix_quantities_row_left_indent(doc),
+        "retention_items_bullets": _convert_retention_items_to_bullets(doc),
     }
 
     any_changed = any(results.values())
@@ -226,6 +312,8 @@ def main() -> None:
     assert "{{C07}}-day" not in body_text, "stale hyphenated C07 wording"
     assert "{{C05}} days Post-Dated Cheque" in body_text
     assert "SUBCONTRACTOR_CONTACT_PERSON" in table_text
+    assert "•The first 50% of the retention" in body_text.replace("•\t", "•"), "retention item I not bulleted"
+    assert "•The remaining 50% of the retention" in body_text.replace("•\t", "•"), "retention item II not bulleted"
 
     for table in doc2.tables:
         for row in table.rows:
@@ -233,6 +321,10 @@ def main() -> None:
                 assert "days PDC within 15 days from the invoice date" in row.cells[2].text
             if "Defects Liability Period" in row.cells[0].text and "{{A19}}" in row.cells[2].text:
                 assert "months" in row.cells[2].text
+            if "The Subcontract Quantities" in row.cells[0].text:
+                from docx.shared import Emu
+                for p in row.cells[2].paragraphs:
+                    assert p.paragraph_format.left_indent == Emu(65405), "quantities row indent not fixed"
     print("Verification passed.")
 
 
