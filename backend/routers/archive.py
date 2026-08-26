@@ -82,7 +82,13 @@ def _pending_with(agreement: Agreement) -> str:
         role_value = _actionable_role_pending(steps, resolution=False) or _actionable_role_pending(steps, resolution=True)
         if role_value:
             return f"Pending with {ROLE_LABELS.get(role_value, role_value)}"
-        return "Pending with Admin (revision)"
+        # No actionable reviewer step left in either chain: either every main
+        # reviewer approved and it's Admin's turn to forward to the
+        # subcontractor (under_internal_review), or a reviewer rejected and
+        # Admin needs to revise + resubmit (under_bgcc_revision).
+        if status_value == "under_internal_review":
+            return "Pending with Admin (ready to forward to subcontractor)"
+        return "Pending with Admin (revision requested)"
     return STATUS_LABELS.get(status_value, status_value)
 
 
