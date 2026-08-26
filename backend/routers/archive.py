@@ -14,6 +14,8 @@ from middleware.rbac import get_current_user
 from models.agreement import Agreement, AgreementFieldValue, AgreementStatusEnum, Project, Subcontractor
 from models.ai_review import PDFOutput, PDFTypeEnum
 from models.user import User
+from models.workflow import WorkflowStepStatusEnum
+from services.workflow_engine import RESOLUTION_STEP_NAMES
 
 router = APIRouter(prefix="/archive", tags=["archive"])
 
@@ -29,6 +31,60 @@ STATUS_LABELS = {
     "completed": "Completed",
 }
 
+ROLE_LABELS = {
+    "admin": "Admin",
+    "project_director": "Project Director",
+    "accounts": "Accounts",
+    "operation_manager": "Operation Manager",
+    "gm": "GM",
+}
+
+
+def _actionable_role_pending(steps, resolution: bool) -> str | None:
+    """Walk one chain (main or resolution) in step_order. Returns the role of
+    the first pending step reachable under the sequential gate — i.e. every
+    lower-order step in the same chain is already approved. A 'returned'
+    step blocks everything after it (nobody can act until Admin resubmits),
+    so that halts the walk with no actionable role, mirroring the backend's
+    own _previous_step_approved gate rather than trusting raw pending flags."""
+    chain_steps = sorted(
+        (s for s in steps if (s.step_name in RESOLUTION_STEP_NAMES) == resolution),
+        key=lambda s: s.step_order,
+    )
+    for s in chain_steps:
+        if s.status == WorkflowStepStatusEnum.pending:
+            return s.role_required.value
+        if s.status != WorkflowStepStatusEnum.approved:
+            return None
+    return None
+
+
+def _pending_with(agreement: Agreement) -> str:
+    """req: archive remarks must name the party an action is pending with,
+    not just a raw status. Derived from the agreement's own workflow_steps
+    (whichever role's step is next in line), not a separate tracked field."""
+    if agreement.is_executed:
+        return "Completed — signed by both parties"
+
+    status_value = agreement.current_status.value
+    if status_value == "under_drafting":
+        return "Pending with Admin (drafting)"
+    if status_value in ("draft_forwarded_to_subcontractor", "under_subcontractor_review"):
+        return "Pending with Subcontractor (review)"
+    if status_value == "under_subcontractor_signature":
+        return "Pending with Subcontractor (signature)"
+    if status_value == "under_gm_signature":
+        return "Pending with GM (signature)"
+    if status_value == "completed":
+        return "Completed"
+    if status_value in ("under_internal_review", "under_bgcc_revision"):
+        steps = agreement.workflow_steps or []
+        role_value = _actionable_role_pending(steps, resolution=False) or _actionable_role_pending(steps, resolution=True)
+        if role_value:
+            return f"Pending with {ROLE_LABELS.get(role_value, role_value)}"
+        return "Pending with Admin (revision)"
+    return STATUS_LABELS.get(status_value, status_value)
+
 
 def _agreement_row(agreement: Agreement) -> dict:
     c01 = next((f for f in (agreement.field_values or []) if f.field_id == "C01"), None)
@@ -41,6 +97,7 @@ def _agreement_row(agreement: Agreement) -> dict:
         "scope_of_works": (c01.entered_value or "").strip() if c01 else "",
         "current_status": agreement.current_status.value,
         "status_label": STATUS_LABELS.get(agreement.current_status.value, agreement.current_status.value),
+        "pending_with": _pending_with(agreement),
         "status_updated_on": agreement.status_updated_on.isoformat() if agreement.status_updated_on else None,
         "gm_approval_date": agreement.gm_approval_date.isoformat() if agreement.gm_approval_date else None,
         "execution_date": agreement.execution_date.isoformat() if agreement.execution_date else None,
@@ -83,6 +140,7 @@ async def archive_by_project(
             selectinload(Agreement.project),
             selectinload(Agreement.subcontractor),
             selectinload(Agreement.field_values),
+            selectinload(Agreement.workflow_steps),
         )
         .order_by(desc(Agreement.created_at))
     )
@@ -113,6 +171,7 @@ async def archive_by_subcontractor(
             selectinload(Agreement.project),
             selectinload(Agreement.subcontractor),
             selectinload(Agreement.field_values),
+            selectinload(Agreement.workflow_steps),
         )
         .order_by(desc(Agreement.created_at))
     )
@@ -155,6 +214,7 @@ async def list_all_archive_agreements(
             selectinload(Agreement.project),
             selectinload(Agreement.subcontractor),
             selectinload(Agreement.field_values),
+            selectinload(Agreement.workflow_steps),
         )
         .order_by(desc(Agreement.created_at))
     )

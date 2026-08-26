@@ -8,15 +8,19 @@ type NavItem = {
   to: string;
   label: string;
   roles?: Role[];
+  excludeRoles?: Role[];
 };
 
+// GM's portal is intentionally restricted to GM Dashboard + Archive (client
+// feedback 2026-08-26): approvals now happen from GM Dashboard itself, so
+// Workflow Review / Resolution are hidden for that role specifically.
 const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", roles: ["admin"] },
   { to: "/gm-dashboard", label: "GM Dashboard", roles: ["gm"] as Role[] },
   { to: "/reviewer-dashboard", label: "My Agreements", roles: ["project_director", "accounts", "operation_manager"] as Role[] },
   { to: "/agreements/new", label: "New Agreement", roles: ["admin"] },
-  { to: "/workflow", label: "Workflow Review" },
-  { to: "/resolution", label: "Resolution" },
+  { to: "/workflow", label: "Workflow Review", excludeRoles: ["gm"] as Role[] },
+  { to: "/resolution", label: "Resolution", excludeRoles: ["gm"] as Role[] },
   { to: "/archive", label: "Archive" },
   { to: "/masters", label: "Masters", roles: ["admin"] },
   { to: "/users", label: "Users", roles: ["admin"] },
@@ -40,7 +44,9 @@ export default function AppLayout() {
   };
 
   const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.roles || (user && item.roles.includes(user.role))
+    (item) =>
+      (!item.roles || (user && item.roles.includes(user.role))) &&
+      (!item.excludeRoles || !user || !item.excludeRoles.includes(user.role))
   );
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>

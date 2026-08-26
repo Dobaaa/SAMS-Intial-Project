@@ -196,6 +196,7 @@ async def get_gm_pending_dashboard(db: AsyncSession) -> list[dict]:
         rows.append(
             {
                 "step_id": item["step"]["id"],
+                "step_name": item["step"]["step_name"],
                 "agreement_id": agreement_id,
                 "reference_number": agreement.reference_number,
                 "project_code": agreement.project.project_code if agreement.project else None,

@@ -23,6 +23,7 @@ type ArchiveRow = {
   scope_of_works?: string | null;
   current_status: string;
   status_label: string;
+  pending_with: string;
   status_updated_on?: string | null;
   gm_approval_date?: string | null;
   execution_date?: string | null;
@@ -233,18 +234,19 @@ export default function ArchivePage() {
               <th className="border-b p-3 font-semibold">Scope of Works</th>
               <th className="border-b p-3 font-semibold">Subcontractor Name</th>
               <th className="border-b p-3 font-semibold">Status</th>
+              <th className="border-b p-3 font-semibold">Remarks — Pending With</th>
             </tr>
           </thead>
           <tbody>
             {!loaded && loading ? (
               <tr>
-                <td colSpan={6} className="p-4 text-center text-sm text-gray-400">
+                <td colSpan={7} className="p-4 text-center text-sm text-gray-400">
                   Loading…
                 </td>
               </tr>
             ) : displayed.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-4 text-center text-sm text-gray-400">
+                <td colSpan={7} className="p-4 text-center text-sm text-gray-400">
                   No agreements match the current filters.
                 </td>
               </tr>
@@ -270,6 +272,10 @@ export default function ArchivePage() {
                           {formatDateTime(row.status_updated_on)}
                         </div>
                       )}
+                    </td>
+                    {/* Remarks: names the responsible party, not just the raw status */}
+                    <td className={`p-3 ${signedByBoth ? "text-gray-500" : "font-medium text-red-700"}`}>
+                      {row.pending_with}
                     </td>
                   </tr>
                 );
