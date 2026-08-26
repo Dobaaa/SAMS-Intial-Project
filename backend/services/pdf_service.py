@@ -202,6 +202,13 @@ def _build_value_map(agreement: Agreement) -> dict[str, str]:
     # placeholder.
     if agreement.reference_number:
         value_map["REFERENCE"] = agreement.reference_number
+    # Synthetic token: the Comms Address appendix block's Subcontractor
+    # section (req 4, 2026-08-26 client feedback) — sourced from the
+    # Subcontractor record captured at Step 1, not a manually-entered field,
+    # so it can't go stale relative to whatever the admin typed into A06.
+    value_map["SUBCONTRACTOR_CONTACT_PERSON"] = (
+        agreement.subcontractor.contact_person if agreement.subcontractor else ""
+    ) or ""
     _inject_percentage_amounts(value_map)
     return value_map
 

@@ -40,18 +40,23 @@ FIELDS: list[FieldSeed] = [
     FieldSeed(TemplateTypeEnum.conditions, "C03", "3.4.1", "Advance Payment Amount (AED)", InputTypeEnum.number, sort_order=3),
     FieldSeed(TemplateTypeEnum.conditions, "C03_PCT", "3.4.1", "Advance Payment (%)", InputTypeEnum.number, default_value="10", sort_order=3),
     FieldSeed(TemplateTypeEnum.conditions, "C04", "3.4.1", "Advance Payment release condition", InputTypeEnum.text, sort_order=4),
-    # Free-text so admin can record "60 days PDC" or "30 days from completion"
-    # alongside plain integers. PDF renders the text verbatim.
-    FieldSeed(TemplateTypeEnum.conditions, "C05", "3.4.6", "Interim Payment days", InputTypeEnum.text, is_required=True, sort_order=5),
-    FieldSeed(TemplateTypeEnum.conditions, "C06", "3.4.7", "1st Half Retention release days", InputTypeEnum.text, sort_order=6),
-    FieldSeed(TemplateTypeEnum.conditions, "C07", "3.4.7", "2nd Half Retention release days", InputTypeEnum.text, sort_order=7),
+    # Number-only (2026-08-26 client feedback item 1) — the docx wraps the
+    # entered day count in fixed "X days PDC within 15 days from the
+    # invoice date" wording itself, so free text is no longer needed here.
+    FieldSeed(TemplateTypeEnum.conditions, "C05", "3.4.6", "Interim Payment days", InputTypeEnum.number, is_required=True, sort_order=5),
+    FieldSeed(TemplateTypeEnum.conditions, "C06", "3.4.7", "1st Half Retention release days", InputTypeEnum.number, sort_order=6),
+    FieldSeed(TemplateTypeEnum.conditions, "C07", "3.4.7", "2nd Half Retention release days", InputTypeEnum.number, sort_order=7),
     # No longer required (2026-08-24 client feedback): orphaned from the
     # master docx alongside A16, per the removal of clause 4.3(a)'s
     # project-level Time for Completion line. Hidden from the wizard's
     # Conditions step (frontend filter) but left in the data model.
     FieldSeed(TemplateTypeEnum.conditions, "C08", "4.3", "Time for Completion (Project) in days", InputTypeEnum.text, is_required=False, sort_order=8),
     FieldSeed(TemplateTypeEnum.conditions, "C09", "4.3", "Milestones table", InputTypeEnum.table, sort_order=9),
-    FieldSeed(TemplateTypeEnum.conditions, "C10", "5", "Defects Liability Period", InputTypeEnum.text, sort_order=10),
+    # Number-only (2026-08-26 client feedback item 5, reverses the 2026-06-02
+    # text change) — the docx now appends "Months" itself, both in the body
+    # clause (already did) and the Appendix DLP row (fixed this round), so
+    # free-form unit text ("12 months"/"365 days") would double up the unit.
+    FieldSeed(TemplateTypeEnum.conditions, "C10", "5", "Defects Liability Period (months)", InputTypeEnum.number, sort_order=10),
     FieldSeed(TemplateTypeEnum.conditions, "C11", "6.2", "Rate of Liquidated Damages (AED/day)", InputTypeEnum.number, is_required=True, sort_order=11),
     FieldSeed(TemplateTypeEnum.conditions, "C12", "10.1", "Insurance submission deadline (days)", InputTypeEnum.number, sort_order=12),
     FieldSeed(TemplateTypeEnum.conditions, "C13", "13.3", "Dispute Resolution Jurisdiction", InputTypeEnum.text, is_required=True, sort_order=13),
@@ -88,12 +93,15 @@ FIELDS: list[FieldSeed] = [
     # only the Subcontract Works line (A17) remains in the appendix. Clauses
     # renumbered 4.3->4.2 after clause 4.1's removal.
     FieldSeed(TemplateTypeEnum.appendix, "A16", "4.3(a)", "Time for Completion - Project", InputTypeEnum.text, auto_source_field_id="C08", appendix_row_label="Time for Completion of the Project", appendix_clause_ref="4.3(a)", show_in_appendix=False, sort_order=16),
-    FieldSeed(TemplateTypeEnum.appendix, "A17", "4.2(a)", "Time for Completion - Subcontract Works in days", InputTypeEnum.text, appendix_row_label="Time for Completion of the Subcontract Works", appendix_clause_ref="4.2(a)", sort_order=17),
+    # Number-only (2026-08-26 client feedback item 2) — "days" is already
+    # appended by the docx itself, both in clause 4.2(a) and the Appendix
+    # row, so admin only ever needs to enter the bare day count.
+    FieldSeed(TemplateTypeEnum.appendix, "A17", "4.2(a)", "Time for Completion - Subcontract Works in days", InputTypeEnum.number, appendix_row_label="Time for Completion of the Subcontract Works", appendix_clause_ref="4.2(a)", sort_order=17),
     FieldSeed(TemplateTypeEnum.appendix, "A18", "4.2(b)", "Milestones", InputTypeEnum.table, auto_source_field_id="C09", appendix_row_label="Time for Completion of the Sections (Milestones)", appendix_clause_ref="4.2(b)", sort_order=18),
     FieldSeed(TemplateTypeEnum.appendix, "A24", "4.2(b)", "Start of Material Submission", InputTypeEnum.text, appendix_row_label="Start of Material Submission", appendix_clause_ref="4.2(b)", show_in_appendix=False, sort_order=19),
     FieldSeed(TemplateTypeEnum.appendix, "A25", "4.2(b)", "Complete all Material Submission", InputTypeEnum.text, appendix_row_label="Complete all Material Submission", appendix_clause_ref="4.2(b)", show_in_appendix=False, sort_order=20),
     FieldSeed(TemplateTypeEnum.appendix, "A26", "4.2(b)", "Start of Submission of Shop Drawings", InputTypeEnum.text, appendix_row_label="Start of Submission of Shop Drawings", appendix_clause_ref="4.2(b)", show_in_appendix=False, sort_order=21),
-    FieldSeed(TemplateTypeEnum.appendix, "A19", "5", "Defects Liability Period", InputTypeEnum.text, auto_source_field_id="C10", appendix_row_label="Defects Liability Period", appendix_clause_ref="5", sort_order=22),
+    FieldSeed(TemplateTypeEnum.appendix, "A19", "5", "Defects Liability Period (months)", InputTypeEnum.number, auto_source_field_id="C10", appendix_row_label="Defects Liability Period", appendix_clause_ref="5", sort_order=22),
     FieldSeed(TemplateTypeEnum.appendix, "A20", "6.2", "Rate of Liquidated Damages (AED/day)", InputTypeEnum.number, auto_source_field_id="C11", appendix_row_label="Rate Of Liquidated Damages", appendix_clause_ref="6.2", sort_order=23),
     FieldSeed(TemplateTypeEnum.appendix, "A21", "6.2", "Maximum Liquidated Damages in AED", InputTypeEnum.number, default_value="10", appendix_row_label="Maximum Liquidated Damages", appendix_clause_ref="6.2", show_in_appendix=False, sort_order=24),
     FieldSeed(TemplateTypeEnum.appendix, "A22", "10.1", "Insurance submission deadline (days)", InputTypeEnum.number, auto_source_field_id="C12", appendix_row_label="Time to submit the Copies of the required Insurance Policies", appendix_clause_ref="10.1", sort_order=25),

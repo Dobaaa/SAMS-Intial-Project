@@ -80,8 +80,11 @@ MONEY_FIELDS: set[str] = {
 # matches the hardcoded "M/s. Bhatia General Contracting Co. (L.L.C.)"
 # party-name styling in the master. Rev 02 item 3 (Subcontractor row in
 # the Appendix) and item 8 (M/s. Microfab in the body) both call for the
-# subcontractor company name to be bold wherever it appears.
-BOLD_FIELDS: set[str] = {"F02"}
+# subcontractor company name to be bold wherever it appears. C03/C03_DISPLAY
+# (Advance Payment Amount) added 2026-08-26 client feedback item 7 — bold
+# wherever it appears, both the 3.4.1 body clause ({{C03}}) and the
+# Appendix summary row ({{C03_DISPLAY}}).
+BOLD_FIELDS: set[str] = {"F02", "C03", "C03_DISPLAY"}
 
 # Field tokens (F01/C03/A15) plus a small set of synthetic tokens like
 # {{REFERENCE}} (the agreement's reference stamped into the running header
