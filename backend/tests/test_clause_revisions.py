@@ -364,6 +364,76 @@ async def test_compare_table_empty_when_no_revisions(authed_client):
     assert table.json()["rows"] == []
 
 
+async def test_compare_table_field_row_only_shows_when_reviewer_comments(
+    client, authed_client, project_director_user
+):
+    """2026-09-02 client feedback: "If there are no comments from Accounts
+    or OM, there is no need to display all the clauses added by Admin
+    below." A field with a value but no reviewer comment stays hidden; once
+    a non-admin reviewer comments on it, it shows with that comment
+    attached."""
+    template_ids: dict[str, str] = {}
+    for template_type in ("form", "conditions", "appendix"):
+        resp = await authed_client.post(
+            "/api/masters/",
+            json={
+                "type": template_type,
+                "version_number": "v1",
+                "content_html": "<p>placeholder</p>",
+                "version_date": "2026-05-17",
+                "is_active": True,
+            },
+        )
+        template_ids[template_type] = resp.json()["id"]
+
+    field = await authed_client.post(
+        "/api/masters/fields/",
+        json={
+            "template_id": template_ids["conditions"],
+            "field_id": "C01",
+            "clause_number": "2.2",
+            "field_label": "Scope of Works",
+            "input_type": "textarea",
+        },
+    )
+    assert field.status_code == 200, field.text
+
+    agreement = await _create_agreement(authed_client)
+    await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields", json={"values": {"C01": "Steel works"}}
+    )
+    await authed_client.post(f"/api/agreements/{agreement['id']}/submit")
+
+    # Admin-entered field, no reviewer comment yet -> not shown.
+    table = await authed_client.get(f"/api/agreements/{agreement['id']}/compare-table")
+    assert table.json()["rows"] == []
+
+    detail = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    pd_step = next(s for s in detail.json()["steps"] if s["role_required"] == "project_director")
+
+    pd_token = await _login(client, "pd@test.example", "revpass1")
+    client.headers["Authorization"] = f"Bearer {pd_token}"
+    comment = await client.post(
+        f"/api/workflow/{pd_step['id']}/comment",
+        json={"comment_text": "Please double-check this scope wording.", "clause_reference": "C01"},
+    )
+    assert comment.status_code == 200, comment.text
+
+    table2 = await authed_client.get(
+        f"/api/agreements/{agreement['id']}/compare-table",
+        headers={"Authorization": f"Bearer {pd_token}"},
+    )
+    rows = table2.json()["rows"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["kind"] == "field"
+    assert row["field_id"] == "C01"
+    assert row["revised_text"] == "Steel works"
+    assert len(row["reviewer_comments"]) == 1
+    assert row["reviewer_comments"][0]["author_role"] == "project_director"
+    assert row["reviewer_comments"][0]["comment_text"] == "Please double-check this scope wording."
+
+
 async def test_cannot_decide_an_already_decided_revision(
     client, authed_client, project_director_user
 ):

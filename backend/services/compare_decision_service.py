@@ -1,15 +1,28 @@
-"""Per-row decisions on the GM Compare table (2026-08-26 client feedback:
-"a decision action for every change ... not for all the changes"). Every
-row (a filled-in field value, or a formal clause revision) gets its own
-Approve / Approve with comments / Reject with comments decision; the
-agreement's overall workflow step only resolves once every row has one.
+"""GM Compare table row-building (services/compare_decision_service.py).
 
-Clause-revision rows reuse the existing, unmodified accept/reject endpoints
-in routers/clause_revisions.py (accept_revision/reject_revision) — this
-module only adds the missing half: decisions on plain field-value rows
-(AgreementFieldReview, new), plus the shared "is everything decided yet,
-and if so what's the aggregate outcome" check that both row kinds feed
-into via the finalize-check endpoint.
+2026-09-02 client feedback reversed the 2026-08-26 per-row decision UI: "The
+GM will not review each clause item by item ... provide a single overall
+approval option at the bottom." GM's decision is once again a single
+Approve / Approved with comments / Rejected with comments on the whole
+step (frontend calls the plain /workflow/{step}/approve|return endpoints
+directly — see AgreementCompareTable.tsx), not a per-row action.
+
+Same feedback also asked the table to stop listing every admin-entered
+field: "If there are no comments from Accounts or OM, there is no need to
+display all the clauses added by Admin below. If there is a specific
+comment from any party other than Admin, you may show only that particular
+point." build_compare_rows now filters field rows down to only those a
+non-admin reviewer left a clause_reference'd WorkflowComment on, and
+attaches those comments to the row so GM sees why it's flagged. Formal
+clause revisions (a rarer, always-deliberate "propose a clause edit"
+action, distinct from a plain field value) are still shown unfiltered, per
+the original Package D reasoning: every one exists because Admin
+deliberately proposed it.
+
+get_actor_actionable_step / record_field_decision / check_and_finalize_step
+/ AgreementFieldReview below are the now-superseded per-row mechanism.
+Left in place (real decision history already recorded against them from
+live use) but no longer called by the GM Compare page.
 """
 from __future__ import annotations
 
@@ -29,8 +42,8 @@ from models.agreement import (
     FieldReviewStatus,
 )
 from models.master import MasterField, MasterTemplate
-from models.user import User
-from models.workflow import WorkflowStep, WorkflowStepStatusEnum
+from models.user import RoleEnum, User
+from models.workflow import WorkflowComment, WorkflowStep, WorkflowStepStatusEnum
 from services.audit_service import record_audit
 from services.workflow_engine import _previous_step_approved, approve_step, return_step
 
@@ -91,15 +104,11 @@ async def _row_identities(
     return clause_revision_ids, field_ids
 
 
-async def build_compare_rows(
-    db: AsyncSession, agreement_id: uuid.UUID, viewer_step: WorkflowStep | None
-) -> list[dict]:
-    """Row-building logic for GET .../compare-table, extended with each
-    row's decision_status/decision_comment/decided_by_name — computed
-    against the VIEWER's own actionable step. With no actionable step
-    (nothing pending for them, or an observer role), every row just reads
-    "pending" with no comment — matches canDecide being false client-side,
-    so no action buttons render anyway."""
+async def build_compare_rows(db: AsyncSession, agreement_id: uuid.UUID) -> list[dict]:
+    """Row-building logic for GET .../compare-table. Clause revisions always
+    show (every one is a deliberate, formal proposed edit). Field-value rows
+    only show when a non-admin reviewer left a comment referencing that
+    field — see module docstring."""
     rev_res = await db.execute(
         select(AgreementClauseRevision)
         .where(AgreementClauseRevision.agreement_id == agreement_id)
@@ -108,14 +117,6 @@ async def build_compare_rows(
     )
     revisions = rev_res.scalars().all()
 
-    # Clause-revision decisions aren't scoped per workflow step (pre-existing
-    # design, unrelated to this feature) — whatever the row's own status/
-    # decided_by already says applies regardless of who's viewing.
-    CLAUSE_STATUS_MAP = {
-        ClauseRevisionStatus.pending.value: "pending",
-        ClauseRevisionStatus.accepted.value: "approved",
-        ClauseRevisionStatus.rejected.value: "rejected",
-    }
     rows = [
         {
             "id": str(rev.id),
@@ -126,15 +127,38 @@ async def build_compare_rows(
             "revised_text": rev.modified_text,
             "change_reason": rev.change_reason,
             "status": rev.status,
-            "decision_status": CLAUSE_STATUS_MAP.get(rev.status, rev.status),
-            "decision_comment": rev.decision_note,
             "decided_by_name": rev.decided_by_user.name if rev.decided_by_user else None,
             "generated_by_name": rev.created_by_user.name if rev.created_by_user else None,
             "generated_by_role": rev.created_by_user.role.value if rev.created_by_user else None,
             "created_at": rev.created_at.isoformat() if rev.created_at else None,
+            "reviewer_comments": [],
         }
         for rev in revisions
     ]
+
+    # Every clause_reference'd comment left by a non-admin reviewer, keyed by
+    # field_id — this is what decides whether a field row is worth GM's time.
+    comment_res = await db.execute(
+        select(WorkflowComment)
+        .where(
+            WorkflowComment.agreement_id == agreement_id,
+            WorkflowComment.clause_reference.is_not(None),
+        )
+        .options(selectinload(WorkflowComment.original_author))
+        .order_by(WorkflowComment.created_at.asc())
+    )
+    reviewer_comments_by_field: dict[str, list[dict]] = {}
+    for c in comment_res.scalars().all():
+        author = c.original_author
+        if author is None or author.role == RoleEnum.admin:
+            continue
+        reviewer_comments_by_field.setdefault(c.clause_reference, []).append(
+            {
+                "author_name": author.name,
+                "author_role": author.role.value,
+                "comment_text": c.comment_text,
+            }
+        )
 
     catalog = await _active_field_catalog(db)
     fv_res = await db.execute(
@@ -144,23 +168,14 @@ async def build_compare_rows(
     )
     field_values = fv_res.scalars().all()
 
-    field_reviews: dict[str, AgreementFieldReview] = {}
-    if viewer_step is not None:
-        fr_res = await db.execute(
-            select(AgreementFieldReview)
-            .where(AgreementFieldReview.workflow_step_id == viewer_step.id)
-            .options(selectinload(AgreementFieldReview.decided_by_user))
-        )
-        field_reviews = {fr.field_id: fr for fr in fr_res.scalars().all()}
-
     field_rows: list[tuple[tuple[str, int], dict]] = []
     for fv in field_values:
         value = (fv.entered_value or "").strip()
         field = catalog.get(fv.field_id)
-        if not value or field is None:
+        comments = reviewer_comments_by_field.get(fv.field_id)
+        if not value or field is None or not comments:
             continue
         label = f"{field.clause_number} — {field.field_label}" if field.clause_number else field.field_label
-        review = field_reviews.get(fv.field_id)
         field_rows.append((
             (fv.field_id[0], field.sort_order),
             {
@@ -172,12 +187,10 @@ async def build_compare_rows(
                 "revised_text": value,
                 "change_reason": None,
                 "status": "entered",
-                "decision_status": review.status if review else FieldReviewStatus.pending.value,
-                "decision_comment": review.comment_text if review else None,
-                "decided_by_name": review.decided_by_user.name if review and review.decided_by_user else None,
                 "generated_by_name": fv.entered_by_user.name if fv.entered_by_user else None,
                 "generated_by_role": fv.entered_by_user.role.value if fv.entered_by_user else None,
                 "created_at": fv.entered_at.isoformat() if fv.entered_at else None,
+                "reviewer_comments": comments,
             },
         ))
     field_rows.sort(key=lambda item: item[0])
