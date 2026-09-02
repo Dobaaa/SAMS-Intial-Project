@@ -19,6 +19,7 @@ type ReviewItem = {
     step_order: number;
     role_required: string;
     status: string;
+    modified_since_approval?: boolean;
   };
   agreement: {
     id: string;
@@ -36,6 +37,7 @@ type WorkflowStep = {
   role_required: string;
   status: string;
   acted_at?: string | null;
+  modified_since_approval?: boolean;
 };
 
 type CommentReaction = {
@@ -496,9 +498,18 @@ export default function WorkflowReview() {
                 <div className="flex items-center justify-between gap-1">
                   <span className="font-medium text-xs">{item.agreement.reference_number}</span>
                   {isApproved ? (
-                    <span className="rounded-full bg-green-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                      ✓
-                    </span>
+                    item.step.modified_since_approval ? (
+                      <span
+                        className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white"
+                        title="Modified after your approval"
+                      >
+                        ⚠
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-green-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                        ✓
+                      </span>
+                    )
                   ) : (
                     <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[9px] font-bold text-white">
                       Pending
@@ -531,6 +542,11 @@ export default function WorkflowReview() {
                   <p className="text-sm text-gray-500">
                     Status: {details.agreement.current_status.replace(/_/g, " ")}
                   </p>
+                  {myStep?.status === "approved" && myStep.modified_since_approval && (
+                    <p className="mt-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
+                      ⚠ Admin has made changes to this agreement since you approved it. Please review the latest version.
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {role === "admin" &&

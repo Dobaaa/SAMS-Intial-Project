@@ -12,7 +12,7 @@ from models.agreement import (
     Project,
     Subcontractor,
 )
-from services.workflow_engine import _notify_project_users
+from services.workflow_engine import _notify_project_users, notify_already_approved_reviewers
 from models.master import MasterField, MasterTemplate, TemplateTypeEnum
 from models.user import RoleEnum, User
 from models.workflow import WorkflowStep, WorkflowStepStatusEnum
@@ -160,6 +160,10 @@ async def update_agreement_fields(
         select(AgreementFieldValue).where(AgreementFieldValue.agreement_id == agreement.id)
     )
     current_map = {row.field_id: row for row in current_res.scalars().all()}
+    # Snapshot before any mutation, so we can tell after the cascade which
+    # fields actually changed (and thus whether any already-approved
+    # reviewer needs notifying below).
+    original_values = {fid: (row.entered_value or "") for fid, row in current_map.items()}
 
     # Effective post-payload value map for cascade lookups: existing rows
     # plus anything in this payload (the payload always wins for its own keys).
@@ -256,8 +260,17 @@ async def update_agreement_fields(
             current_map[field_id] = row
         row.is_manual_override = bool(locked)
 
+    changed_fields = sorted(
+        fid for fid, new_val in values.items() if (new_val or "") != original_values.get(fid, "")
+    )
+
     agreement.updated_at = datetime.now(UTC)
     await db.commit()
+
+    if changed_fields:
+        await notify_already_approved_reviewers(
+            db, agreement, user, change_summary=", ".join(changed_fields)
+        )
 
 
 async def submit_for_review(db: AsyncSession, agreement: Agreement) -> None:

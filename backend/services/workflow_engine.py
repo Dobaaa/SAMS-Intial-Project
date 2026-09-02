@@ -46,7 +46,16 @@ async def _get_email_context(db: AsyncSession, agreement: Agreement) -> str:
     )
 
 
-def _step_to_dict(step: WorkflowStep) -> dict:
+def _step_to_dict(step: WorkflowStep, agreement_updated_at: datetime | None = None) -> dict:
+    # Flag is derived, not stored: any edit bumps agreement.updated_at, so a
+    # step approved before the most recent edit is stale. Reused by the
+    # frontend to show "modified after your approval" without a new column.
+    modified_since_approval = bool(
+        step.status == WorkflowStepStatusEnum.approved
+        and step.acted_at
+        and agreement_updated_at
+        and agreement_updated_at > step.acted_at
+    )
     return {
         "id": str(step.id),
         "agreement_id": str(step.agreement_id),
@@ -57,6 +66,7 @@ def _step_to_dict(step: WorkflowStep) -> dict:
         "assigned_user_id": str(step.assigned_user_id) if step.assigned_user_id else None,
         "acted_by": str(step.acted_by) if step.acted_by else None,
         "acted_at": step.acted_at.isoformat() if step.acted_at else None,
+        "modified_since_approval": modified_since_approval,
     }
 
 
@@ -77,7 +87,7 @@ async def get_all_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
     steps = result.scalars().all()
     return [
         {
-            "step": _step_to_dict(step),
+            "step": _step_to_dict(step, step.agreement.updated_at),
             "agreement": {
                 "id": str(step.agreement.id),
                 "reference_number": step.agreement.reference_number,
@@ -115,7 +125,7 @@ async def get_all_for_admin(db: AsyncSession) -> list[dict]:
             continue
         rep_step = min(agr.workflow_steps, key=lambda s: s.step_order)
         items.append({
-            "step": _step_to_dict(rep_step),
+            "step": _step_to_dict(rep_step, agr.updated_at),
             "agreement": {
                 "id": str(agr.id),
                 "reference_number": agr.reference_number,
@@ -152,7 +162,7 @@ async def get_pending_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
 
         pending_items.append(
             {
-                "step": _step_to_dict(step),
+                "step": _step_to_dict(step, step.agreement.updated_at),
                 "agreement": {
                     "id": str(step.agreement.id),
                     "reference_number": step.agreement.reference_number,
@@ -301,6 +311,56 @@ async def _notify_admins_agreement_ready_to_forward(
                 "review / resolution cycle. You can now generate the PDF and forward\n"
                 f"it to the subcontractor.\n\n"
                 f"{ctx}"
+            ),
+        )
+
+
+async def notify_already_approved_reviewers(
+    db: AsyncSession,
+    agreement: Agreement,
+    actor: User,
+    change_summary: str,
+) -> None:
+    """Email every main-chain reviewer (Accounts/PD/OM/GM) whose approval on
+    this agreement predates an edit Admin just made. The UI flag is derived
+    separately (see _step_to_dict's modified_since_approval, compared against
+    agreement.updated_at) — this only covers the email side. Best-effort,
+    same as every other notification here.
+    """
+    steps_res = await db.execute(
+        select(WorkflowStep).where(
+            and_(
+                WorkflowStep.agreement_id == agreement.id,
+                WorkflowStep.status == WorkflowStepStatusEnum.approved,
+                ~WorkflowStep.step_name.in_(RESOLUTION_STEP_NAMES),
+            )
+        )
+    )
+    approved_steps = steps_res.scalars().all()
+    if not approved_steps:
+        return
+
+    ctx = await _get_email_context(db, agreement)
+    ref = agreement.reference_number
+    notified: set[str] = set()
+    for step in approved_steps:
+        if not step.acted_by or str(step.acted_by) == str(actor.id):
+            continue
+        if str(step.acted_by) in notified:
+            continue
+        notified.add(str(step.acted_by))
+        reviewer = await db.get(User, step.acted_by)
+        if not reviewer or not reviewer.is_active:
+            continue
+        await send_email(
+            to_email=reviewer.email,
+            subject=f"SAMS: {ref} modified after your approval",
+            body=(
+                f"{actor.name} has made changes to agreement {ref} after you\n"
+                f"already approved it ({step.step_name}).\n\n"
+                f"Changed: {change_summary}\n\n"
+                f"{ctx}\n\n"
+                "Please log in to SAMS to review the latest version."
             ),
         )
 
@@ -640,7 +700,10 @@ async def get_workflow_agreement_summary(db: AsyncSession, agreement_id: str) ->
             "current_status": agreement.current_status.value,
             "gm_approval_date": agreement.gm_approval_date.isoformat() if agreement.gm_approval_date else None,
         },
-        "steps": [_step_to_dict(s) for s in sorted(agreement.workflow_steps, key=lambda x: x.step_order)],
+        "steps": [
+            _step_to_dict(s, agreement.updated_at)
+            for s in sorted(agreement.workflow_steps, key=lambda x: x.step_order)
+        ],
         "comments": [
             {
                 "id": str(c.id),

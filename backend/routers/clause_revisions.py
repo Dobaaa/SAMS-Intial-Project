@@ -49,6 +49,7 @@ from services.clause_revision_service import (
     find_master_clause_by_hash,
     list_master_clauses,
 )
+from services.workflow_engine import notify_already_approved_reviewers
 from services.compare_decision_service import (
     build_compare_rows,
     check_and_finalize_step,
@@ -278,8 +279,17 @@ async def create_revision(
         created_by=current_user.id,
     )
     db.add(revision)
+    # Bumps agreement.updated_at so the "modified since your approval" UI
+    # flag (derived from this timestamp vs each step's acted_at) also
+    # catches a clause-revision-only change, not just plain field edits.
+    agreement.updated_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(revision)
+
+    await notify_already_approved_reviewers(
+        db, agreement, current_user, change_summary=f"{revision.clause_label} (proposed clause edit)"
+    )
+
     return _serialise(revision)
 
 
