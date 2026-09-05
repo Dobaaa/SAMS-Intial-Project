@@ -60,6 +60,73 @@ async def test_archive_agreements_lists_everything_no_id_required(authed_client,
     assert a2["id"] in ids
 
 
+async def test_pending_with_reflects_stale_approval_not_ready_to_forward(
+    authed_client, admin_user, db_session
+):
+    """Client feedback (2026-09-05): forwarding is blocked while a reviewer
+    has un-reviewed post-approval changes pending, so Archive's remarks
+    column must say "Pending with <role>", not "ready to forward"."""
+    from models.user import RoleEnum, User
+    from services.auth_service import hash_password
+
+    users = {}
+    for role in [RoleEnum.accounts, RoleEnum.project_director, RoleEnum.operation_manager, RoleEnum.gm]:
+        user = User(
+            name=f"Archive Test {role.value}",
+            email=f"archive-{role.value}@test.example",
+            password_hash=hash_password("testpass1"),
+            role=role,
+            is_active=True,
+        )
+        db_session.add(user)
+        users[role.value] = user
+    await db_session.commit()
+
+    await _seed_active_templates(authed_client)
+    agreement = await _create_agreement(
+        authed_client, project_code="ARC-STALE", project_name="Archive Stale Project", subcontractor_name="Archive Stale Sub"
+    )
+    admin_token = authed_client.headers["Authorization"]
+    await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields", json={"values": {"F02": "Original"}}
+    )
+    await authed_client.post(f"/api/agreements/{agreement['id']}/submit")
+
+    detail = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    steps_by_role = {s["role_required"]: s for s in detail.json()["steps"]}
+
+    for role_key in ("accounts", "project_director", "operation_manager", "gm"):
+        login = await authed_client.post(
+            "/api/auth/login", json={"email": f"archive-{role_key}@test.example", "password": "testpass1"}
+        )
+        assert login.status_code == 200
+        authed_client.headers["Authorization"] = f"Bearer {login.json()['access_token']}"
+        resp = await authed_client.post(f"/api/workflow/{steps_by_role[role_key]['id']}/approve")
+        assert resp.status_code == 200
+
+    authed_client.headers["Authorization"] = admin_token
+    await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields", json={"values": {"F02": "Changed"}}
+    )
+
+    resp = await authed_client.get("/api/archive/agreements")
+    row = next(r for r in resp.json() if r["id"] == agreement["id"])
+    assert row["pending_with"] == "Pending with Accounts"
+
+    # Reaffirm Accounts — the next stale role (PD) becomes the reported one.
+    login = await authed_client.post(
+        "/api/auth/login", json={"email": "archive-accounts@test.example", "password": "testpass1"}
+    )
+    authed_client.headers["Authorization"] = f"Bearer {login.json()['access_token']}"
+    resp = await authed_client.post(f"/api/workflow/{steps_by_role['accounts']['id']}/reaffirm")
+    assert resp.status_code == 200
+
+    authed_client.headers["Authorization"] = admin_token
+    resp = await authed_client.get("/api/archive/agreements")
+    row = next(r for r in resp.json() if r["id"] == agreement["id"])
+    assert row["pending_with"] == "Pending with Project Director"
+
+
 async def test_archive_agreements_filters(authed_client, admin_user):
     await _seed_active_templates(authed_client)
     a1 = await _create_agreement(

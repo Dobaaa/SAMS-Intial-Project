@@ -54,6 +54,11 @@ def _actionable_role_pending(steps, resolution: bool) -> str | None:
     for s in chain_steps:
         if s.status == WorkflowStepStatusEnum.pending:
             return s.role_required.value
+        # Approved but flagged with post-approval changes (client feedback,
+        # 2026-09-05): forwarding is blocked until this role re-checks the
+        # specific points that changed, so it's still "pending with" them.
+        if s.status == WorkflowStepStatusEnum.approved and (s.pending_changes or "").strip():
+            return s.role_required.value
         if s.status != WorkflowStepStatusEnum.approved:
             return None
     return None
