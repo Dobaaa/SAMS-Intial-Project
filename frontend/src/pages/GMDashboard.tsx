@@ -25,6 +25,7 @@ type GMRow = {
   project_name: string | null;
   scope_of_works: string;
   subcontractor_name: string | null;
+  needs_reaffirm: boolean;
 };
 
 export default function GMDashboard() {
@@ -80,7 +81,17 @@ export default function GMDashboard() {
               {rows.map((row) => (
                 <tr key={row.step_id} className="border-b transition-colors last:border-0 hover:bg-gray-50">
                   <td className="p-3">{row.project_code ?? <span className="text-gray-400">—</span>}</td>
-                  <td className="p-3 font-medium">{row.reference_number}</td>
+                  <td className="p-3 font-medium">
+                    {row.reference_number}
+                    {row.needs_reaffirm && (
+                      <span
+                        className="ml-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white"
+                        title="Approved, but Admin changed it since — open Compare to re-check"
+                      >
+                        ⚠
+                      </span>
+                    )}
+                  </td>
                   <td className="p-3">{row.project_name ?? <span className="text-gray-400">—</span>}</td>
                   <td className="max-w-xs p-3">
                     <span className="line-clamp-2 whitespace-pre-wrap break-words">

@@ -296,6 +296,45 @@ async def test_gm_dashboard_shows_only_gm_ready_agreements(
 
 
 @pytest.mark.asyncio
+async def test_gm_dashboard_still_lists_approved_but_stale_agreement(
+    authed_client, admin_user, seeded_reviewers
+):
+    """Client feedback (2026-09-05): once GM has approved and Admin then
+    edits the agreement, GM's dashboard must still surface it (flagged) so
+    GM has a way to discover the pending re-review — it must not vanish
+    just because the step's raw status is 'approved', not 'pending'."""
+    agreement = await _make_submitted_agreement(authed_client)
+    admin_token = authed_client.headers["Authorization"]
+    detail = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    steps_by_role = {s["role_required"]: s for s in detail.json()["steps"]}
+
+    for role_value, email in [
+        ("accounts", "accounts@test.example"),
+        ("project_director", "project_director@test.example"),
+        ("operation_manager", "operation_manager@test.example"),
+        ("gm", "gm@test.example"),
+    ]:
+        token = await _login(authed_client, email)
+        authed_client.headers["Authorization"] = f"Bearer {token}"
+        approve = await authed_client.post(f"/api/workflow/{steps_by_role[role_value]['id']}/approve")
+        assert approve.status_code == 200
+
+    authed_client.headers["Authorization"] = admin_token
+    await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields", json={"values": {"F02": "Changed"}}
+    )
+
+    gm_token = await _login(authed_client, "gm@test.example")
+    authed_client.headers["Authorization"] = f"Bearer {gm_token}"
+    ready = await authed_client.get("/api/workflow/gm-dashboard")
+    assert ready.status_code == 200
+    rows = ready.json()
+    assert len(rows) == 1
+    assert rows[0]["agreement_id"] == agreement["id"]
+    assert rows[0]["needs_reaffirm"] is True
+
+
+@pytest.mark.asyncio
 async def test_reject_with_comments_returns_step(
     authed_client, admin_user, seeded_reviewers
 ):

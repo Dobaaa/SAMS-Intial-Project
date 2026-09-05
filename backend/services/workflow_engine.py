@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -135,12 +135,24 @@ async def get_all_for_admin(db: AsyncSession) -> list[dict]:
 
 
 async def get_pending_for_role(db: AsyncSession, role: RoleEnum) -> list[dict]:
+    """Actionable steps for this role: genuinely pending ones, plus already-
+    approved-but-stale ones (client feedback, 2026-09-05) — an approved step
+    with unresolved pending_changes still needs this role's attention, just
+    to reaffirm the specific points that changed rather than a fresh review.
+    """
     result = await db.execute(
         select(WorkflowStep)
         .where(
             and_(
                 WorkflowStep.role_required == role,
-                WorkflowStep.status == WorkflowStepStatusEnum.pending,
+                or_(
+                    WorkflowStep.status == WorkflowStepStatusEnum.pending,
+                    and_(
+                        WorkflowStep.status == WorkflowStepStatusEnum.approved,
+                        WorkflowStep.pending_changes.is_not(None),
+                        WorkflowStep.pending_changes != "",
+                    ),
+                ),
             )
         )
         .options(selectinload(WorkflowStep.agreement))
@@ -210,6 +222,7 @@ async def get_gm_pending_dashboard(db: AsyncSession) -> list[dict]:
                 "project_name": agreement.project.project_name if agreement.project else None,
                 "scope_of_works": scope_of_works,
                 "subcontractor_name": agreement.subcontractor.company_name if agreement.subcontractor else None,
+                "needs_reaffirm": bool(item["step"]["pending_changes"]),
             }
         )
     return rows
