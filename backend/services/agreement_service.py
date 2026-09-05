@@ -41,11 +41,13 @@ async def _build_reference_number(db: AsyncSession, site_no: str) -> str:
     return f"{prefix}{seq:03d}"
 
 
-def _advance_payment_from_price(f08_value: str | None) -> str | None:
-    """Return 10% of the subcontract price (F08) formatted for a currency field.
+def _advance_payment_from_price(f08_value: str | None, pct_value: str | None = None) -> str | None:
+    """Return C03_PCT% (default 10%) of the subcontract price (F08) formatted
+    for a currency field.
 
     Returns None if F08 can't be parsed as a number -- callers should leave
-    C03 alone in that case rather than storing a junk string.
+    C03 alone in that case rather than storing a junk string. An unparseable
+    pct_value falls back to 10, matching the field's seeded default.
     """
     if f08_value is None:
         return None
@@ -53,7 +55,11 @@ def _advance_payment_from_price(f08_value: str | None) -> str | None:
         amount = float(str(f08_value).replace(",", "").strip())
     except (TypeError, ValueError):
         return None
-    return f"{amount * 0.10:.2f}"
+    try:
+        pct = float(str(pct_value).strip()) if pct_value not in (None, "") else 10.0
+    except (TypeError, ValueError):
+        pct = 10.0
+    return f"{amount * pct / 100:.2f}"
 
 
 async def create_draft_agreement(
@@ -194,10 +200,10 @@ async def update_agreement_fields(
     # the AED amount is now derived at render time via the {{A10_AMOUNT}}
     # synthetic token in services.pdf_service._inject_percentage_amounts.
     if effective.get("F08"):
-        ten_pct = _advance_payment_from_price(effective["F08"])
-        if ten_pct is not None and "C03" not in values and not _is_locked("C03"):
-            values["C03"] = ten_pct
-            effective["C03"] = ten_pct
+        adv_payment = _advance_payment_from_price(effective["F08"], effective.get("C03_PCT"))
+        if adv_payment is not None and "C03" not in values and not _is_locked("C03"):
+            values["C03"] = adv_payment
+            effective["C03"] = adv_payment
 
     # Generic cascade: for every MasterField with auto_source_field_id, copy
     # the source value into the target on every update — overriding any prior
@@ -269,7 +275,7 @@ async def update_agreement_fields(
 
     if changed_fields:
         await notify_already_approved_reviewers(
-            db, agreement, user, change_summary=", ".join(changed_fields)
+            db, agreement, user, change_summary=", ".join(changed_fields), changed_field_ids=changed_fields
         )
 
 

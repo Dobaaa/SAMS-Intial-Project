@@ -191,7 +191,7 @@ async def get_compare_table(
         item-by-item; see services/compare_decision_service.build_compare_rows.
     """
     await _get_agreement_or_404(db, agreement_id)
-    rows = await build_compare_rows(db, agreement_id)
+    rows = await build_compare_rows(db, agreement_id, viewer_role=current_user.role)
     return {"rows": rows}
 
 
@@ -280,7 +280,11 @@ async def create_revision(
     await db.refresh(revision)
 
     await notify_already_approved_reviewers(
-        db, agreement, current_user, change_summary=f"{revision.clause_label} (proposed clause edit)"
+        db,
+        agreement,
+        current_user,
+        change_summary=f"{revision.clause_label} (proposed clause edit)",
+        changed_field_ids=["CLAUSE"],
     )
 
     return _serialise(revision)

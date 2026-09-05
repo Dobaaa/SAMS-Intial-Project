@@ -104,11 +104,24 @@ async def _row_identities(
     return clause_revision_ids, field_ids
 
 
-async def build_compare_rows(db: AsyncSession, agreement_id: uuid.UUID) -> list[dict]:
+async def build_compare_rows(
+    db: AsyncSession, agreement_id: uuid.UUID, viewer_role: RoleEnum | None = None
+) -> list[dict]:
     """Row-building logic for GET .../compare-table. Clause revisions always
     show (every one is a deliberate, formal proposed edit). Field-value rows
-    only show when a non-admin reviewer left a comment referencing that
-    field — see module docstring."""
+    show when a non-admin reviewer left a comment referencing that field, OR
+    (2026-09-05 client feedback) when it's one of the specific points changed
+    since the viewer's own step was approved — see module docstring."""
+    viewer_pending: set[str] = set()
+    if viewer_role is not None:
+        steps_res = await db.execute(
+            select(WorkflowStep).where(
+                WorkflowStep.agreement_id == agreement_id,
+                WorkflowStep.role_required == viewer_role,
+            )
+        )
+        for s in steps_res.scalars().all():
+            viewer_pending.update(f for f in (s.pending_changes or "").split(",") if f)
     rev_res = await db.execute(
         select(AgreementClauseRevision)
         .where(AgreementClauseRevision.agreement_id == agreement_id)
@@ -132,6 +145,7 @@ async def build_compare_rows(db: AsyncSession, agreement_id: uuid.UUID) -> list[
             "generated_by_role": rev.created_by_user.role.value if rev.created_by_user else None,
             "created_at": rev.created_at.isoformat() if rev.created_at else None,
             "reviewer_comments": [],
+            "modified_since_approval": False,
         }
         for rev in revisions
     ]
@@ -173,7 +187,8 @@ async def build_compare_rows(db: AsyncSession, agreement_id: uuid.UUID) -> list[
         value = (fv.entered_value or "").strip()
         field = catalog.get(fv.field_id)
         comments = reviewer_comments_by_field.get(fv.field_id)
-        if not value or field is None or not comments:
+        is_pending_change = fv.field_id in viewer_pending
+        if not value or field is None or not (comments or is_pending_change):
             continue
         label = f"{field.clause_number} — {field.field_label}" if field.clause_number else field.field_label
         field_rows.append((
@@ -190,7 +205,8 @@ async def build_compare_rows(db: AsyncSession, agreement_id: uuid.UUID) -> list[
                 "generated_by_name": fv.entered_by_user.name if fv.entered_by_user else None,
                 "generated_by_role": fv.entered_by_user.role.value if fv.entered_by_user else None,
                 "created_at": fv.entered_at.isoformat() if fv.entered_at else None,
-                "reviewer_comments": comments,
+                "reviewer_comments": comments or [],
+                "modified_since_approval": is_pending_change,
             },
         ))
     field_rows.sort(key=lambda item: item[0])

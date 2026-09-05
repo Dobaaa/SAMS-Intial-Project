@@ -21,6 +21,15 @@ type ReviewItem = {
   };
 };
 
+type ArchiveRow = {
+  id: string;
+  reference_number: string;
+  project_name: string | null;
+  subcontractor_name: string | null;
+  current_status: string;
+  pending_with: string;
+};
+
 const STATUS_LABELS: Record<string, string> = {
   under_drafting: "Under Drafting",
   under_internal_review: "Under Internal Review",
@@ -75,6 +84,7 @@ export default function ReviewerDashboard() {
   const toast = useToast();
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [otherAgreements, setOtherAgreements] = useState<ArchiveRow[]>([]);
 
   // Filters — same logic as admin Dashboard: click name to set, chip to clear
   const [projectFilter, setProjectFilter] = useState("");
@@ -87,7 +97,20 @@ export default function ReviewerDashboard() {
       .then(({ data }) => setItems(data))
       .catch(() => toast.error("Failed to load agreements."))
       .finally(() => setLoading(false));
+    // Cross-department visibility (client feedback): show where every other
+    // agreement currently sits, not just the ones actionable by this role.
+    api
+      .get("/archive/agreements")
+      .then(({ data }) => setOtherAgreements(data))
+      .catch(() => {
+        /* non-critical — the actionable list above still loads fine */
+      });
   }, []);
+
+  const myAgreementIds = new Set(items.map((i) => i.agreement.id));
+  const pendingElsewhere = otherAgreements.filter(
+    (a) => !myAgreementIds.has(a.id) && a.current_status !== "completed",
+  );
 
   // Distinct sorted names for the dropdowns / click targets
   const projectNames = Array.from(
@@ -294,6 +317,37 @@ export default function ReviewerDashboard() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {pendingElsewhere.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-sky-900">Other Agreements — Pending Status</h2>
+          <p className="text-xs text-gray-500">
+            Read-only visibility into where every other agreement currently sits in the review chain.
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-sky-100 bg-white shadow-sm">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-sky-50 text-left text-xs text-sky-900">
+                  <th className="border-b p-3 font-semibold">Reference</th>
+                  <th className="border-b p-3 font-semibold">Project</th>
+                  <th className="border-b p-3 font-semibold">Subcontractor</th>
+                  <th className="border-b p-3 font-semibold">Pending With</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingElsewhere.map((row) => (
+                  <tr key={row.id} className="border-b last:border-0">
+                    <td className="p-3 font-medium">{row.reference_number}</td>
+                    <td className="p-3">{row.project_name ?? <span className="text-gray-400">—</span>}</td>
+                    <td className="p-3">{row.subcontractor_name ?? <span className="text-gray-400">—</span>}</td>
+                    <td className="p-3 text-xs text-gray-600">{row.pending_with}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

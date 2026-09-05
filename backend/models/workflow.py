@@ -41,6 +41,11 @@ class WorkflowStep(Base):
     acted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     acted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # Comma-joined field IDs (or "CLAUSE") changed by Admin since this step was
+    # approved. Populated by notify_already_approved_reviewers, cleared by
+    # reaffirm_step — lets an already-approved reviewer re-check only the
+    # specific points that changed instead of the whole agreement again.
+    pending_changes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     agreement = relationship("Agreement", back_populates="workflow_steps")
     assigned_user = relationship("User", back_populates="assigned_workflow_steps", foreign_keys=[assigned_user_id])

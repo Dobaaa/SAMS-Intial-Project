@@ -47,15 +47,11 @@ async def _get_email_context(db: AsyncSession, agreement: Agreement) -> str:
 
 
 def _step_to_dict(step: WorkflowStep, agreement_updated_at: datetime | None = None) -> dict:
-    # Flag is derived, not stored: any edit bumps agreement.updated_at, so a
-    # step approved before the most recent edit is stale. Reused by the
-    # frontend to show "modified after your approval" without a new column.
-    modified_since_approval = bool(
-        step.status == WorkflowStepStatusEnum.approved
-        and step.acted_at
-        and agreement_updated_at
-        and agreement_updated_at > step.acted_at
-    )
+    # pending_changes lists exactly which fields (or "CLAUSE") changed since
+    # this step's own approval — populated by notify_already_approved_reviewers,
+    # cleared by reaffirm_step. modified_since_approval is kept as a plain
+    # bool derived from it for callers that only need the flag.
+    pending_changes = [f for f in (step.pending_changes or "").split(",") if f]
     return {
         "id": str(step.id),
         "agreement_id": str(step.agreement_id),
@@ -66,7 +62,8 @@ def _step_to_dict(step: WorkflowStep, agreement_updated_at: datetime | None = No
         "assigned_user_id": str(step.assigned_user_id) if step.assigned_user_id else None,
         "acted_by": str(step.acted_by) if step.acted_by else None,
         "acted_at": step.acted_at.isoformat() if step.acted_at else None,
-        "modified_since_approval": modified_since_approval,
+        "pending_changes": pending_changes,
+        "modified_since_approval": bool(pending_changes),
     }
 
 
@@ -320,12 +317,15 @@ async def notify_already_approved_reviewers(
     agreement: Agreement,
     actor: User,
     change_summary: str,
+    changed_field_ids: list[str] | None = None,
 ) -> None:
-    """Email every main-chain reviewer (Accounts/PD/OM/GM) whose approval on
-    this agreement predates an edit Admin just made. The UI flag is derived
-    separately (see _step_to_dict's modified_since_approval, compared against
-    agreement.updated_at) — this only covers the email side. Best-effort,
-    same as every other notification here.
+    """Flag + email every main-chain reviewer (Accounts/PD/OM/GM) whose
+    approval on this agreement predates an edit Admin just made.
+
+    `changed_field_ids` (field IDs, or ["CLAUSE"] for a clause revision) is
+    recorded onto each affected step's `pending_changes` so the reviewer can
+    later re-approve just those points (see reaffirm_step) instead of the
+    whole agreement again. The email itself is still best-effort.
     """
     steps_res = await db.execute(
         select(WorkflowStep).where(
@@ -339,6 +339,13 @@ async def notify_already_approved_reviewers(
     approved_steps = steps_res.scalars().all()
     if not approved_steps:
         return
+
+    if changed_field_ids:
+        for step in approved_steps:
+            existing = [f for f in (step.pending_changes or "").split(",") if f]
+            merged = existing + [f for f in changed_field_ids if f not in existing]
+            step.pending_changes = ",".join(merged)
+        await db.commit()
 
     ctx = await _get_email_context(db, agreement)
     ref = agreement.reference_number
@@ -366,7 +373,10 @@ async def notify_already_approved_reviewers(
 
 
 async def all_main_steps_approved(db: AsyncSession, agreement_id) -> bool:
-    """True when every reviewer role's main-chain step is approved.
+    """True when every reviewer role's main-chain step is approved, and none
+    of them still has un-reviewed post-approval changes pending (client
+    feedback: Admin can't forward while a reviewer hasn't re-checked the
+    points that changed since they approved).
 
     The sequential review chain (Accounts -> PD -> OM -> GM) completes only
     when all four have approved. Resolution steps (a separate sequential
@@ -381,7 +391,10 @@ async def all_main_steps_approved(db: AsyncSession, agreement_id) -> bool:
         )
     )
     steps = res.scalars().all()
-    return bool(steps) and all(s.status == WorkflowStepStatusEnum.approved for s in steps)
+    return bool(steps) and all(
+        s.status == WorkflowStepStatusEnum.approved and not (s.pending_changes or "").strip()
+        for s in steps
+    )
 
 
 async def _handle_resolution_approval(
@@ -539,6 +552,49 @@ async def return_step(
 
     await db.commit()
     await db.refresh(comment)
+    return comment
+
+
+async def reaffirm_step(
+    db: AsyncSession,
+    step: WorkflowStep,
+    actor: User,
+    comment_text: str | None = None,
+) -> WorkflowComment | None:
+    """Re-approve an already-approved step after Admin edited the agreement.
+
+    Only clears this one step's `pending_changes` flag (bumping acted_at) —
+    it does not touch any other step or re-run approve_step's downstream
+    side effects (gm_approval_date, resolution branching), since the step
+    was already approved once and this is just acknowledging the delta.
+    Rejecting the changes is not a separate action: reviewers use the
+    existing return_step/`/workflow/{id}/return` for that, same as a
+    first-time rejection.
+    """
+    if step.status != WorkflowStepStatusEnum.approved:
+        raise ValueError("Only an already-approved step can be reaffirmed")
+    if not (step.pending_changes or "").strip():
+        raise ValueError("Nothing pending on this step to reaffirm")
+
+    step.pending_changes = None
+    step.acted_by = actor.id
+    step.acted_at = datetime.now(UTC)
+
+    comment: WorkflowComment | None = None
+    if comment_text and comment_text.strip():
+        comment = WorkflowComment(
+            workflow_step_id=step.id,
+            agreement_id=step.agreement_id,
+            original_author_id=actor.id,
+            last_edited_by_id=actor.id,
+            comment_text=comment_text.strip(),
+        )
+        db.add(comment)
+        await db.flush()
+
+    await db.commit()
+    if comment:
+        await db.refresh(comment)
     return comment
 
 

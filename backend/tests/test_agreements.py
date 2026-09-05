@@ -82,6 +82,39 @@ async def test_update_fields_cascades_f08_to_c03_as_ten_percent(authed_client, a
 
 
 @pytest.mark.asyncio
+async def test_c03_pct_controls_advance_payment_not_hardcoded_ten_percent(
+    authed_client, admin_user, db_session
+):
+    """Client-reported bug: revising the Advance Payment % (C03_PCT) after
+    the wizard must actually change C03, not get silently forced back to a
+    hardcoded 10% on the next save."""
+    from scripts.seed_fields import seed_master_fields
+
+    await _seed_active_templates(authed_client)
+    await seed_master_fields(db_session)
+    agreement = await _create_agreement(authed_client)
+
+    resp = await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={"values": {"F08": "1000000", "C03_PCT": "15"}},
+    )
+    assert resp.status_code == 200
+
+    fields = await authed_client.get(f"/api/agreements/{agreement['id']}/fields")
+    assert fields.status_code == 200
+    assert fields.json()["values"]["C03"] == "150000.00"
+
+    # A later, unrelated save must not reset C03 back to a hardcoded 10%.
+    resp = await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields",
+        json={"values": {"F02": "Some Subcontractor"}},
+    )
+    assert resp.status_code == 200
+    fields = await authed_client.get(f"/api/agreements/{agreement['id']}/fields")
+    assert fields.json()["values"]["C03"] == "150000.00"
+
+
+@pytest.mark.asyncio
 async def test_manual_override_preserves_through_source_update(authed_client, admin_user, db_session):
     """If the client sends A01 explicitly in the same update payload as F02,
     A01 must win (override not clobbered by cascade)."""

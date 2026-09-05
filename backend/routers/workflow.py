@@ -18,6 +18,7 @@ from services.workflow_engine import (
     get_gm_pending_dashboard,
     get_pending_for_role,
     get_workflow_agreement_summary,
+    reaffirm_step,
     return_step,
 )
 
@@ -92,6 +93,34 @@ async def approve_workflow_step(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return {"status": "approved", "comment_id": str(comment.id) if comment else None}
+
+
+class ReaffirmPayload(BaseModel):
+    comment_text: str | None = None
+
+
+@router.post("/{step_id}/reaffirm")
+async def reaffirm_workflow_step(
+    step_id: uuid.UUID,
+    payload: ReaffirmPayload | None = None,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Client feedback: an already-approved reviewer only needs to re-check
+    the specific points Admin changed, not the whole agreement again."""
+    step_res = await db.execute(select(WorkflowStep).where(WorkflowStep.id == step_id))
+    step = step_res.scalar_one_or_none()
+    if not step:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow step not found")
+    if step.role_required != current_user.role:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed for this role")
+    try:
+        comment = await reaffirm_step(
+            db, step, current_user, comment_text=payload.comment_text if payload else None
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"status": "reaffirmed", "comment_id": str(comment.id) if comment else None}
 
 
 @router.post("/{step_id}/comment")

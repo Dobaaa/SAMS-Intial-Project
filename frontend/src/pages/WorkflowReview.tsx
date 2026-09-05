@@ -20,6 +20,7 @@ type ReviewItem = {
     role_required: string;
     status: string;
     modified_since_approval?: boolean;
+    pending_changes?: string[];
   };
   agreement: {
     id: string;
@@ -38,6 +39,7 @@ type WorkflowStep = {
   status: string;
   acted_at?: string | null;
   modified_since_approval?: boolean;
+  pending_changes?: string[];
 };
 
 type CommentReaction = {
@@ -404,6 +406,27 @@ export default function WorkflowReview() {
     }
   };
 
+  const reaffirmStep = async () => {
+    if (!selectedStepId || busy) return;
+    setBusy(true);
+    try {
+      const ref = details?.agreement.reference_number ?? "";
+      await api.post(`/workflow/${selectedStepId}/reaffirm`, {
+        comment_text: commentText || undefined,
+      });
+      toast.success(`Re-approved ${ref}.`);
+      setCommentText("");
+      setClauseReference("");
+      await loadMyReviews();
+      if (details?.agreement.id) await loadDetails(details.agreement.id);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e?.response?.data?.detail ?? "Failed to re-approve.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const rejectWithComments = async () => {
     if (!selectedStepId || busy) return;
     if (!commentText.trim()) {
@@ -466,6 +489,15 @@ export default function WorkflowReview() {
   // Group fields by prefix (F = Form, C = Conditions)
   const formFields = fieldMatrix.filter((f) => f.field_id.startsWith("F"));
   const conditionFields = fieldMatrix.filter((f) => f.field_id.startsWith("C"));
+
+  const pendingChangeLabel = (fieldId: string): string => {
+    if (fieldId === "CLAUSE") return "A proposed clause edit";
+    return (
+      fieldMatrix.find((f) => f.field_id === fieldId)?.field_label ??
+      appendixMatrix.find((f) => f.field_id === fieldId)?.row_label ??
+      fieldId
+    );
+  };
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -543,9 +575,35 @@ export default function WorkflowReview() {
                     Status: {details.agreement.current_status.replace(/_/g, " ")}
                   </p>
                   {myStep?.status === "approved" && myStep.modified_since_approval && (
-                    <p className="mt-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
-                      ⚠ Admin has made changes to this agreement since you approved it. Please review the latest version.
-                    </p>
+                    <div className="mt-1 space-y-1.5 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                      <p className="font-medium">
+                        ⚠ Admin has changed the following since you approved — you only need to
+                        re-check these points, not the whole agreement:
+                      </p>
+                      <ul className="ml-4 list-disc">
+                        {(myStep.pending_changes ?? []).map((fid) => (
+                          <li key={fid}>{pendingChangeLabel(fid)}</li>
+                        ))}
+                      </ul>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          className="rounded border border-green-400 bg-green-50 px-2 py-1 text-xs font-medium text-green-800 hover:bg-green-100 disabled:opacity-50"
+                          disabled={busy}
+                          onClick={() => void reaffirmStep()}
+                        >
+                          {busy ? "Working…" : "Approve changes"}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded border border-red-400 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50"
+                          disabled={busy}
+                          onClick={() => void rejectWithComments()}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2">

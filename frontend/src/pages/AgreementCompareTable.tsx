@@ -45,6 +45,7 @@ type CompareRow = {
   generated_by_role: string | null;
   created_at: string | null;
   reviewer_comments: ReviewerComment[];
+  modified_since_approval: boolean;
 };
 
 type WorkflowStep = {
@@ -53,6 +54,7 @@ type WorkflowStep = {
   step_order: number;
   role_required: string;
   status: string;
+  pending_changes?: string[];
 };
 
 const isResolutionStepName = (name: string) => name.startsWith("Resolution");
@@ -101,9 +103,10 @@ export default function AgreementCompareTable() {
   const myStepUnlocked = !myStep || myStep.step_order <= 1 || priorStep?.status === "approved";
   const myStepApproved = myStep?.status === "approved";
   const myStepRejected = myStep?.status === "returned";
+  const myStepStale = myStepApproved && (myStep?.pending_changes?.length ?? 0) > 0;
   const canDecide = role !== "admin" && !!myStep && myStep.status === "pending" && myStepUnlocked;
 
-  const decideStep = async (action: "approve" | "return", withComment: boolean) => {
+  const decideStep = async (action: "approve" | "return" | "reaffirm", withComment: boolean) => {
     if (!myStep || busy) return;
     if ((withComment || action === "return") && !commentText.trim()) {
       toast.error(action === "return" ? "Please enter a reason for rejection." : "Please enter a comment.");
@@ -113,14 +116,14 @@ export default function AgreementCompareTable() {
     try {
       await api.post(
         `/workflow/${myStep.id}/${action}`,
-        action === "return"
-          ? { comment_text: commentText }
-          : withComment
-            ? { comment_text: commentText }
-            : undefined,
+        action === "approve" && !withComment ? undefined : { comment_text: commentText },
       );
       toast.success(
-        action === "return" ? "Rejected. Sent back to Admin for revision." : "Approved."
+        action === "return"
+          ? "Rejected. Sent back to Admin for revision."
+          : action === "reaffirm"
+            ? "Re-approved."
+            : "Approved."
       );
       setCommentText("");
       await load();
@@ -160,8 +163,18 @@ export default function AgreementCompareTable() {
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="border p-2 align-top text-xs text-gray-700">{row.clause_label}</td>
+                    <tr key={row.id} className={row.modified_since_approval ? "bg-amber-50/50" : ""}>
+                      <td className="border p-2 align-top text-xs text-gray-700">
+                        {row.clause_label}
+                        {row.modified_since_approval && (
+                          <span
+                            className="ml-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white"
+                            title="Changed since your approval"
+                          >
+                            ⚠
+                          </span>
+                        )}
+                      </td>
                       <td className="border p-2 align-top text-xs text-gray-500">
                         <span className="whitespace-pre-wrap break-words leading-relaxed">{row.original_text}</span>
                       </td>
@@ -207,7 +220,38 @@ export default function AgreementCompareTable() {
           {role !== "admin" && myStep && (
             <div className="rounded border p-3">
               <h3 className="mb-2 font-semibold">Review Action</h3>
-              {myStepApproved ? (
+              {myStepStale ? (
+                <div className="grid gap-2">
+                  <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
+                    ⚠ Admin has changed the points marked below since you approved — you only need
+                    to re-check those, not the whole agreement.
+                  </p>
+                  <textarea
+                    className="rounded border p-2 text-sm"
+                    rows={3}
+                    placeholder="Comment (required to reject)"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    disabled={busy}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="rounded bg-green-700 px-4 py-2 text-white disabled:opacity-50"
+                      disabled={busy}
+                      onClick={() => void decideStep("reaffirm", false)}
+                    >
+                      {busy ? "Working…" : "Approve changes"}
+                    </button>
+                    <button
+                      className="rounded bg-red-700 px-4 py-2 text-white disabled:opacity-50"
+                      disabled={busy}
+                      onClick={() => void decideStep("return", true)}
+                    >
+                      {busy ? "Working…" : "Rejected with comments"}
+                    </button>
+                  </div>
+                </div>
+              ) : myStepApproved ? (
                 <span className="rounded border border-green-300 bg-green-100 px-4 py-2 text-sm font-medium text-green-700">
                   ✓ Approved
                 </span>

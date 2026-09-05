@@ -100,7 +100,86 @@ async def test_field_edit_after_approval_flags_step_not_reset(
 
     # Approval itself is untouched — no silent reset.
     assert steps_by_role["accounts"]["status"] == "approved"
-    # But it's now flagged as modified since that approval.
+    # But it's now flagged as modified since that approval, naming the field.
     assert steps_by_role["accounts"]["modified_since_approval"] is True
+    assert steps_by_role["accounts"]["pending_changes"] == ["F02"]
     # A still-pending step has nothing to flag.
     assert steps_by_role["project_director"]["modified_since_approval"] is False
+
+
+@pytest.mark.asyncio
+async def test_reaffirm_clears_pending_changes_and_unblocks_forwarding(
+    authed_client, admin_user, seeded_reviewers
+):
+    """Client feedback: an already-approved reviewer only needs to re-approve
+    the specific modified points, and Admin can't forward until they do."""
+    for template_type in ("form", "conditions", "appendix"):
+        await authed_client.post(
+            "/api/masters/",
+            json={
+                "type": template_type,
+                "version_number": "v1.0",
+                "version_date": str(date.today()),
+                "content_html": "<p>seeded</p>",
+            },
+        )
+    create = await authed_client.post(
+        "/api/agreements/",
+        json={
+            "project": {"project_name": "P", "project_code": "P002"},
+            "subcontractor": {"company_name": "S"},
+        },
+    )
+    agreement = create.json()
+    admin_token = authed_client.headers["Authorization"]
+
+    await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields", json={"values": {"F02": "Original"}}
+    )
+    await authed_client.post(f"/api/agreements/{agreement['id']}/submit")
+
+    detail = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    steps_by_role = {s["role_required"]: s for s in detail.json()["steps"]}
+
+    # Walk the whole chain to approved with no comments.
+    for role_key in ("accounts", "project_director", "operation_manager", "gm"):
+        token = await _login(authed_client, f"{role_key}@test.example")
+        authed_client.headers["Authorization"] = f"Bearer {token}"
+        resp = await authed_client.post(f"/api/workflow/{steps_by_role[role_key]['id']}/approve")
+        assert resp.status_code == 200
+
+    # Admin edits after everyone approved.
+    authed_client.headers["Authorization"] = admin_token
+    await authed_client.put(
+        f"/api/agreements/{agreement['id']}/fields", json={"values": {"F02": "Changed"}}
+    )
+
+    # Forwarding is blocked until every flagged reviewer reaffirms.
+    forward = await authed_client.post(f"/api/agreements/{agreement['id']}/send-to-subcontractor")
+    assert forward.status_code == 400
+
+    detail2 = await authed_client.get(f"/api/workflow/agreements/{agreement['id']}")
+    steps_by_role = {s["role_required"]: s for s in detail2.json()["steps"]}
+    assert all(steps_by_role[r]["pending_changes"] == ["F02"] for r in
+               ("accounts", "project_director", "operation_manager", "gm"))
+
+    # Reaffirm 3 of 4 — still blocked.
+    for role_key in ("accounts", "project_director", "operation_manager"):
+        token = await _login(authed_client, f"{role_key}@test.example")
+        authed_client.headers["Authorization"] = f"Bearer {token}"
+        resp = await authed_client.post(f"/api/workflow/{steps_by_role[role_key]['id']}/reaffirm")
+        assert resp.status_code == 200
+
+    authed_client.headers["Authorization"] = admin_token
+    forward = await authed_client.post(f"/api/agreements/{agreement['id']}/send-to-subcontractor")
+    assert forward.status_code == 400
+
+    # Reaffirm the last one — now unblocked.
+    token = await _login(authed_client, "gm@test.example")
+    authed_client.headers["Authorization"] = f"Bearer {token}"
+    resp = await authed_client.post(f"/api/workflow/{steps_by_role['gm']['id']}/reaffirm")
+    assert resp.status_code == 200
+
+    authed_client.headers["Authorization"] = admin_token
+    forward = await authed_client.post(f"/api/agreements/{agreement['id']}/send-to-subcontractor")
+    assert forward.status_code == 200
