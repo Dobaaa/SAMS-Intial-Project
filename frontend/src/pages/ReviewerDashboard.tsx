@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { viewPdf } from "../lib/pdf";
 import { useToast } from "../components/Toast";
+import { useAuth } from "../stores/auth";
 
 type ReviewItem = {
   step: {
@@ -21,13 +22,12 @@ type ReviewItem = {
   };
 };
 
-type ArchiveRow = {
-  id: string;
-  reference_number: string;
-  project_name: string | null;
-  subcontractor_name: string | null;
-  current_status: string;
-  pending_with: string;
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  project_director: "Project Director",
+  accounts: "Accounts",
+  operation_manager: "Operation Manager",
+  gm: "GM",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -82,9 +82,10 @@ function stepBadge(stepStatus: string) {
 
 export default function ReviewerDashboard() {
   const toast = useToast();
+  const role = useAuth((s) => s.user?.role);
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [otherAgreements, setOtherAgreements] = useState<ArchiveRow[]>([]);
+  const [pendingWithById, setPendingWithById] = useState<Record<string, string>>({});
 
   // Filters — same logic as admin Dashboard: click name to set, chip to clear
   const [projectFilter, setProjectFilter] = useState("");
@@ -97,20 +98,28 @@ export default function ReviewerDashboard() {
       .then(({ data }) => setItems(data))
       .catch(() => toast.error("Failed to load agreements."))
       .finally(() => setLoading(false));
-    // Cross-department visibility (client feedback): show where every other
-    // agreement currently sits, not just the ones actionable by this role.
+    // Client feedback: every agreement already has a step for this role
+    // (created at submission), so the list above already covers "pending
+    // for me". What's missing is showing WHICH department it's actually
+    // sitting with right now — reuse Archive's existing computation rather
+    // than re-deriving chain order client-side.
     api
       .get("/archive/agreements")
-      .then(({ data }) => setOtherAgreements(data))
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        for (const row of data as { id: string; pending_with: string }[]) {
+          map[row.id] = row.pending_with;
+        }
+        setPendingWithById(map);
+      })
       .catch(() => {
-        /* non-critical — the actionable list above still loads fine */
+        /* non-critical — the actionable list above still loads fine without it */
       });
   }, []);
 
-  const myAgreementIds = new Set(items.map((i) => i.agreement.id));
-  const pendingElsewhere = otherAgreements.filter(
-    (a) => !myAgreementIds.has(a.id) && a.current_status !== "completed",
-  );
+  const myRoleLabel = role ? ROLE_LABELS[role] : undefined;
+  const isMyTurn = (agreementId: string) =>
+    !!myRoleLabel && pendingWithById[agreementId] === `Pending with ${myRoleLabel}`;
 
   // Distinct sorted names for the dropdowns / click targets
   const projectNames = Array.from(
@@ -237,6 +246,7 @@ export default function ReviewerDashboard() {
                 <th className="border-b p-3 font-semibold">Project</th>
                 <th className="border-b p-3 font-semibold">Subcontractor</th>
                 <th className="w-52 border-b p-3 font-semibold">Agreement Status</th>
+                <th className="border-b p-3 font-semibold">Pending With</th>
                 <th className="w-28 border-b p-3 font-semibold">My Step</th>
                 <th className="border-b p-3 font-semibold">Actions</th>
               </tr>
@@ -282,6 +292,9 @@ export default function ReviewerDashboard() {
                   </td>
 
                   <td className="p-3">{statusBadge(item.agreement.current_status)}</td>
+                  <td className="p-3 text-xs text-gray-600">
+                    {pendingWithById[item.agreement.id] ?? <span className="text-gray-400">—</span>}
+                  </td>
                   <td className="p-3">{stepBadge(item.step.status)}</td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1.5">
@@ -303,7 +316,7 @@ export default function ReviewerDashboard() {
                       >
                         Compare
                       </Link>
-                      {item.step.status === "pending" && (
+                      {isMyTurn(item.agreement.id) && (
                         <Link
                           to="/workflow"
                           className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100"
@@ -317,37 +330,6 @@ export default function ReviewerDashboard() {
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {pendingElsewhere.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold text-sky-900">Other Agreements — Pending Status</h2>
-          <p className="text-xs text-gray-500">
-            Read-only visibility into where every other agreement currently sits in the review chain.
-          </p>
-          <div className="overflow-x-auto rounded-xl border border-sky-100 bg-white shadow-sm">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="bg-sky-50 text-left text-xs text-sky-900">
-                  <th className="border-b p-3 font-semibold">Reference</th>
-                  <th className="border-b p-3 font-semibold">Project</th>
-                  <th className="border-b p-3 font-semibold">Subcontractor</th>
-                  <th className="border-b p-3 font-semibold">Pending With</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingElsewhere.map((row) => (
-                  <tr key={row.id} className="border-b last:border-0">
-                    <td className="p-3 font-medium">{row.reference_number}</td>
-                    <td className="p-3">{row.project_name ?? <span className="text-gray-400">—</span>}</td>
-                    <td className="p-3">{row.subcontractor_name ?? <span className="text-gray-400">—</span>}</td>
-                    <td className="p-3 text-xs text-gray-600">{row.pending_with}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       )}
     </div>
