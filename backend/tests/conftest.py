@@ -230,3 +230,16 @@ async def authed_client(client, admin_user):
     assert resp.status_code == 200, resp.text
     client.headers["Authorization"] = f"Bearer {resp.json()['access_token']}"
     return client
+
+
+@pytest.fixture(autouse=True)
+def _no_push_side_effects(monkeypatch):
+    """send_email -> notify_by_email opens its own DB session (the configured
+    DATABASE_URL, not the test DB). Stub it everywhere; tests/test_mobile.py
+    exercises record_and_push directly against the test session."""
+    import services.email_service as email_service
+
+    async def _noop(*a, **k):
+        return None
+
+    monkeypatch.setattr(email_service, "notify_by_email", _noop)

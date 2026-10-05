@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASS: str = ""
     EMAIL_PAUSED: bool = False
+    FIREBASE_CREDENTIALS_PATH: str = ""  # service-account JSON; empty = FCM off (in-app feed still works)
     FRONTEND_URL: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(

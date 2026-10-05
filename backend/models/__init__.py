@@ -1,6 +1,7 @@
 from models.agreement import Agreement, AgreementFieldValue, AppendixConfig, Project, Subcontractor
 from models.ai_review import AIReview, DeviationReport, PDFOutput
 from models.audit import AuditLog
+from models.device import DeviceToken, Notification
 from models.master import MasterField, MasterTemplate
 from models.resolution import CommentsResolutionSheet
 from models.user import User
@@ -16,6 +17,8 @@ __all__ = [
     "DeviationReport",
     "PDFOutput",
     "AuditLog",
+    "DeviceToken",
+    "Notification",
     "MasterField",
     "MasterTemplate",
     "CommentsResolutionSheet",

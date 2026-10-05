@@ -4,6 +4,7 @@ from email.message import EmailMessage
 import aiosmtplib
 
 from config import get_settings
+from services.push_service import notify_by_email
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -17,6 +18,9 @@ async def send_email(to_email: str, subject: str, body: str) -> None:
     (local dev, network outage, misconfigured creds). Failures are logged
     and swallowed so the calling business logic keeps moving.
     """
+    # Push parity with email: fires even when email is paused (the end goal
+    # is push-only). Never raises.
+    await notify_by_email(to_email, subject, body)
     if settings.EMAIL_PAUSED:
         logger.debug("Email paused (EMAIL_PAUSED=true) — skipping send to %s", to_email)
         return
