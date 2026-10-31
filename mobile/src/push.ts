@@ -16,7 +16,7 @@ let deviceToken: string | null = null;
 export async function registerPush() {
   if (!N) return;
   if (Platform.OS === "android") {
-    await N.setNotificationChannelAsync("default", { name: "SAMS", importance: N.AndroidImportance.HIGH });
+    await N.setNotificationChannelAsync("default", { name: "B-Con", importance: N.AndroidImportance.HIGH });
   }
   const perm = await N.requestPermissionsAsync();
   if (!perm.granted) return;

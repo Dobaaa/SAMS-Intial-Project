@@ -37,7 +37,7 @@ export default function Login() {
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
         <Mark />
         <Text style={s.brand}>Bhatia General Contracting</Text>
-        <Text style={s.title}>SAMS</Text>
+        <Text style={s.title}>B-Con</Text>
         <Text style={s.sub}>Subcontract agreements, wherever you are.</Text>
         <View style={s.form}>
           <Field placeholder="Work email" autoCapitalize="none" keyboardType="email-address" autoComplete="email" value={email} onChangeText={setEmail} />
