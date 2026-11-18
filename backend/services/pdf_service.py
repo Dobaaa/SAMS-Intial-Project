@@ -206,9 +206,11 @@ def _build_value_map(agreement: Agreement) -> dict[str, str]:
     # section (req 4, 2026-08-26 client feedback) — sourced from the
     # Subcontractor record captured at Step 1, not a manually-entered field,
     # so it can't go stale relative to whatever the admin typed into A06.
-    value_map["SUBCONTRACTOR_CONTACT_PERSON"] = (
-        agreement.subcontractor.contact_person if agreement.subcontractor else ""
-    ) or ""
+    # Admin(3) item 4: blank -> dotted fill-in line, matching the master's
+    # Position Title / Facsimile Number rows.
+    sub = agreement.subcontractor
+    value_map["SUBCONTRACTOR_CONTACT_PERSON"] = (sub and sub.contact_person) or "……………………………"
+    value_map["SUBCONTRACTOR_EMAIL"] = (sub and sub.email) or "……………………………"
     _inject_percentage_amounts(value_map)
     return value_map
 
