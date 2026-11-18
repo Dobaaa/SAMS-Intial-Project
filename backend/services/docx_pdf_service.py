@@ -33,6 +33,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+from bisect import bisect_right
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Iterable
@@ -440,9 +441,9 @@ def _substitute_in_paragraph(
       never highlighted. Default off: the standard PDF sent to the
       subcontractor/archived must never change.
 
-    Run 0's existing ``<w:rPr>`` is used as the base formatting for every
-    emitted run so font / size / color / paragraph-anchored bold all
-    carry through.
+    Each emitted segment keeps the ``<w:rPr>`` of the source run its text
+    came from (a token takes the rPr of the run it starts in), so mixed
+    formatting in the master survives substitution.
 
     Pass 2 then walks every ``<w:t>`` / ``<w:delText>`` text node anywhere
     in the paragraph tree — including text inside ``<w:del>`` / ``<w:ins>``
@@ -461,7 +462,26 @@ def _substitute_in_paragraph(
         if "{{" in full:
             matches = list(TOKEN_RE.finditer(full))
             if matches:
-                base_rpr = _clone_rpr(runs[0]._r.find(qn("w:rPr")))
+                # Each character keeps the formatting of the run it came
+                # from (Admin(3) item 1/3/4, 2026-11-18): previously every
+                # emitted run cloned run 0's rPr, so a bold first run (e.g.
+                # the Comms Address header) bolded the whole paragraph.
+                run_rprs = [r._r.find(qn("w:rPr")) for r in runs]
+                starts = []
+                acc = 0
+                for r in runs:
+                    starts.append(acc)
+                    acc += len(r.text or "")
+
+                def rpr_at(i: int):
+                    return run_rprs[bisect_right(starts, i) - 1]
+
+                def emit_boilerplate(a: int, b: int) -> None:
+                    while a < b:
+                        k = bisect_right(starts, a) - 1
+                        end = min(b, starts[k + 1] if k + 1 < len(starts) else b)
+                        _emit_styled_run(p_el, run_rprs[k], full[a:end])
+                        a = end
 
                 # Clear existing top-level runs (track-change wrappers
                 # <w:del>/<w:ins> are not in para.runs, so they survive
@@ -477,10 +497,11 @@ def _substitute_in_paragraph(
                 pos = 0
                 for m in matches:
                     if m.start() > pos:
-                        _emit_styled_run(p_el, base_rpr, full[pos : m.start()])
+                        emit_boilerplate(pos, m.start())
                     field_id = m.group(1)
                     value = _replace_one_value(m, values)
                     bold = field_id in BOLD_FIELDS
+                    base_rpr = rpr_at(m.start())
                     if field_id in DATE_FIELDS and value:
                         parts = _split_long_date(value)
                         if parts is not None:
@@ -496,7 +517,7 @@ def _substitute_in_paragraph(
                         _emit_styled_run(p_el, base_rpr, value, bold=bold, highlight=value_highlight)
                     pos = m.end()
                 if pos < len(full):
-                    _emit_styled_run(p_el, base_rpr, full[pos:])
+                    emit_boilerplate(pos, len(full))
 
                 changed = True
 

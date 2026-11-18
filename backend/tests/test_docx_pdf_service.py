@@ -60,3 +60,15 @@ def test_highlight_on_empty_value_no_visible_highlighted_text():
     for text, highlight in zip((r.text for r in p.runs), _run_highlights(p)):
         if text:
             assert highlight is None, f"non-empty run {text!r} should not be highlighted when value is blank"
+
+
+def test_mixed_run_formatting_survives_substitution():
+    """Admin(3): a bold first run must not bold the whole paragraph."""
+    doc = Document()
+    p = doc.add_paragraph()
+    p.add_run("Header ").bold = True
+    p.add_run("Attention: {{X}} plain")
+    _substitute_in_paragraph(p, {"X": "Mr. A"})
+    assert p.text == "Header Attention: Mr. A plain"
+    bold = {r.text: bool(r.bold) for r in p.runs}
+    assert bold == {"Header ": True, "Attention: ": False, "Mr. A": False, " plain": False}
