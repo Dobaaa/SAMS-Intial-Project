@@ -1,7 +1,7 @@
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
-// Set EXPO_PUBLIC_API_URL (e.g. https://sams.bhatiacon.com/api). 10.0.2.2 = host machine from the Android emulator.
+// Set EXPO_PUBLIC_API_URL (e.g. https://bhatiacon.com/api). 10.0.2.2 = host machine from the Android emulator.
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://10.0.2.2:8000/api";
 
 export type User = { id: string; name: string; email: string; role: string };
