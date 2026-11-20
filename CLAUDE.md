@@ -115,7 +115,7 @@ pytest -q
 
 ## 10. Live VPS / Deploy
 
-**Alpha URL:** https://76-13-159-24.sslip.io  (switches to `sams.bgcc.ae` once BGCC IT publishes DNS).
+**Alpha URL:** https://sams.bhatiacon.com (since 2026-11-20; GoDaddy A record `sams` → 76.13.159.24, in the client's Bhatia GoDaddy account). Old https://76-13-159-24.sslip.io still served by the same nginx block + same Let's Encrypt cert (SAN covers both) — keep it until users have moved, then 301 it. VPS `.env` `FRONTEND_URL=https://sams.bhatiacon.com` (backup `.env.bak-domain`).
 
 **VPS:** Hostinger KVM 1 · Ubuntu 24.04 · `developer@76.13.159.24` · SSH key `~/.ssh/sams_deploy_ed25519`. Postgres 16 (`sams_db` / `sams_user`), Redis 7, nginx + Let's Encrypt (auto-renew 03:00), supervisord (`sams-api`), Python 3.12 venv at `/var/www/sams/backend/venv`, Node 20.20. Daily backup 02:00 → `/backups/sams_*.sql.gz` (30-day retention).
 

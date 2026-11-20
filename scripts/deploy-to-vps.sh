@@ -57,4 +57,4 @@ echo
 sudo supervisorctl status sams-api
 REMOTE
 
-echo "✓ deploy complete — https://76-13-159-24.sslip.io"
+echo "✓ deploy complete — https://sams.bhatiacon.com"
